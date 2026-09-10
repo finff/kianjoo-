@@ -180,13 +180,27 @@ lib/EventStore.php      Normalize, store, resolve images, forward, query
 lib/DashboardMapper.php SenseTime event → dashboard incident / camera tile
 storage/                raw JSONL backup + AI cache (+ SQLite if used) — deny-all
 tests/                  sample_payload.json + local dev router
-deploy.sh               LFTP deploy
+deploy.sh               Local, FTP-based deploy tool (LFTP) for the FTP-hosted site
+deploy.php              Auto-deploy webhook receiver (GitHub push → cPanel) — see docs/deploy.md
+git-deploy.sh           Server-side `git fetch && reset --hard`, invoked by deploy.php
 .env                    Secrets (NOT web-accessible, NOT committed)
 ```
 
 ---
 
 ## Deploy
+
+Two independent deploy paths exist, for two different hosting setups:
+
+- **FTP-hosted site** (no server-side git): `deploy.sh` mirrors files from
+  a dev machine over LFTP. See below.
+- **cPanel Git Version Control site**: push to `main` on GitHub and it
+  deploys itself. See **[docs/deploy.md](docs/deploy.md)** for the full
+  runbook — registering the webhook, rotating the token, the manual curl
+  trigger, and the (bold, load-bearing) rule that database migrations are
+  always run by hand, never from the deploy script.
+
+### FTP path
 
 1. In **cPanel → MySQL Databases**, create the database `weststar_tm_new_series`
    and user `weststar_admin`, and grant ALL privileges. (Tables are created

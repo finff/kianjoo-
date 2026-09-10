@@ -1,0 +1,4 @@
+# Shell scripts run on the Linux cPanel host — a CRLF copy (easy to get
+# from Windows editors) breaks bash with cryptic "$'\r': command not
+# found" errors. Force LF regardless of the checking-out OS.
+*.sh text eol=lf
