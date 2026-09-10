@@ -1,0 +1,33 @@
+.env
+
+# Local databases & raw logs
+storage/*.sqlite
+storage/*.sqlite-wal
+storage/*.sqlite-shm
+storage/*.jsonl
+storage/*.jsonl.*.json
+storage/ingest_attempts.log
+
+# Server-side runtime config — contains live secrets (SenseStudio password,
+# live-stream token, LLM API keys) and per-deployment overrides. Edited from
+# the dashboard's Settings/Alert Rules pages, not meant to be versioned.
+storage/app_settings.json
+storage/alert_settings.json
+storage/roles.json
+storage/sense_token.json
+storage/upstream_state.json
+storage/forecast_llm.json
+storage/mail_*.lock
+storage/attachments/
+
+# Employee/operator-uploaded profile photos — privacy, not source.
+uploads/profiles/
+
+# Vendor documentation bundle (large, not project source).
+sensetimedocumentation/
+
+cp_src/
+.playwright-mcp/
+*.png
+!uploads/*.png
+.DS_Store

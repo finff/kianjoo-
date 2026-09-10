@@ -1,0 +1,30 @@
+
+# BEGIN cPanel-generated php ini directives, do not edit
+# Manual editing of this file may result in unexpected behavior.
+# To make changes to this file, use the cPanel MultiPHP INI Editor (Home >> Software >> MultiPHP INI Editor)
+# For more information, read our documentation (https://go.cpanel.net/EA4ModifyINI)
+<IfModule php8_module>
+   php_value error_log "/home3/weststar/logs/php.error.log"
+   php_flag log_errors On
+</IfModule>
+<IfModule lsapi_module>
+   php_value error_log "/home3/weststar/logs/php.error.log"
+   php_flag log_errors On
+</IfModule>
+# END cPanel-generated php ini directives, do not edit
+
+# ── App: block direct web access to secrets & internals ─────
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(sqlite|sqlite-wal|sqlite-shm|jsonl|sh)$">
+    Require all denied
+</FilesMatch>
+# Raw dashboard source is only served through index.php (with feed config injected).
+<FilesMatch "\.dc\.html$">
+    Require all denied
+</FilesMatch>
+RedirectMatch 403 ^/(storage|config|lib|tests|live-bridge)(/|$)
+<FilesMatch "\.(yaml|yml)$">
+    Require all denied
+</FilesMatch>
