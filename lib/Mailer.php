@@ -61,9 +61,14 @@ final class Mailer
             return true;
         };
 
+        // EHLO/Message-ID identify with the sending domain (from MAIL_FROM_ADDRESS),
+        // not a hardcoded site — falls back to the SMTP host if "from" has no @.
+        $heloDomain = strstr($this->cfg['from'] ?? '', '@') !== false
+            ? ltrim(strstr((string) $this->cfg['from'], '@'), '@') : $host;
+
         try {
             $read(); // banner
-            if (!$cmd('EHLO tm-next-series.weststar-dev.com', [250])) {
+            if (!$cmd('EHLO ' . $heloDomain, [250])) {
                 return false;
             }
             if (!$cmd('AUTH LOGIN', [334])
@@ -90,7 +95,7 @@ final class Mailer
                 'MIME-Version: 1.0',
                 'Content-Type: text/html; charset=UTF-8',
                 'Date: ' . date('r'),
-                'Message-ID: <' . bin2hex(random_bytes(10)) . '@tm-next-series.weststar-dev.com>',
+                'Message-ID: <' . bin2hex(random_bytes(10)) . '@' . $heloDomain . '>',
             ];
             // Dot-stuff body lines per RFC 5321.
             $body = preg_replace('/^\./m', '..', $html);

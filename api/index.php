@@ -331,8 +331,8 @@ try {
                     ['Detected', $inc['received'] ?: '—'],
                 ])
                 . EmailTemplate::buttons([
-                    ['Open incident ticket', EmailTemplate::HOST . '/', true, $banCol],
-                    ['Open dashboard', EmailTemplate::HOST . '/', false],
+                    ['Open incident ticket', EmailTemplate::host() . '/', true, $banCol],
+                    ['Open dashboard', EmailTemplate::host() . '/', false],
                 ]);
             $html = EmailTemplate::shell($tag . ' — ' . $inc['title'], $tag, $banCol, $content,
                 $ch === 'tmforce' ? 'Routed via the Kian Joo VisionAI escalation matrix (critical/ERT channel).' : '');
@@ -836,7 +836,7 @@ try {
                         ['Email interval', (int) ($fresh['mail']['cooldown'] ?? 5) . ' min per camera + module'],
                         ['Recipients', implode(', ', $fresh['mail']['to'] ?? [])],
                     ])
-                    . EmailTemplate::buttons([['Review Alert Rules', EmailTemplate::HOST . '/', true]]);
+                    . EmailTemplate::buttons([['Review Alert Rules', EmailTemplate::host() . '/', true]]);
                 $tested = $mailer->ready() && $mailer->send(
                     '[Kian Joo VisionAI] Test alert — settings saved',
                     EmailTemplate::shell('Alert settings saved — email channel confirmed', 'SETTINGS SAVED',
@@ -951,7 +951,7 @@ try {
         }
 
         // GET → effective settings + live endpoint URLs for the UI.
-        $host = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'tm-next-series.weststar-dev.com');
+        $host = $config['app']['url'] ?: ('https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
         Response::ok(['settings' => [
             'sense_api_base'  => $config['sense_api']['base'] ?? '',
             'sense_account'   => $config['sense_api']['account'] ?? '',
@@ -1186,7 +1186,7 @@ try {
                 ['Email interval', (int) ($config['mail']['cooldown'] ?? 5) . ' min per camera + module'],
                 ['Recipients', implode(', ', $config['mail']['to'] ?? [])],
             ])
-            . EmailTemplate::buttons([['Open dashboard', EmailTemplate::HOST . '/', true]]);
+            . EmailTemplate::buttons([['Open dashboard', EmailTemplate::host() . '/', true]]);
         $sent = $mailer->send('[Kian Joo VisionAI] Test alert — email channel OK',
             EmailTemplate::shell('Email channel test — configuration summary', 'EMAIL CHANNEL TEST',
                 EmailTemplate::COLORS['ok'], $content));

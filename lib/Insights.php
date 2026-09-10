@@ -372,7 +372,7 @@ final class Reporter
             . implode('', array_map(static fn ($h) => '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc;font-size:11px;color:#666">' . $h . '</th>',
                 ['TICKET', 'SEV', 'INCIDENT', 'CAMERA', 'STATUS', 'DETECTED', 'ELAPSED']))
             . '</tr>' . $tr . '</table>'
-            . '<div style="margin-top:18px">' . EmailTemplate::buttons([['Open Incidents Board', EmailTemplate::HOST . '/', true]]) . '</div>';
+            . '<div style="margin-top:18px">' . EmailTemplate::buttons([['Open Incidents Board', EmailTemplate::host() . '/', true]]) . '</div>';
         $html = EmailTemplate::shell(
             ucfirst($period) . ' incident report — ' . count($rows) . ' detections, ' . $byStatus['open'] . ' open',
             strtoupper($period) . ' INCIDENT REPORT', EmailTemplate::COLORS['brand'], $html,
@@ -495,8 +495,8 @@ final class Reporter
                     . implode('', array_map(static fn ($r) => '<li>' . htmlspecialchars($r) . '</li>', $llm['risks'])) . '</ul>' : '')
                 . ($llm['recommendation'] ? EmailTemplate::note($llm['recommendation'], 'RECOMMENDATION') : '')) : '')
             . '<div style="margin-top:18px">' . EmailTemplate::buttons([
-                ['Open Dashboard', EmailTemplate::HOST . '/', true],
-                ['Forecasting', EmailTemplate::HOST . '/', false],
+                ['Open Dashboard', EmailTemplate::host() . '/', true],
+                ['Forecasting', EmailTemplate::host() . '/', false],
             ]) . '</div>';
         $html = EmailTemplate::shell(
             $label . ' detection report — ' . $agg['total'] . ' detections in the last ' . $days . ' day(s)',

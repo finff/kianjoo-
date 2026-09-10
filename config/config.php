@@ -23,12 +23,26 @@ ini_set('log_errors', '1');
 
 date_default_timezone_set(Env::get('APP_TZ', 'Asia/Kuala_Lumpur'));
 
+// Public base URL — set APP_URL in .env for CLI/cron contexts (no
+// $_SERVER['HTTP_HOST'] there); otherwise auto-detected from the request so
+// moving domains never needs a code change.
+$appUrl = rtrim((string) Env::get('APP_URL', ''), '/');
+if ($appUrl === '' && !empty($_SERVER['HTTP_HOST'])) {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $appUrl = $scheme . '://' . $_SERVER['HTTP_HOST'];
+}
+if ($appUrl !== '') {
+    require_once APP_ROOT . '/lib/EmailTemplate.php';
+    EmailTemplate::setHost($appUrl);
+}
+
 $config = [
     'app' => [
         'name'  => Env::get('APP_NAME', 'SenseTime Ingest'),
         'env'   => Env::get('APP_ENV', 'production'),
         'debug' => $debug,
         'tz'    => Env::get('APP_TZ', 'Asia/Kuala_Lumpur'),
+        'url'   => $appUrl,
     ],
     'auth' => [
         'ingest_token'    => Env::get('INGEST_TOKEN', ''),

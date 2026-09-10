@@ -1177,8 +1177,8 @@ final class EventStore
             . ($attrRows ? '<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1px;color:#868DA8;margin:0 0 6px;">DETECTED ATTRIBUTES</div>'
                 . EmailTemplate::rows($attrRows) : '')
             . EmailTemplate::buttons([
-                ['Open dashboard', EmailTemplate::HOST . '/', true],
-                ['Acknowledge & triage', EmailTemplate::HOST . '/', false],
+                ['Open dashboard', EmailTemplate::host() . '/', true],
+                ['Acknowledge & triage', EmailTemplate::host() . '/', false],
             ]);
         $html = EmailTemplate::shell(
             $sevTag . ' ' . $modLabel . ' — ' . $what,

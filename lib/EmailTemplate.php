@@ -10,8 +10,22 @@ declare(strict_types=1);
 
 final class EmailTemplate
 {
-    public const HOST  = 'https://tm-next-series.weststar-dev.com';
+    // Legacy fallback only — real deployments set this via config.php from
+    // APP_URL (or auto-detect off the request host). Never hardcode a domain
+    // here again; the next redeploy shouldn't need a code change for it.
+    private const HOST_FALLBACK = 'https://tm-next-series.weststar-dev.com';
+    private static string $hostOverride = '';
     private const FONT = 'font-family:Arial,Helvetica,sans-serif;';
+
+    public static function setHost(string $url): void
+    {
+        self::$hostOverride = rtrim(trim($url), '/');
+    }
+
+    public static function host(): string
+    {
+        return self::$hostOverride !== '' ? self::$hostOverride : self::HOST_FALLBACK;
+    }
 
     public const COLORS = [
         'critical' => '#E23434', 'high' => '#E77320', 'medium' => '#D89A16',
@@ -21,7 +35,7 @@ final class EmailTemplate
     /** Full document: header, colored banner, white content card, footer. */
     public static function shell(string $preheader, string $bannerLabel, string $bannerColor, string $content, string $footerNote = ''): string
     {
-        $host = self::HOST;
+        $host = self::host();
         $pre  = htmlspecialchars($preheader);
         $date = date('D, d M Y H:i') . ' MYT';
         $foot = $footerNote !== '' ? $footerNote

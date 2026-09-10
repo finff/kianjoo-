@@ -110,9 +110,14 @@ final class Auth
             'INSERT INTO users (username, display_name, email, password_hash, role, active, created_at)
              VALUES (:u, :d, :e, :p, :r, 1, :now)'
         );
+        // Seed password: set ADMIN_SEED_PASSWORD in .env for a fresh deployment
+        // (change it — or this account's password from Users & Roles — right
+        // after first login). Falls back to the legacy default for back-compat
+        // with sites that never set it.
+        $seedPass = Env::get('ADMIN_SEED_PASSWORD', '') ?: 'tmone2026';
         $stmt->execute([
             'u' => 'admin', 'd' => 'Administrator', 'e' => '',
-            'p' => password_hash('tmone2026', PASSWORD_DEFAULT),
+            'p' => password_hash($seedPass, PASSWORD_DEFAULT),
             'r' => 'admin', 'now' => date('Y-m-d H:i:s'),
         ]);
     }
