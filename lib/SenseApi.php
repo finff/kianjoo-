@@ -46,7 +46,7 @@ final class SenseApi
             'deviceVersion' => '1.0',
             'operatePerson' => $this->account,
             'deviceUri'     => $p['rtsp'] ?? '',
-            'desc'          => $p['desc'] ?? 'Onboarded from Kian Joo VisionAI dashboard',
+            'desc'          => $p['desc'] ?? 'Onboarded from AIVA Dashboard dashboard',
             'deviceTag'     => $p['tag'] ?? 'tm-next-series',
             'frameRate'     => $p['fps'] ?? '25',
             'privilege'     => $p['privilege'] ?? '0',

@@ -1,6 +1,6 @@
 <?php
 /**
- * Serves the Kian Joo VisionAI monitoring dashboard behind a login gate.
+ * Serves the AIVA Dashboard monitoring dashboard behind a login gate.
  * Authenticated sessions get the dc-runtime app with the live-feed config +
  * logged-in user (name, role, permissions) injected as window.TMNS.
  * The raw .dc.html is not directly web-accessible (see .htaccess).
@@ -42,6 +42,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['__login'])
 
 // ── Not logged in → login page ───────────────────────────────
 $user = Auth::user();
+
+// Public homepage for signed-out visitors; the sign-in form lives at /?login
+// (and is re-shown after a failed POST so the error is visible).
+$isGet = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET';
+if ($user === null && $isGet && !isset($_GET['login']) && is_file(APP_ROOT . '/home.html')) {
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(APP_ROOT . '/home.html');
+    exit;
+}
+
 if ($user === null) {
     // Seed the default admin on first run so the first login works.
     try {
@@ -57,7 +67,7 @@ if ($user === null) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kian Joo VisionAI — Sign in</title>
+<title>AIVA Dashboard — Sign in</title>
 <link rel="icon" type="image/png" href="/uploads/Kian-Joo-Logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -88,7 +98,7 @@ if ($user === null) {
   <form class="card" method="post" action="/">
     <div class="logo">
       <img src="/uploads/Kian-Joo-Logo.png" alt="Kian Joo Group">
-      <div><b>Kian Joo VisionAI</b><span>KIAN JOO GROUP · MONITORING</span></div>
+      <div><b>AIVA Dashboard</b><span>KIAN JOO GROUP · MONITORING</span></div>
     </div>
     <label>USERNAME</label>
     <input name="username" autocomplete="username" autofocus required>
@@ -98,6 +108,7 @@ if ($user === null) {
     <button type="submit">Sign in</button>
     {$err}
     <div class="foot">Role-based access · sessions expire on logout</div>
+    <div class="foot"><a href="/" style="color:#9AA1BD;text-decoration:none">← Back to home</a></div>
   </form>
 </body>
 </html>
@@ -106,7 +117,7 @@ HTML;
 }
 
 // ── Logged in → serve the dashboard with user context ───────
-$dash = APP_ROOT . '/Kian Joo VisionAI.dc.html';
+$dash = APP_ROOT . '/AIVA Dashboard.dc.html';
 $html = is_file($dash) ? (string) file_get_contents($dash) : '';
 if ($html === '') {
     http_response_code(500);
@@ -129,7 +140,7 @@ $feed = '/feed.php' . ($readToken !== '' ? '?token=' . rawurlencode($readToken) 
 // Build stamp: changes whenever the app files change, so open tabs (which
 // compare it against the feed's stamp) can offer a reload after a deploy.
 $build = md5(implode('|', [
-    @filemtime(APP_ROOT . '/Kian Joo VisionAI.dc.html'),
+    @filemtime(APP_ROOT . '/AIVA Dashboard.dc.html'),
     @filemtime(APP_ROOT . '/app.js'),
     @filemtime(APP_ROOT . '/app.css'),
 ]));

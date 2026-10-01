@@ -51,7 +51,7 @@ final class EmailTemplate
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
             . '<td valign="middle"><img src="' . $host . '/uploads/Kian-Joo-Logo.png" width="94" height="38" alt="Kian Joo Group" style="display:block;border-radius:9px;background:#ffffff;"></td>'
             . '<td valign="middle" style="padding-left:13px;' . self::FONT . '">'
-            . '<div style="font-size:16px;font-weight:bold;color:#ffffff;line-height:1.2;">Kian Joo VisionAI</div>'
+            . '<div style="font-size:16px;font-weight:bold;color:#ffffff;line-height:1.2;">AIVA Dashboard</div>'
             . '<div style="font-size:10px;letter-spacing:2px;color:#9AA1BD;">KIAN JOO GROUP &middot; MONITORING</div>'
             . '</td></tr></table></td></tr>'
             // banner
@@ -62,7 +62,7 @@ final class EmailTemplate
             // footer
             . '<tr><td bgcolor="#F3F5FC" style="border-radius:0 0 14px 14px;padding:16px 28px;' . self::FONT
             . 'font-size:11px;color:#868DA8;line-height:1.7;border-top:1px solid #E2E5F1;">'
-            . 'Automated notification from <b>Kian Joo VisionAI Monitoring</b> &middot; ' . $date . '<br>' . $foot
+            . 'Automated notification from <b>AIVA Dashboard Monitoring</b> &middot; ' . $date . '<br>' . $foot
             . '</td></tr>'
             . '</table></td></tr></table></body></html>';
     }

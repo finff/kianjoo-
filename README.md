@@ -1,4 +1,4 @@
-# Kian Joo VisionAI — SenseTime / MyVisionAI Ingest API
+# AIVA Dashboard — SenseTime / MyVisionAI Ingest API
 
 A small, reusable **plain-PHP + MySQL** service that captures SenseTime
 (SenseFoundry / SenseStudio) **HTTP-Push** events and stores them for reuse
@@ -131,9 +131,9 @@ reprocess later.
 
 ---
 
-## Monitoring dashboard (Kian Joo VisionAI)
+## Monitoring dashboard (AIVA Dashboard)
 
-Visiting `/` serves the **Kian Joo VisionAI** monitoring dashboard — a rebranded
+Visiting `/` serves the **AIVA Dashboard** monitoring dashboard — a rebranded
 (Kian Joo Group; palette inherited from the earlier TM ONE build, blue `#1800E0`
 / orange `#F85800`) build of the CP Monitoring
 System (a dc-runtime single-file app). It shows **live SenseTime detections**,
@@ -165,7 +165,7 @@ to disable. The middleware exposes `POST /sensetime/events`, `GET /sensetime/eve
 ```
 index.php               Serves the dashboard (injects feed config)
 status.php              Plain status/health page (former landing)
-Kian Joo VisionAI.dc.html  Dashboard app (dc-runtime; not directly web-accessible)
+AIVA Dashboard.dc.html  Dashboard app (dc-runtime; not directly web-accessible)
 support.js              dc-runtime
 uploads/Kian-Joo-Logo.png Kian Joo Group brand logo (uploads/TM-One-Logo.png kept as the old TM ONE logo)
 feed.php                Dashboard data feed (incidents/cameras/trend/AI)

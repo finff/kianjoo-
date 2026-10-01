@@ -335,7 +335,7 @@ try {
                     ['Open dashboard', EmailTemplate::host() . '/', false],
                 ]);
             $html = EmailTemplate::shell($tag . ' — ' . $inc['title'], $tag, $banCol, $content,
-                $ch === 'tmforce' ? 'Routed via the Kian Joo VisionAI escalation matrix (critical/ERT channel).' : '');
+                $ch === 'tmforce' ? 'Routed via the AIVA Dashboard escalation matrix (critical/ERT channel).' : '');
             // Escalation-matrix routing (Settings → Notifications), base list fallback.
             $routing = $config['routing'] ?? [];
             $to = $ch === 'tmforce'
@@ -343,7 +343,7 @@ try {
                 : array_merge($routing['soc'] ?? [], $routing['supervisor'] ?? []);
             $to = array_values(array_unique($to ?: ($config['mail']['to'] ?? [])));
             $mailer = new Mailer($config['mail']);
-            $sent   = $mailer->ready() && $mailer->send('[Kian Joo VisionAI] ' . $tag . ' — ' . $ticket, $html, $to);
+            $sent   = $mailer->ready() && $mailer->send('[AIVA Dashboard] ' . $tag . ' — ' . $ticket, $html, $to);
             $store->addLog($uuid, $ch === 'tmforce' ? 'tmforce' : 'notify', $in['actor'] ?? null, null, null,
                 ($ch === 'tmforce' ? 'Informed Emergency Response Team' : 'Escalation email sent')
                 . ($sent ? '' : ' (email FAILED)') . ($note !== '' ? ' — ' . mb_substr($note, 0, 500) : ''));
@@ -838,7 +838,7 @@ try {
                     ])
                     . EmailTemplate::buttons([['Review Alert Rules', EmailTemplate::host() . '/', true]]);
                 $tested = $mailer->ready() && $mailer->send(
-                    '[Kian Joo VisionAI] Test alert — settings saved',
+                    '[AIVA Dashboard] Test alert — settings saved',
                     EmailTemplate::shell('Alert settings saved — email channel confirmed', 'SETTINGS SAVED',
                         EmailTemplate::COLORS['ok'], $content)
                 );
@@ -1177,7 +1177,7 @@ try {
         }
         require_once APP_ROOT . '/lib/EmailTemplate.php';
         $content = EmailTemplate::heading('Email channel is working')
-            . EmailTemplate::sub('This is a test notification from the Kian Joo VisionAI dashboard — no action is required.')
+            . EmailTemplate::sub('This is a test notification from the AIVA Dashboard dashboard — no action is required.')
             . EmailTemplate::p('Detection alerts are currently configured as follows:')
             . EmailTemplate::rows([
                 ['Minimum severity', (string) ($config['alerts']['min_severity'] ?? 'high')],
@@ -1187,7 +1187,7 @@ try {
                 ['Recipients', implode(', ', $config['mail']['to'] ?? [])],
             ])
             . EmailTemplate::buttons([['Open dashboard', EmailTemplate::host() . '/', true]]);
-        $sent = $mailer->send('[Kian Joo VisionAI] Test alert — email channel OK',
+        $sent = $mailer->send('[AIVA Dashboard] Test alert — email channel OK',
             EmailTemplate::shell('Email channel test — configuration summary', 'EMAIL CHANNEL TEST',
                 EmailTemplate::COLORS['ok'], $content));
         Response::json(['ok' => $sent, 'to' => $config['mail']['to'] ?? [],

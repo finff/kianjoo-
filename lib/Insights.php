@@ -376,7 +376,7 @@ final class Reporter
         $html = EmailTemplate::shell(
             ucfirst($period) . ' incident report — ' . count($rows) . ' detections, ' . $byStatus['open'] . ' open',
             strtoupper($period) . ' INCIDENT REPORT', EmailTemplate::COLORS['brand'], $html,
-            'Scheduled report from <b>Kian Joo VisionAI Monitoring</b>. Adjust frequency and recipients under <b>Settings &rsaquo; Auto Reports</b>.'
+            'Scheduled report from <b>AIVA Dashboard Monitoring</b>. Adjust frequency and recipients under <b>Settings &rsaquo; Auto Reports</b>.'
         );
 
         require_once __DIR__ . '/Mailer.php';
@@ -385,7 +385,7 @@ final class Reporter
             return false;
         }
         try {
-            return (new Mailer($config['mail']))->send('[Kian Joo VisionAI] ' . ucfirst($period) . ' incident report — ' . date('Y-m-d'), $html, $to);
+            return (new Mailer($config['mail']))->send('[AIVA Dashboard] ' . ucfirst($period) . ' incident report — ' . date('Y-m-d'), $html, $to);
         } catch (Throwable $e) {
             error_log('[reporter] ' . $e->getMessage());
             return false;
@@ -501,7 +501,7 @@ final class Reporter
         $html = EmailTemplate::shell(
             $label . ' detection report — ' . $agg['total'] . ' detections in the last ' . $days . ' day(s)',
             strtoupper($label) . ' DETECTION REPORT', EmailTemplate::COLORS['brand'], $html,
-            'Scheduled report from <b>Kian Joo VisionAI Monitoring</b>. Adjust frequency and recipients under <b>Settings &rsaquo; Auto Reports</b>.'
+            'Scheduled report from <b>AIVA Dashboard Monitoring</b>. Adjust frequency and recipients under <b>Settings &rsaquo; Auto Reports</b>.'
         );
 
         require_once __DIR__ . '/Mailer.php';
@@ -511,7 +511,7 @@ final class Reporter
             return false;
         }
         try {
-            return (new Mailer($mailCfg))->send('[Kian Joo VisionAI] ' . $label . ' detection report — ' . date('Y-m-d'), $html, $to);
+            return (new Mailer($mailCfg))->send('[AIVA Dashboard] ' . $label . ' detection report — ' . date('Y-m-d'), $html, $to);
         } catch (Throwable $e) {
             error_log('[reporter] ' . $e->getMessage());
             return false;
