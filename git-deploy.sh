@@ -20,6 +20,15 @@ export PATH="/usr/local/bin:/usr/bin:/bin:/opt/cpanel/composer/bin:$PATH"
 
 cd "$(dirname "$0")"
 
+# PHP's exec environment under cPanel/LiteSpeed has no $HOME, and git
+# refuses to run (--global config, credential lookups) without one:
+# "fatal: $HOME not set". Derive it from the running user's passwd entry.
+if [ -z "${HOME:-}" ]; then
+  HOME="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+  [ -n "$HOME" ] || HOME="$(eval echo "~$(id -un)")"
+  export HOME
+fi
+
 # The repo may be owned by a different uid than the one PHP/bash runs
 # as under cPanel's suexec — git refuses to operate on it otherwise.
 git config --global --add safe.directory "$(pwd)"
