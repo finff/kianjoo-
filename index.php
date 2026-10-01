@@ -75,7 +75,7 @@ if ($user === null) {
   *{box-sizing:border-box;margin:0;padding:0}
   body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0A0D08;
     font-family:'IBM Plex Sans',system-ui,sans-serif;color:#E9EBDF;
-    background-image:radial-gradient(60% 50% at 50% 0%, rgba(124,142,72,.18), transparent 60%)}
+    background-image:radial-gradient(60% 50% at 50% 0%, rgba(124,142,72,.18), transparent 60%),url('/uploads/camo-dark.svg');background-size:auto,480px 480px}
   .card{width:min(92vw,400px);background:#11160E;border:1px solid #3B4A33;border-top-color:rgba(124,142,72,.55);border-radius:18px;
     padding:34px 32px;box-shadow:0 30px 90px rgba(0,0,0,.55)}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:26px}

@@ -31,8 +31,11 @@
   ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
   ::-webkit-scrollbar-track{background:transparent}
 
+  /* camouflage backdrop: dark tile by default, sand tile in light mode */
+  [data-theme="light"] .c1,[data-theme="light"].c1{background-image:radial-gradient(900px 520px at 12% -8%,rgba(94,110,51,.10),transparent 60%),radial-gradient(700px 420px at 100% 100%,rgba(184,134,11,.05),transparent 60%),url("/uploads/camo-light.svg")}
+
 /* generated utility classes (extracted inline styles) */
-.c1{background:radial-gradient(900px 520px at 12% -8%,rgba(124,142,72,.13),transparent 60%),radial-gradient(700px 420px at 100% 100%,rgba(212,169,76,.05),transparent 60%),var(--bg);color:var(--text);display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
+.c1{background:radial-gradient(900px 520px at 12% -8%,rgba(124,142,72,.13),transparent 60%),radial-gradient(700px 420px at 100% 100%,rgba(212,169,76,.05),transparent 60%),url("/uploads/camo-dark.svg") 0 0/480px 480px repeat var(--bg);color:var(--text);display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
 .c2{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .c3{align-items:center;border-bottom:1px solid var(--line);display:flex;gap:11px;height:64px;padding:0 18px}
 .c4{background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--line2)}
