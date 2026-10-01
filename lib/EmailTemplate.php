@@ -49,10 +49,10 @@ final class EmailTemplate
             // header
             . '<tr><td bgcolor="#0E1122" style="border-radius:14px 14px 0 0;padding:20px 28px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-            . '<td valign="middle"><img src="' . $host . '/uploads/Kian-Joo-Logo.png" width="94" height="38" alt="Kian Joo Group" style="display:block;border-radius:9px;background:#ffffff;"></td>'
+            . '<td valign="middle"><img src="' . $host . '/uploads/AIVA-Logo.png" width="156" height="34" alt="AIVA" style="display:block;border-radius:9px;background:#ffffff;padding:3px 6px;"></td>'
             . '<td valign="middle" style="padding-left:13px;' . self::FONT . '">'
             . '<div style="font-size:16px;font-weight:bold;color:#ffffff;line-height:1.2;">AIVA Dashboard</div>'
-            . '<div style="font-size:10px;letter-spacing:2px;color:#9AA1BD;">KIAN JOO GROUP &middot; MONITORING</div>'
+            . '<div style="font-size:10px;letter-spacing:2px;color:#9AA1BD;">AI VIDEO ANALYTICS &middot; MONITORING</div>'
             . '</td></tr></table></td></tr>'
             // banner
             . '<tr><td bgcolor="' . $bannerColor . '" style="padding:10px 28px;' . self::FONT

@@ -68,7 +68,7 @@ if ($user === null) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AIVA Dashboard — Sign in</title>
-<link rel="icon" type="image/png" href="/uploads/Kian-Joo-Logo.png">
+<link rel="icon" type="image/png" href="/uploads/AIVA-Icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -97,8 +97,8 @@ if ($user === null) {
 <body>
   <form class="card" method="post" action="/">
     <div class="logo">
-      <img src="/uploads/Kian-Joo-Logo.png" alt="Kian Joo Group">
-      <div><b>AIVA Dashboard</b><span>KIAN JOO GROUP · MONITORING</span></div>
+      <img src="/uploads/AIVA-Logo.png" alt="AIVA">
+      <div><b>AIVA Dashboard</b><span>AI VIDEO ANALYTICS · MONITORING</span></div>
     </div>
     <label>USERNAME</label>
     <input name="username" autocomplete="username" autofocus required>

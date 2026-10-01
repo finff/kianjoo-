@@ -167,7 +167,7 @@ index.php               Serves the dashboard (injects feed config)
 status.php              Plain status/health page (former landing)
 AIVA Dashboard.dc.html  Dashboard app (dc-runtime; not directly web-accessible)
 support.js              dc-runtime
-uploads/Kian-Joo-Logo.png Kian Joo Group brand logo (uploads/TM-One-Logo.png kept as the old TM ONE logo)
+uploads/AIVA-Logo.png     AIVA brand logo (uploads/AIVA-Icon.png is the favicon; Kian-Joo-Logo.png and TM-One-Logo.png kept as the older logos)
 feed.php                Dashboard data feed (incidents/cameras/trend/AI)
 api/index.php           Ingest + read API front controller / router
 api/.htaccess           Routes /api/* → index.php
