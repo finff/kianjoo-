@@ -2200,7 +2200,7 @@ class Component extends DCLogic {
       const unread=e.status==='open' && !st.notifSeen[e.id];
       return {tag:m.tag||'EVT', tagBg:m.tagBg||'var(--low)', title:e.title, sub:e.camera+' · '+this.ago(e.ts),
         dotCol:this.SEV[e.sev]||'var(--low)', weight:unread?'700':'500',
-        bg:unread?'rgba(56,38,242,.10)':'transparent', onClick:()=>this.openFromNotif(e)}; });
+        bg:unread?'rgba(124,142,72,.12)':'transparent', onClick:()=>this.openFromNotif(e)}; });
     const mailLine=mailOn?('Email alerts on → '+mailTo):'Email alerts off — configure MAIL_* in .env';
     const mailDot=mailOn?'var(--ok)':'var(--crit)';
 
