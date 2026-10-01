@@ -4,9 +4,9 @@
   body{font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   :root{
     /* AIVA Dashboard theme (palette inherited from TM ONE build) — brand blue #1800E0, accent orange #F85800 */
-    --bg:#080A14; --bg2:#0E1122; --bg3:#141830; --bg4:#1A1F3D;
-    --line:#232847; --line2:#2F3660;
-    --text:#E9ECF6; --text2:#9AA1BD; --text3:#616989;
+    --bg:#0A0D08; --bg2:#11160E; --bg3:#182015; --bg4:#20291B;
+    --line:#2A3524; --line2:#3B4A33;
+    --text:#E9EBDF; --text2:#A9B09A; --text3:#6E7763;
     --brand:#3826F2; --brand-deep:#1800E0; --gold:#F85800;
     --crit:#FF4D4D; --high:#FF8A3D; --med:#FDBF57; --low:#4DA6FF; --ok:#33C08A;
     --glow:rgba(56,38,242,.38);

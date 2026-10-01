@@ -47,7 +47,7 @@ final class EmailTemplate
             . '<tr><td align="center" style="padding:28px 12px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">'
             // header
-            . '<tr><td bgcolor="#0E1122" style="border-radius:14px 14px 0 0;padding:20px 28px;">'
+            . '<tr><td bgcolor="#11160E" style="border-radius:14px 14px 0 0;padding:20px 28px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
             . '<td valign="middle"><img src="' . $host . '/uploads/AIVA-Logo.png" width="156" height="34" alt="AIVA" style="display:block;border-radius:9px;background:#ffffff;padding:3px 6px;"></td>'
             . '<td valign="middle" style="padding-left:13px;' . self::FONT . '">'
