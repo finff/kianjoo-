@@ -708,12 +708,12 @@ class Component extends DCLogic {
     const host=document.querySelector('[data-theme]')||document.documentElement;
     const css=getComputedStyle(host);
     const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9EBDF'), muted=cv('--text3','#6E7763'), line=cv('--line','#2A3524');
+    const text=cv('--text','#E9ECF6'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
     const base={chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[6,2,2,2]},
       title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false}, legend:{enabled:false},
       xAxis:{labels:{style:{color:muted, fontSize:'9.5px'}}, lineColor:line, tickColor:line},
       yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'9.5px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#20291B':'#ffffff', borderColor:line, style:{color:text}}};
+      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}}};
     this._hc=this._hc||{};
     const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
       if(this._hc[id]){ try{ this._hc[id].destroy(); }catch(e){} }
@@ -792,13 +792,13 @@ class Component extends DCLogic {
     const dark=this.state.theme==='dark';
     const host=document.querySelector('[data-theme]')||document.documentElement;
     const css=getComputedStyle(host); const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9EBDF'), muted=cv('--text3','#6E7763'), line=cv('--line','#2A3524');
+    const text=cv('--text','#E9ECF6'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
     return { dark, text, muted, line, base:{
       chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[8,4,4,4]},
       title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false}, legend:{enabled:false},
       xAxis:{labels:{style:{color:muted, fontSize:'10px'}}, lineColor:line, tickColor:line},
       yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'10px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#20291B':'#ffffff', borderColor:line, style:{color:text}},
+      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}},
     }};
   }
   // Fire / PPE / Intrusion dashboards — same chart language as Face & Body.
@@ -806,7 +806,7 @@ class Component extends DCLogic {
     const p=this.state.page, r=this.state.report;
     if(!(p==='fire'||p==='ppe'||p==='intr') || !window.Highcharts || !r) return;
     const {dark, muted, base}=this.hcBase();
-    const text2=(getComputedStyle(document.querySelector('[data-theme]')||document.documentElement).getPropertyValue('--text2')||'').trim()||'#A9B09A';
+    const text2=(getComputedStyle(document.querySelector('[data-theme]')||document.documentElement).getPropertyValue('--text2')||'').trim()||'#9AA1BD';
     const MOD = {fire:dark?'#FF8A3D':'#E77320', ppe:dark?'#FDBF57':'#D89A16', intr:dark?'#FF4D4D':'#E23434'}[p];
     const SEVCOL={Low:dark?'#4DA6FF':'#2E7FD6', Medium:dark?'#FDBF57':'#D89A16', High:dark?'#FF8A3D':'#E77320', Severe:dark?'#FF4D4D':'#E23434'};
     this._hc=this._hc||{};
@@ -833,7 +833,7 @@ class Component extends DCLogic {
       const sm=attr.Smoking||{}; const d=Object.entries(sm).map(([name,y])=>({name,y}));
       mk('mdAttr',{chart:{type:'pie', height:215},
         tooltip:{pointFormat:'<b>{point.y}</b> ({point.percentage:.0f}%)'},
-        plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#11160E':'#fff', borderWidth:2,
+        plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#0E1122':'#fff', borderWidth:2,
           dataLabels:{enabled:true, format:'{point.name}: {point.y}', style:{color:text2, textOutline:'none', fontSize:'11px'}}}},
         colors:[dark?'#FF4D4D':'#E23434', dark?'#33C08A':'#199468', muted],
         series:[{name:'Smoking', data:d.length?d:[{name:'None',y:0}]}]});
@@ -869,13 +869,13 @@ class Component extends DCLogic {
     const host=document.querySelector('[data-theme]')||document.documentElement;
     const css=getComputedStyle(host);
     const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9EBDF'), text2=cv('--text2','#A9B09A'), muted=cv('--text3','#6E7763'), line=cv('--line','#2A3524');
+    const text=cv('--text','#E9ECF6'), text2=cv('--text2','#9AA1BD'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
     const base={
       chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[8,4,4,4]},
       title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false}, legend:{enabled:false},
       xAxis:{labels:{style:{color:muted, fontSize:'10px'}}, lineColor:line, tickColor:line},
       yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'10px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#20291B':'#ffffff', borderColor:line, style:{color:text}},
+      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}},
     };
     this._hc=this._hc||{};
     const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
@@ -888,7 +888,7 @@ class Component extends DCLogic {
     const gData=Object.entries(f.gender||{}).map(([name,y],i)=>({name, y, color:[BLUE,ORANGE,VIOLET][i%3]}));
     mk('fbGender',{chart:{type:'pie', height:215},
       tooltip:{pointFormat:'<b>{point.y}</b> ({point.percentage:.0f}%)'},
-      plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#11160E':'#ffffff', borderWidth:2,
+      plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#0E1122':'#ffffff', borderWidth:2,
         dataLabels:{enabled:true, format:'{point.name}: {point.y}', style:{color:text2, textOutline:'none', fontSize:'11px', fontWeight:'500'}}}},
       series:[{name:'Gender', data:gData}]});
     mk('fbAge',{chart:{type:'column', height:215}, xAxis:{categories:Object.keys(f.age||{})},
@@ -1210,14 +1210,14 @@ class Component extends DCLogic {
     const host=document.querySelector('[data-theme]')||document.documentElement;
     const css=getComputedStyle(host);
     const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9EBDF'), text2=cv('--text2','#A9B09A'), muted=cv('--text3','#6E7763'), line=cv('--line','#2A3524');
+    const text=cv('--text','#E9ECF6'), text2=cv('--text2','#9AA1BD'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
     const base={
       chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[8,4,4,4]},
       title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false},
       legend:{itemStyle:{color:text2, fontSize:'10.5px'}, itemHoverStyle:{color:text}},
       xAxis:{labels:{style:{color:muted, fontSize:'10px'}}, lineColor:line, tickColor:line},
       yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'10px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#20291B':'#ffffff', borderColor:line, style:{color:text}, shared:true},
+      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}, shared:true},
     };
     this._hc=this._hc||{};
     const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
@@ -1537,7 +1537,7 @@ class Component extends DCLogic {
         elapsed:this.fmtDur(elapsedMs), camera:tk.camera, device:tk.device||tk.zone,
         received:tk.received||'', assignee:tk.assignee||'—',
         // evidence — link back to the source detection
-        thumb: tk.image? ("url('"+tk.image+"') center/cover no-repeat") : 'linear-gradient(160deg,#182015,#0C100A)',
+        thumb: tk.image? ("url('"+tk.image+"') center/cover no-repeat") : 'linear-gradient(160deg,#141830,#0c0f1d)',
         onExpand:()=>{ if(tk.image) this.openLightbox(tk.image, (tk.ticket||'Detection')+' · '+tk.camera+' · '+(tk.received||'')); },
         onViewDetection:()=>this.openModal('event', tk),
         escUp:()=>{ if(si<3) this.tktPost(tk.id,'severity',{severity:sevOrder[si+1], actor:this.UNAME, note:st.tktNote||null},'Escalated ▲'); },
@@ -1646,7 +1646,7 @@ class Component extends DCLogic {
     // The fleet page lists the full VisionAI device registry (st.fleet) —
     // merged with the detection frame/module from camPool where a camera has
     // recent detections. Falls back to camPool if the registry is unavailable.
-    const _scene=(img)=> img ? `url('${img}') center/cover no-repeat` : 'linear-gradient(160deg,#182015,#0C100A)';
+    const _scene=(img)=> img ? `url('${img}') center/cover no-repeat` : 'linear-gradient(160deg,#141830,#0c0f1d)';
     const _fleet=st.fleet||[];
     const camSource = _fleet.length
       ? _fleet.map(f=>{ const cp=this.camPool.find(c=>c.stream===f.stream)||null;
@@ -1884,7 +1884,7 @@ class Component extends DCLogic {
       return `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`; };
     const sevLabel={critical:'Critical',high:'High',medium:'Medium',low:'Low'};
     const alertName={'0':'Low','1':'Medium','2':'High','3':'Severe'};
-    const grad='linear-gradient(160deg,#182015,#0C100A)';
+    const grad='linear-gradient(160deg,#141830,#0c0f1d)';
     const bgOf=(img)=> img? `url('${img}') center/cover no-repeat` : grad;
     const maskRtsp=(u)=> (u||'').replace(/\/\/([^:]+):[^@]+@/, '//$1:••••@');
     const modal=st.modal; const mt=modal?modal.type:'';
@@ -2200,7 +2200,7 @@ class Component extends DCLogic {
       const unread=e.status==='open' && !st.notifSeen[e.id];
       return {tag:m.tag||'EVT', tagBg:m.tagBg||'var(--low)', title:e.title, sub:e.camera+' · '+this.ago(e.ts),
         dotCol:this.SEV[e.sev]||'var(--low)', weight:unread?'700':'500',
-        bg:unread?'rgba(124,142,72,.12)':'transparent', onClick:()=>this.openFromNotif(e)}; });
+        bg:unread?'rgba(56,38,242,.10)':'transparent', onClick:()=>this.openFromNotif(e)}; });
     const mailLine=mailOn?('Email alerts on → '+mailTo):'Email alerts off — configure MAIL_* in .env';
     const mailDot=mailOn?'var(--ok)':'var(--crit)';
 
@@ -2446,7 +2446,7 @@ class Component extends DCLogic {
         return {
           personId:f.personId, title:f.isEdit?'Edit person profile':'Create person profile',
           name:f.name, staff:f.staff||'', age:f.age, about:f.about, msg:f.msg||'',
-          photoBg: f.photo? `url('${f.photo}') center/cover no-repeat` : 'linear-gradient(160deg,#182015,#0C100A)',
+          photoBg: f.photo? `url('${f.photo}') center/cover no-repeat` : 'linear-gradient(160deg,#141830,#0c0f1d)',
           hasPhoto:!!f.photo, saveLabel:f.saving?'Saving…':(f.isEdit?'Save changes':'Create profile'),
           genders:[['male','Male'],['female','Female'],['other','Other']].map(([v,label])=>({
             label, cls: gval===v?'chip on':'chip', onClick:()=>this.pfSet('gender',v)})),

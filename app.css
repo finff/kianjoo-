@@ -3,21 +3,21 @@
   html,body{height:100%}
   body{font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   :root{
-    /* Kian Joo VisionAI theme (olive military palette — olive drab #7C8E48, brass #D4A94C */
-    --bg:#0A0D08; --bg2:#11160E; --bg3:#182015; --bg4:#20291B;
-    --line:#2A3524; --line2:#3B4A33;
-    --text:#E9EBDF; --text2:#A9B09A; --text3:#6E7763;
-    --brand:#7C8E48; --brand-deep:#5E6E33; --gold:#D4A94C;
+    /* Kian Joo VisionAI theme (palette inherited from TM ONE build) — brand blue #1800E0, accent orange #F85800 */
+    --bg:#080A14; --bg2:#0E1122; --bg3:#141830; --bg4:#1A1F3D;
+    --line:#232847; --line2:#2F3660;
+    --text:#E9ECF6; --text2:#9AA1BD; --text3:#616989;
+    --brand:#3826F2; --brand-deep:#1800E0; --gold:#F85800;
     --crit:#FF4D4D; --high:#FF8A3D; --med:#FDBF57; --low:#4DA6FF; --ok:#33C08A;
-    --glow:rgba(124,142,72,.38);
+    --glow:rgba(56,38,242,.38);
   }
   [data-theme="light"]{
     --bg:#EEF0F8; --bg2:#FFFFFF; --bg3:#FFFFFF; --bg4:#F4F6FD;
     --line:#E2E5F1; --line2:#CFD4E8;
     --text:#101226; --text2:#525A78; --text3:#868DA8;
-    --brand:#5E6E33; --brand-deep:#4A5728; --gold:#B8860B;
+    --brand:#1800E0; --brand-deep:#1400B8; --gold:#E85400;
     --crit:#E23434; --high:#E77320; --med:#D89A16; --low:#2E7FD6; --ok:#199468;
-    --glow:rgba(94,110,51,.16);
+    --glow:rgba(24,0,224,.16);
   }
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
   @keyframes scan{0%{transform:translateY(-100%)}100%{transform:translateY(1400%)}}
@@ -31,11 +31,8 @@
   ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
   ::-webkit-scrollbar-track{background:transparent}
 
-  /* camouflage backdrop: dark tile by default, sand tile in light mode */
-  [data-theme="light"] .c1,[data-theme="light"].c1{background-image:radial-gradient(900px 520px at 12% -8%,rgba(94,110,51,.10),transparent 60%),radial-gradient(700px 420px at 100% 100%,rgba(184,134,11,.05),transparent 60%),url("/uploads/camo-light.svg")}
-
 /* generated utility classes (extracted inline styles) */
-.c1{background:radial-gradient(900px 520px at 12% -8%,rgba(124,142,72,.13),transparent 60%),radial-gradient(700px 420px at 100% 100%,rgba(212,169,76,.05),transparent 60%),url("/uploads/camo-dark.svg") 0 0/480px 480px repeat var(--bg);color:var(--text);display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
+.c1{background:var(--bg);color:var(--text);display:grid;grid-template-columns:236px 1fr;height:100vh;overflow:hidden}
 .c2{background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .c3{align-items:center;border-bottom:1px solid var(--line);display:flex;gap:11px;height:64px;padding:0 18px}
 .c4{background:#fff;border-radius:8px;box-shadow:0 0 0 1px var(--line2)}
@@ -874,8 +871,8 @@
 /* ── Floating assistant (Weststar AI agent) ───────────────────────── */
 .as-fab{position:fixed;right:22px;bottom:22px;z-index:900;width:66px;height:66px;border-radius:50%;
   border:1px solid var(--line2);background:linear-gradient(160deg,#101733,#0a0d18);cursor:pointer;padding:0;
-  box-shadow:0 12px 34px rgba(0,0,0,.5),0 0 0 4px rgba(124,142,72,.14);transition:transform .18s ease,box-shadow .18s ease}
-.as-fab:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 0 5px rgba(124,142,72,.24)}
+  box-shadow:0 12px 34px rgba(0,0,0,.5),0 0 0 4px rgba(56,38,242,.14);transition:transform .18s ease,box-shadow .18s ease}
+.as-fab:hover{transform:translateY(-3px) scale(1.04);box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 0 5px rgba(56,38,242,.24)}
 .as-fab-img{position:absolute;inset:3px;border-radius:50%;background:url('/uploads/assistant-avatar.png') center/cover no-repeat}
 .as-fab-dot{position:absolute;right:3px;bottom:5px;width:13px;height:13px;border-radius:50%;background:var(--ok);
   border:2px solid var(--bg1);animation:aspulse 2.4s ease-in-out infinite}
@@ -887,7 +884,7 @@
   box-shadow:0 26px 70px rgba(0,0,0,.6);animation:asin .18s ease}
 @keyframes asin{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
 .as-head{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);
-  background:linear-gradient(120deg,rgba(124,142,72,.20),transparent 70%)}
+  background:linear-gradient(120deg,rgba(56,38,242,.20),transparent 70%)}
 .as-head-img{width:38px;height:38px;border-radius:50%;flex-shrink:0;border:1px solid var(--line2);
   background:url('/uploads/assistant-avatar.png') center/cover no-repeat #0a0d18}
 .as-head-txt{min-width:0;flex:1}

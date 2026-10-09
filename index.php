@@ -73,25 +73,25 @@ if ($user === null) {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0A0D08;
-    font-family:'IBM Plex Sans',system-ui,sans-serif;color:#E9EBDF;
-    background-image:radial-gradient(60% 50% at 50% 0%, rgba(124,142,72,.18), transparent 60%),url('/uploads/camo-dark.svg');background-size:auto,480px 480px}
-  .card{width:min(92vw,400px);background:#11160E;border:1px solid #3B4A33;border-top-color:rgba(124,142,72,.55);border-radius:18px;
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#080A14;
+    font-family:'IBM Plex Sans',system-ui,sans-serif;color:#E9ECF6;
+    background-image:radial-gradient(60% 50% at 50% 0%, rgba(56,38,242,.14), transparent 60%)}
+  .card{width:min(92vw,400px);background:#0E1122;border:1px solid #2F3660;border-radius:18px;
     padding:34px 32px;box-shadow:0 30px 90px rgba(0,0,0,.55)}
   .logo{display:flex;align-items:center;gap:12px;margin-bottom:26px}
   .logo img{height:42px;width:auto;border-radius:10px;background:#fff;padding:5px 8px}
   .logo b{font-size:17px;display:block}
-  .logo span{font-size:10px;letter-spacing:1.6px;color:#6E7763;font-weight:600}
-  label{display:block;font-size:11px;color:#6E7763;font-weight:700;letter-spacing:.5px;margin:15px 0 6px}
-  input{width:100%;font-size:14px;color:#E9EBDF;background:#182015;border:1px solid #2A3524;
+  .logo span{font-size:10px;letter-spacing:1.6px;color:#616989;font-weight:600}
+  label{display:block;font-size:11px;color:#616989;font-weight:700;letter-spacing:.5px;margin:15px 0 6px}
+  input{width:100%;font-size:14px;color:#E9ECF6;background:#141830;border:1px solid #232847;
     border-radius:10px;padding:12px 14px;outline:none;font-family:inherit}
-  input:focus{border-color:#7C8E48}
-  button{width:100%;margin-top:22px;font-size:14px;font-weight:700;color:#fff;background:#7C8E48;
+  input:focus{border-color:#3826F2}
+  button{width:100%;margin-top:22px;font-size:14px;font-weight:700;color:#fff;background:#3826F2;
     border:none;border-radius:11px;padding:13px;cursor:pointer;font-family:inherit}
-  button:hover{background:#8DA053}
+  button:hover{background:#4a3af5}
   .err{margin-top:16px;font-size:12px;color:#FF4D4D;background:rgba(255,77,77,.09);
     border:1px solid rgba(255,77,77,.4);border-radius:9px;padding:10px 12px}
-  .foot{margin-top:20px;font-size:10.5px;color:#6E7763;text-align:center;font-family:'IBM Plex Mono'}
+  .foot{margin-top:20px;font-size:10.5px;color:#616989;text-align:center;font-family:'IBM Plex Mono'}
 </style>
 </head>
 <body>
@@ -108,7 +108,7 @@ if ($user === null) {
     <button type="submit">Sign in</button>
     {$err}
     <div class="foot">Role-based access · sessions expire on logout</div>
-    <div class="foot"><a href="/" style="color:#A9B09A;text-decoration:none">← Back to home</a></div>
+    <div class="foot"><a href="/" style="color:#9AA1BD;text-decoration:none">← Back to home</a></div>
   </form>
 </body>
 </html>

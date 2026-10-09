@@ -29,7 +29,7 @@ final class EmailTemplate
 
     public const COLORS = [
         'critical' => '#E23434', 'high' => '#E77320', 'medium' => '#D89A16',
-        'low' => '#2E7FD6', 'brand' => '#7C8E48', 'ok' => '#199468', 'neutral' => '#525A78',
+        'low' => '#2E7FD6', 'brand' => '#3826F2', 'ok' => '#199468', 'neutral' => '#525A78',
     ];
 
     /** Full document: header, colored banner, white content card, footer. */
@@ -47,7 +47,7 @@ final class EmailTemplate
             . '<tr><td align="center" style="padding:28px 12px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;">'
             // header
-            . '<tr><td bgcolor="#11160E" style="border-radius:14px 14px 0 0;padding:20px 28px;">'
+            . '<tr><td bgcolor="#0E1122" style="border-radius:14px 14px 0 0;padding:20px 28px;">'
             . '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
             . '<td valign="middle"><img src="' . $host . '/uploads/Kian-Joo-Logo.png" width="94" height="38" alt="Kian Joo Group" style="display:block;border-radius:9px;background:#ffffff;"></td>'
             . '<td valign="middle" style="padding-left:13px;' . self::FONT . '">'
@@ -117,7 +117,7 @@ final class EmailTemplate
     public static function note(string $text, string $label = 'NOTE'): string
     {
         return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px;"><tr>'
-            . '<td style="background:#F4F5FB;border-left:4px solid #7C8E48;border-radius:0 9px 9px 0;padding:12px 16px;">'
+            . '<td style="background:#F4F5FB;border-left:4px solid #3826F2;border-radius:0 9px 9px 0;padding:12px 16px;">'
             . '<div style="' . self::FONT . 'font-size:10px;font-weight:bold;letter-spacing:1px;color:#868DA8;margin-bottom:4px;">' . htmlspecialchars($label) . '</div>'
             . '<div style="' . self::FONT . 'font-size:13px;color:#33394F;line-height:1.6;">' . htmlspecialchars($text) . '</div>'
             . '</td></tr></table>';
