@@ -1201,7 +1201,7 @@ final class EventStore
         $to = array_values(array_unique($to));
 
         try {
-            (new Mailer($mailCfg))->send('[AIVA Dashboard] ' . $sevTag . ' ' . $modLabel . ' — ' . $what . ' @ ' . ($row['device_name'] ?: ($row['stream'] ?? '')), $html, $to);
+            (new Mailer($mailCfg))->send('[Kian Joo VisionAI] ' . $sevTag . ' ' . $modLabel . ' — ' . $what . ' @ ' . ($row['device_name'] ?: ($row['stream'] ?? '')), $html, $to);
         } catch (Throwable $e) {
             error_log('[mailer] ' . $e->getMessage());
         }

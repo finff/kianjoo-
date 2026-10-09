@@ -103,7 +103,7 @@ $config = [
         'username' => Env::get('MAIL_USERNAME', ''),
         'password' => Env::get('MAIL_PASSWORD', ''),
         'from'     => Env::get('MAIL_FROM_ADDRESS', ''),
-        'from_name'=> Env::get('MAIL_FROM_NAME', 'AIVA Dashboard'),
+        'from_name'=> Env::get('MAIL_FROM_NAME', 'Kian Joo VisionAI'),
         'to'       => array_filter(array_map('trim', explode(',', Env::get('MAIL_TO', '')))),
         'cooldown' => max(1, (int) Env::get('MAIL_COOLDOWN_MIN', '5')),
     ],

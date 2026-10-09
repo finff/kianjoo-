@@ -1394,7 +1394,7 @@ class Component extends DCLogic {
       face:{name:'Face & Body Attribute', desc:'Identity match and body-attribute analysis', tag:'FACE', col:'var(--low)', model:'FaceAttr · v4.0', classes:['Face match','Gender','Age band','Clothing color']},
     };
     const titles={
-      live:['Live Monitoring','AIVA Dashboard · Plant 1 & 2'],
+      live:['Live Monitoring','Kian Joo VisionAI · Plant 1 & 2'],
       attendance:['Attendance & Movement','Facial-recognition entry, latest location and movement journey'],
       incidents:['Incident Management','Track, triage and resolve detection events'],
       cameras:['Camera Fleet','Manage RTSP streams and detection assignments'],

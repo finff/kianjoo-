@@ -1,9 +1,9 @@
-/* AIVA Dashboard — extracted from AIVA Dashboard.dc.html */
+/* Kian Joo VisionAI — extracted from Kian Joo VisionAI.dc.html */
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
   :root{
-    /* AIVA Dashboard theme (olive military palette — olive drab #7C8E48, brass #D4A94C */
+    /* Kian Joo VisionAI theme (olive military palette — olive drab #7C8E48, brass #D4A94C */
     --bg:#0A0D08; --bg2:#11160E; --bg3:#182015; --bg4:#20291B;
     --line:#2A3524; --line2:#3B4A33;
     --text:#E9EBDF; --text2:#A9B09A; --text3:#6E7763;

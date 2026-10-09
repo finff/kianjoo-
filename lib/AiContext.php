@@ -41,8 +41,8 @@ final class AiContext
     public function help(): array
     {
         return [
-            'service'   => 'AIVA Dashboard detection API for the assistant',
-            'summary'   => 'Live CCTV detection data from the AIVA Dashboard dashboard. '
+            'service'   => 'Kian Joo VisionAI detection API for the assistant',
+            'summary'   => 'Live CCTV detection data from the Kian Joo VisionAI. '
                          . 'Call /summary first for the current picture, then narrow with the other endpoints.',
             'endpoints' => [
                 'GET /summary'    => 'Current state: open/acknowledged/resolved counts, per-module and per-camera breakdown, SLA breaches, busiest hour.',

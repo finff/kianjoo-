@@ -1,7 +1,7 @@
 <?php
 /**
  * Dashboard data feed. Reads captured SenseTime events and returns them in the
- * exact shapes the AIVA Dashboard dashboard consumes (incidents + camera tiles
+ * exact shapes the Kian Joo VisionAI consumes (incidents + camera tiles
  * + KPI meta). Same-origin; gated by the read token (injected by index.php).
  */
 
@@ -491,7 +491,7 @@ try {
         // Same build stamp index.php injects — open tabs compare and offer a
         // reload when a deploy changes it.
         'build'      => md5(implode('|', [
-            @filemtime(APP_ROOT . '/AIVA Dashboard.dc.html'),
+            @filemtime(APP_ROOT . '/Kian Joo VisionAI.dc.html'),
             @filemtime(APP_ROOT . '/app.js'),
             @filemtime(APP_ROOT . '/app.css'),
         ])),

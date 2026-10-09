@@ -1,7 +1,7 @@
 <?php
 /**
  * Maps a hydrated SenseTime event (from EventStore) into the shapes the
- * AIVA Dashboard dashboard consumes:
+ * Kian Joo VisionAI consumes:
  *   - incident  {id, mod, sev, camera, zone, title, ts, status, image, conf}
  *   - camera    {id, name, zone, mod, res, fps, scene, boxes[]}
  *

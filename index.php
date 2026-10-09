@@ -1,6 +1,6 @@
 <?php
 /**
- * Serves the AIVA Dashboard monitoring dashboard behind a login gate.
+ * Serves the Kian Joo VisionAI monitoring dashboard behind a login gate.
  * Authenticated sessions get the dc-runtime app with the live-feed config +
  * logged-in user (name, role, permissions) injected as window.TMNS.
  * The raw .dc.html is not directly web-accessible (see .htaccess).
@@ -67,8 +67,8 @@ if ($user === null) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AIVA Dashboard — Sign in</title>
-<link rel="icon" type="image/png" href="/uploads/AIVA-Icon.png">
+<title>Kian Joo VisionAI — Sign in</title>
+<link rel="icon" type="image/png" href="/uploads/Kian-Joo-Logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -97,8 +97,8 @@ if ($user === null) {
 <body>
   <form class="card" method="post" action="/">
     <div class="logo">
-      <img src="/uploads/AIVA-Logo.png" alt="AIVA">
-      <div><b>AIVA Dashboard</b><span>AI VIDEO ANALYTICS · MONITORING</span></div>
+      <img src="/uploads/Kian-Joo-Logo.png" alt="Kian Joo Group">
+      <div><b>Kian Joo VisionAI</b><span>KIAN JOO GROUP · MONITORING</span></div>
     </div>
     <label>USERNAME</label>
     <input name="username" autocomplete="username" autofocus required>
@@ -117,7 +117,7 @@ HTML;
 }
 
 // ── Logged in → serve the dashboard with user context ───────
-$dash = APP_ROOT . '/AIVA Dashboard.dc.html';
+$dash = APP_ROOT . '/Kian Joo VisionAI.dc.html';
 $html = is_file($dash) ? (string) file_get_contents($dash) : '';
 if ($html === '') {
     http_response_code(500);
@@ -140,7 +140,7 @@ $feed = '/feed.php' . ($readToken !== '' ? '?token=' . rawurlencode($readToken) 
 // Build stamp: changes whenever the app files change, so open tabs (which
 // compare it against the feed's stamp) can offer a reload after a deploy.
 $build = md5(implode('|', [
-    @filemtime(APP_ROOT . '/AIVA Dashboard.dc.html'),
+    @filemtime(APP_ROOT . '/Kian Joo VisionAI.dc.html'),
     @filemtime(APP_ROOT . '/app.js'),
     @filemtime(APP_ROOT . '/app.css'),
 ]));
