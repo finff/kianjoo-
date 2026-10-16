@@ -964,6 +964,175 @@
       <sc-if value="{{ isAttendance }}" hint-placeholder-val="{{ false }}">
       <div class="c207">
 
+        <div class="att-views">
+          <sc-for list="{{ attViews }}" as="t" hint-placeholder-count="4">
+            <button class="c384 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+          </sc-for>
+          <a class="c185 chip on att-kiosk-btn" href="/kiosk.php" target="_blank" rel="noopener">◉ Open check-in kiosk</a>
+        </div>
+
+        <!-- ── Daily register (official attendance under shift rules) ── -->
+        <sc-if value="{{ attViewRegister }}" hint-placeholder-val="{{ true }}">
+        <div class="att-bar">
+          <button class="c185 chip" onClick="{{ regPrevDay }}" title="Previous day">◂</button>
+          <input class="c665 att-date" type="date" value="{{ regDate }}" onChange="{{ onRegDate }}">
+          <button class="c185 chip" onClick="{{ regNextDay }}" title="Next day">▸</button>
+          <button class="c185 chip" onClick="{{ regToday }}">Today</button>
+          <select class="sel" value="{{ regPlantSel.value }}" onChange="{{ regPlantSel.onChange }}">
+            <sc-for list="{{ regPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ regDeptSel.value }}" onChange="{{ regDeptSel.onChange }}">
+            <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ regStatusSel.value }}" onChange="{{ regStatusSel.onChange }}">
+            <sc-for list="{{ regStatusSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <input class="c665 att-search" value="{{ regQ }}" onInput="{{ onRegQ }}" placeholder="Search name or staff ID…">
+          <button class="c185 chip" onClick="{{ reloadReg }}">⟳</button>
+          <button class="c185 chip on" onClick="{{ exportDaily }}">⇩ Export CSV</button>
+          <span class="c100">{{ regStatusLine }}</span>
+        </div>
+
+        <div class="att-kpis att-kpis-6">
+          <sc-for list="{{ regKpis }}" as="k" hint-placeholder-count="6">
+            <button class="{{ k.cls }}" onClick="{{ k.onClick }}">
+              <div class="att-kpi-label">{{ k.label }}</div>
+              <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+              <div class="att-kpi-sub">{{ k.sub }}</div>
+            </button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ regNoRoles }}" hint-placeholder-val="{{ false }}">
+          <div class="att-note">No clock cameras are set, so every face detection counts as a clock-in / clock-out point. Mark the entrance and guard-post cameras as clock cameras so only they decide attendance.
+            <button class="c185 chip on" onClick="{{ goSettingsAtt }}">Open Attendance Rules</button>
+          </div>
+        </sc-if>
+        <div class="c100 att-cap">{{ regSummary }}</div>
+
+        <div class="att-reg-grid">
+          <div class="att-panel">
+            <div class="c129">Attendance register <span class="c100">— official clock-in / clock-out under shift rules</span></div>
+            <div class="att-thead reg-cols">
+              <span>EMPLOYEE</span><span>DEPT · PLANT</span><span>CLOCK-IN</span><span>CLOCK-OUT</span><span>HOURS</span><span>STATUS</span><span></span>
+            </div>
+            <sc-for list="{{ regRows }}" as="r" hint-placeholder-count="6">
+              <div class="att-row reg-cols">
+                <div class="att-emp">
+                  <div class="att-face" style="background:{{ r.photoBg }}"></div>
+                  <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.shift }}</div></div>
+                </div>
+                <div class="att-loc">{{ r.org }}</div>
+                <div><div class="att-time">{{ r.clockIn }}</div><div class="att-loc">{{ r.inLoc }}</div></div>
+                <div><div class="att-time">{{ r.clockOut }}</div><div class="att-loc">{{ r.outLoc }}</div></div>
+                <div class="att-time">{{ r.hours }}</div>
+                <div><div class="att-status" style="color:{{ r.statusCol }}">{{ r.status }}</div><div class="att-flag">{{ r.flags }}</div><div class="att-src">{{ r.route }}</div></div>
+                <div><button class="c185 chip" onClick="{{ r.onJourney }}">Journey →</button></div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ regEmpty }}" hint-placeholder-val="{{ false }}">
+              <div class="c100 att-cap">No employees match. Register employees in the Employees tab (department, plant, shift) or clear the filters.</div>
+            </sc-if>
+          </div>
+
+          <div class="att-panel att-recent">
+            <div class="c129">Recent recognitions</div>
+            <sc-for list="{{ regRecent }}" as="e" hint-placeholder-count="6">
+              <div class="att-rec">
+                <div class="att-rec-img" style="background:{{ e.thumb }}" onClick="{{ e.onOpen }}"></div>
+                <div class="att-rec-body">
+                  <div class="att-rec-who" style="color:{{ e.whoCol }}">{{ e.who }}</div>
+                  <div class="att-loc">{{ e.where }}</div>
+                  <div class="att-src">{{ e.time }} · {{ e.tag }} · {{ e.conf }}</div>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ regNoRecent }}" hint-placeholder-val="{{ false }}">
+              <div class="c100 att-cap">No face recognitions on this date.</div>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ── Employees directory + registration ── -->
+        <sc-if value="{{ attViewEmployees }}" hint-placeholder-val="{{ false }}">
+        <div class="att-bar">
+          <input class="c665 att-search" value="{{ empQ }}" onInput="{{ onEmpQ }}" placeholder="Search name or staff ID…">
+          <select class="sel" value="{{ regPlantSel.value }}" onChange="{{ regPlantSel.onChange }}">
+            <sc-for list="{{ regPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ regDeptSel.value }}" onChange="{{ regDeptSel.onChange }}">
+            <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <button class="c185 chip on" onClick="{{ newEmployee }}">＋ Register employee</button>
+          <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">
+            <button class="c185 chip" onClick="{{ syncAll }}">{{ syncAllLabel }}</button>
+          </sc-if>
+          <span class="c100">{{ empMsg }}</span>
+        </div>
+        <div class="c100 att-cap">{{ empCount }} · saving an employee with a staff ID and face photo pushes them to SenseStudio (one person group per plant) so CCTV can recognise them.</div>
+        <div class="att-panel">
+          <div class="att-thead emp-cols">
+            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>PLANT</span><span>SHIFT</span><span>STATUS</span><span>SENSESTUDIO</span><span></span>
+          </div>
+          <sc-for list="{{ empRows }}" as="r" hint-placeholder-count="6">
+            <div class="att-row emp-cols">
+              <div class="att-emp">
+                <div class="att-face" style="background:{{ r.photoBg }}"></div>
+                <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
+              </div>
+              <div class="att-loc">{{ r.dept }}</div>
+              <div class="att-loc">{{ r.plant }}</div>
+              <div class="att-loc">{{ r.shift }}</div>
+              <div class="att-status" style="color:{{ r.activeCol }}">{{ r.active }}</div>
+              <div class="att-status" style="color:{{ r.syncCol }}" title="{{ r.syncTip }}">{{ r.sync }}</div>
+              <div class="att-unk-btns">
+                <button class="c185 chip on" onClick="{{ r.onEdit }}">Edit</button>
+                <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">
+                  <button class="c185 chip" onClick="{{ r.onSync }}">Sync</button>
+                </sc-if>
+                <button class="c185 chip" onClick="{{ r.onJourney }}">Journey</button>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ empEmpty }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No employees yet — use “Register employee”, enrol a face at the check-in kiosk, or enrol unknown personnel from Live sightings.</div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <!-- ── Reports (CSV) ── -->
+        <sc-if value="{{ attViewReports }}" hint-placeholder-val="{{ false }}">
+        <div class="att-bar">
+          <span class="sel-lab">From</span>
+          <input class="c665 att-date" type="date" value="{{ repFrom }}" onChange="{{ onRepFrom }}">
+          <span class="sel-lab">To</span>
+          <input class="c665 att-date" type="date" value="{{ repTo }}" onChange="{{ onRepTo }}">
+          <select class="sel" value="{{ regPlantSel.value }}" onChange="{{ regPlantSel.onChange }}">
+            <sc-for list="{{ regPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ regDeptSel.value }}" onChange="{{ regDeptSel.onChange }}">
+            <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ repPersonSel.value }}" onChange="{{ repPersonSel.onChange }}">
+            <sc-for list="{{ repPersonSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+        </div>
+        <div class="att-rep-grid">
+          <sc-for list="{{ repCards }}" as="c" hint-placeholder-count="3">
+            <div class="att-panel att-rep">
+              <div class="c129">{{ c.title }}</div>
+              <div class="att-loc">{{ c.desc }}</div>
+              <div class="att-src">{{ c.scope }}</div>
+              <div><button class="c185 chip on" onClick="{{ c.onClick }}">⇩ Download CSV</button></div>
+            </div>
+          </sc-for>
+        </div>
+        <div class="c100 att-cap">CSV files open in Excel. Attendance is calculated by this dashboard from clock-camera detections; it is not connected to the HRMS (out of POC scope).</div>
+        </sc-if>
+
+        <!-- ── Live sightings (raw detection log, existing view) ── -->
+        <sc-if value="{{ attViewLive }}" hint-placeholder-val="{{ false }}">
         <div class="att-kpis">
           <sc-for list="{{ attKpis }}" as="k" hint-placeholder-count="4">
             <div class="att-kpi">
@@ -981,7 +1150,6 @@
           </sc-for>
           <button class="c185 chip" onClick="{{ reloadAtt }}">⟳ Refresh</button>
           <span class="c100">{{ attStatus }}</span>
-          <a class="c185 chip on att-kiosk-btn" href="/kiosk.php" target="_blank" rel="noopener">◉ Open check-in kiosk</a>
         </div>
 
         <sc-if value="{{ attNeedsMap }}" hint-placeholder-val="{{ false }}">
@@ -1032,6 +1200,7 @@
             </sc-for>
           </div>
         </div>
+        </sc-if>
         </sc-if>
 
       </div>
@@ -1434,6 +1603,82 @@
                 </sc-for>
               </div>
               <div class="c428">The last detected location is never treated as an automatic exit — an employee may leave by vehicle without another facial detection. After this interval the dashboard shows "latest known location" instead of on-site.</div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- Attendance rules (shifts, clock cameras, plants) -->
+          <sc-if value="{{ spTabAtt }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Attendance Rules</h3><span class="c351">{{ appMsg }}</span></div>
+            <div class="c431">Official attendance is calculated from detections at <b>clock cameras</b> under these shift rules — not from every camera sighting. Clock-in = first clock-camera detection from 2 h before shift start; clock-out = last clock-camera detection at least 30 min later, up to 4 h after shift end.</div>
+
+            <div><div class="c426">SHIFTS</div>
+              <sc-for list="{{ attShiftRows }}" as="s" hint-placeholder-count="1">
+                <div class="poc-cam">
+                  <div class="att-shift-grid">
+                    <div><div class="c426">NAME</div><input class="c427" value="{{ s.name }}" onInput="{{ s.onName }}"></div>
+                    <div><div class="c426">START</div><input class="c427" type="time" value="{{ s.start }}" onInput="{{ s.onStart }}"></div>
+                    <div><div class="c426">END</div><input class="c427" type="time" value="{{ s.end }}" onInput="{{ s.onEnd }}"></div>
+                    <div><div class="c426">GRACE (MIN)</div><input class="c427" type="number" min="0" value="{{ s.grace }}" onInput="{{ s.onGrace }}"></div>
+                    <div><div class="c426">ABSENT AFTER (MIN)</div><input class="c427" type="number" min="15" value="{{ s.absent }}" onInput="{{ s.onAbsent }}"></div>
+                  </div>
+                  <div class="poc-chips att-shift-days">
+                    <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
+                      <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                    </sc-for>
+                    <sc-if value="{{ s.canRemove }}" hint-placeholder-val="{{ false }}">
+                      <button class="c185 chip att-shift-rm" onClick="{{ s.onRemove }}">✕ Remove shift</button>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <div class="poc-chips">
+                <button class="c185 chip" onClick="{{ addShift }}">＋ Add shift</button>
+                <button class="c429" onClick="{{ saveShifts }}">Save shifts</button>
+              </div>
+              <div class="c428">An end time earlier than the start time is an overnight shift — its attendance belongs to the start date. Late = clock-in after start + grace. Absent = no clock-in by start + absent-after on a working day.</div>
+            </div>
+
+            <div class="c370">
+              <div><div class="c426">PLANTS (comma-separated)</div>
+                <input class="c427" value="{{ attPlantsVal }}" onInput="{{ onAttPlants }}"></div>
+              <div><div class="c426">DEPARTMENTS (comma-separated)</div>
+                <input class="c427" value="{{ attDeptsVal }}" onInput="{{ onAttDepts }}"></div>
+            </div>
+            <div><button class="c429" onClick="{{ saveAttLists }}">Save plants &amp; departments</button></div>
+
+            <div><div class="c426">CLOCK CAMERAS</div>
+              <div class="c428">{{ attRolesLine }}</div>
+              <sc-for list="{{ attCamRows }}" as="c" hint-placeholder-count="4">
+                <div class="poc-cam">
+                  <div class="poc-cam-head"><b>{{ c.name }}</b><span class="c243">{{ c.key }}</span><span class="c100">{{ c.loc }}</span><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
+                  <div class="poc-chips">
+                    <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="4">
+                      <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+              <div class="poc-chips">
+                <sc-for list="{{ attKioskChips }}" as="t" hint-placeholder-count="2">
+                  <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div><div class="c426">CAMERA POINT → PLANT</div>
+              <div class="c428">Used for the plant shown on each detection and for plant filters on movement reports. Names containing “Plant 1”, “Plant 2”… are matched automatically.</div>
+              <sc-for list="{{ attLocRows }}" as="c" hint-placeholder-count="5">
+                <div class="poc-cam">
+                  <div class="poc-cam-head"><b>{{ c.name }}</b><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
+                  <div class="poc-chips">
+                    <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="2">
+                      <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
             </div>
           </div>
           </sc-if>
@@ -2199,7 +2444,7 @@
       <sc-if value="{{ isMProfile }}" hint-placeholder-val="{{ false }}">
       <div class="c562">
         <h3 class="c346">{{ pf.title }}</h3>
-        <span class="c100">person #{{ pf.personId }} · shown on every future detection</span>
+        <span class="c100">{{ pf.idLine }}</span>
         <button class="c563" onClick="{{ closeModal }}">✕</button>
       </div>
       <div class="pfm">
@@ -2225,6 +2470,34 @@
           <div>
             <label class="c664">Staff / Employee ID</label>
             <input class="c665" value="{{ pf.staff }}" onInput="{{ pf.onStaff }}" placeholder="e.g. KJ-01234 — used on attendance records">
+          </div>
+          <div class="pfm-row3">
+            <div>
+              <label class="c664">Department</label>
+              <select class="sel pfm-sel" value="{{ pf.deptSel.value }}" onChange="{{ pf.deptSel.onChange }}">
+                <sc-for list="{{ pf.deptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select>
+            </div>
+            <div>
+              <label class="c664">Plant</label>
+              <select class="sel pfm-sel" value="{{ pf.plantSel.value }}" onChange="{{ pf.plantSel.onChange }}">
+                <sc-for list="{{ pf.plantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select>
+            </div>
+            <div>
+              <label class="c664">Shift</label>
+              <select class="sel pfm-sel" value="{{ pf.shiftSel.value }}" onChange="{{ pf.shiftSel.onChange }}">
+                <sc-for list="{{ pf.shiftSel.options }}" as="o" hint-placeholder-count="2"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="c664">Employment status</label>
+            <div class="pfm-genders">
+              <sc-for list="{{ pf.activeChips }}" as="g" hint-placeholder-count="2">
+                <button class="c185 {{ g.cls }}" onClick="{{ g.onClick }}">{{ g.label }}</button>
+              </sc-for>
+            </div>
           </div>
           <div class="pfm-row2">
             <div>

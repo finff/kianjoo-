@@ -1058,3 +1058,38 @@
 .att-kiosk-btn{margin-left:auto;text-decoration:none;display:inline-flex;align-items:center}
 .att-attrs{font-size:10.5px;color:var(--text3);margin-top:2px}
 .att-src{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text3);margin-top:2px;letter-spacing:.2px}
+
+/* ═══ Attendance — official register, employees, reports ═══ */
+.att-views{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.att-date{width:auto;max-width:160px}
+.att-kpis-6{grid-template-columns:repeat(6,1fr)}
+.att-kpi-btn{font:inherit;text-align:left;cursor:pointer;color:inherit;transition:border-color .15s}
+.att-kpi-btn:hover{border-color:var(--line2)}
+.att-kpi-btn.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset}
+.att-reg-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.att-thead.reg-cols,.att-row.reg-cols{grid-template-columns:2fr 1.1fr 1.2fr 1.2fr .6fr 1.4fr auto}
+.att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1fr .8fr 1.2fr .7fr .9fr auto}
+.att-flag{font-size:10px;color:var(--high);margin-top:2px}
+.att-recent{max-height:720px;overflow-y:auto}
+.att-rec{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.att-rec:last-child{border-bottom:none}
+.att-rec-img{width:40px;height:40px;border-radius:9px;flex-shrink:0;border:1px solid var(--line2);cursor:zoom-in}
+.att-rec-body{min-width:0}
+.att-rec-who{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-rep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.att-rep{display:flex;flex-direction:column;gap:9px;margin-bottom:0}
+.pfm-row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.pfm-sel{width:100%}
+.att-shift-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:9px}
+.att-shift-rm{margin-left:auto}
+
+@media (max-width:1300px){
+  .att-kpis-6{grid-template-columns:repeat(3,1fr)}
+  .att-reg-grid{grid-template-columns:1fr}
+  .att-recent{max-height:none}
+}
+@media (max-width:1100px){
+  .att-kpis-6{grid-template-columns:repeat(2,1fr)}
+  .att-row.reg-cols,.att-row.emp-cols{grid-template-columns:1fr 1fr}
+  .pfm-row3,.att-shift-grid{grid-template-columns:1fr 1fr}
+}

@@ -761,6 +761,14 @@ final class EventStore
                 'photo'    => $this->fullUrl($r['photo_url'] ?? null),
                 'since'    => (string) ($r['created_at'] ?? ''),
                 'by'       => (string) ($r['created_by'] ?? ''),
+                'department' => (string) ($r['department'] ?? ''),
+                'plant'      => (string) ($r['plant'] ?? ''),
+                'shift'      => (string) ($r['shift'] ?? ''),
+                'active'     => ($r['active'] ?? '1') !== '0',
+                'ssUid'      => (string) ($r['ss_uid'] ?? ''),
+                'ssSync'     => (string) ($r['ss_sync'] ?? ''),
+                'ssError'    => (string) ($r['ss_error'] ?? ''),
+                'ssSynced'   => (string) ($r['ss_synced'] ?? ''),
             ];
         }
         return $out;
@@ -783,22 +791,59 @@ final class EventStore
             'd' => substr(trim((string) ($p['about'] ?? '')), 0, 500),
             'i' => $p['photo'] ?? null,
         ];
+        // Employee fields are optional: a caller that does not send one (the
+        // kiosk enrol, the quick rename) leaves the stored value alone.
+        $emp = [];
+        foreach (['department' => 80, 'plant' => 80, 'shift' => 40] as $k => $len) {
+            if (array_key_exists($k, $p)) {
+                $emp[$k] = substr(trim((string) $p[$k]), 0, $len);
+            }
+        }
+        if (array_key_exists('active', $p)) {
+            $emp['active'] = $p['active'] ? '1' : '0';
+        }
+        $bind = [];
+        foreach ($emp as $k => $v) {
+            $bind['e_' . $k] = $v;
+        }
         $has = $this->pdo->prepare('SELECT COUNT(*) FROM person_profiles WHERE person_id = :p');
         $has->execute(['p' => $personId]);
         if ((int) $has->fetchColumn() > 0) {
+            $set = '';
+            foreach (array_keys($emp) as $k) {
+                $set .= ", {$k} = :e_{$k}";
+            }
             $st = $this->pdo->prepare(
                 'UPDATE person_profiles
                     SET name = :n, staff_id = :s, age = :a, gender = :g, notes = :d,
-                        photo_url = COALESCE(:i, photo_url), updated_at = :u
+                        photo_url = COALESCE(:i, photo_url), updated_at = :u' . $set . '
                   WHERE person_id = :p'
             );
-            return $st->execute($args + ['u' => $now]);
+            return $st->execute($args + ['u' => $now] + $bind);
         }
+        if (!isset($emp['active'])) {
+            $emp['active'] = '1';
+            $bind['e_active'] = '1';
+        }
+        $cols = implode(', ', array_keys($emp));
+        $vals = implode(', ', array_map(static fn ($k) => ':e_' . $k, array_keys($emp)));
         $st = $this->pdo->prepare(
-            'INSERT INTO person_profiles (person_id, name, staff_id, age, gender, notes, photo_url, created_by, created_at, updated_at)
-             VALUES (:p, :n, :s, :a, :g, :d, :i, :b, :c, :c)'
+            "INSERT INTO person_profiles (person_id, name, staff_id, age, gender, notes, photo_url, created_by, created_at, updated_at, {$cols})
+             VALUES (:p, :n, :s, :a, :g, :d, :i, :b, :c, :c, {$vals})"
         );
-        return $st->execute($args + ['b' => $actor, 'c' => $now]);
+        return $st->execute($args + ['b' => $actor, 'c' => $now] + $bind);
+    }
+
+    /** Record the outcome of a SenseStudio sync for one employee. */
+    public function setSyncState(string $personId, ?string $uid, string $state, ?string $error): void
+    {
+        $st = $this->pdo->prepare(
+            'UPDATE person_profiles
+                SET ss_uid = COALESCE(:uid, ss_uid), ss_sync = :st, ss_error = :er, ss_synced = :t
+              WHERE person_id = :p'
+        );
+        $st->execute(['uid' => $uid, 'st' => $state, 'er' => $error !== null ? substr($error, 0, 255) : null,
+                      't' => date('Y-m-d H:i:s'), 'p' => $personId]);
     }
 
     public function deletePersonProfile(string $personId): bool
@@ -939,19 +984,44 @@ final class EventStore
      *
      * @return list<array{person_id:string,time:string,location:string,camera:string,image:?string,similarity:string,source:string,attrs:array}>
      */
-    private function sightings(?string $personId, string $from, array $locMap): array
+    private function sightings(?string $personId, string $from, array $locMap, ?string $to = null): array
     {
-        $out = [];
+        // An employee synced to SenseStudio is matched by camera under the
+        // person uid SenseStudio gave it — fold that uid back onto the profile.
+        $alias = [];   // ss uid → profile person_id
+        try {
+            foreach ($this->pdo->query("SELECT person_id, ss_uid FROM person_profiles WHERE ss_uid IS NOT NULL AND ss_uid <> ''")->fetchAll() as $a) {
+                if ((string) $a['ss_uid'] !== (string) $a['person_id']) {
+                    $alias[(string) $a['ss_uid']] = (string) $a['person_id'];
+                }
+            }
+        } catch (Throwable $e) {
+            // employee columns not migrated yet
+        }
+
+        $out  = [];
+        $bind = ['f' => $from] + ($to !== null ? ['t' => $to] : []);
+        $in   = '';
+        if ($personId !== null) {
+            $ids = array_merge([$personId], array_map('strval', array_keys(array_filter($alias, static fn ($v) => $v === $personId))));
+            foreach ($ids as $i => $id) {
+                $in .= ($i ? ',' : '') . ':p' . $i;
+                $bind['p' . $i] = $id;
+            }
+        }
         $sql = "SELECT person_id, stream, device_name, received_at, trigger_img_url, similarity, decoded_json
                 FROM events
                 WHERE person_id IS NOT NULL AND person_id <> '' AND received_at >= :f"
-             . ($personId !== null ? ' AND person_id = :p' : '') . ' ORDER BY id ASC';
+             . ($to !== null ? ' AND received_at < :t' : '')
+             . ($personId !== null ? " AND person_id IN ({$in})" : '') . ' ORDER BY id ASC';
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['f' => $from] + ($personId !== null ? ['p' => $personId] : []));
+        $stmt->execute($bind);
         foreach ($stmt->fetchAll() as $r) {
             $dec = json_decode((string) ($r['decoded_json'] ?? ''), true) ?: [];
+            $pid = (string) $r['person_id'];
             $out[] = [
-                'person_id'  => (string) $r['person_id'],
+                'person_id'  => $alias[$pid] ?? $pid,
+                'cam_key'    => self::streamLabel((string) ($r['stream'] ?: $r['device_name'] ?: '')),
                 'time'       => (string) ($r['received_at'] ?? ''),
                 'location'   => $this->locOf($r['stream'] ?? null, $r['device_name'] ?? null, $locMap),
                 'camera'     => strtoupper(Text::latin((string) ($r['stream'] ?: $r['device_name'] ?: ''), '')),
@@ -969,13 +1039,15 @@ final class EventStore
         try {
             $sql = 'SELECT person_id, kiosk, location, captured_at, similarity, snapshot, attrs_json
                     FROM kiosk_checkins WHERE captured_at >= :f'
+                 . ($to !== null ? ' AND captured_at < :t' : '')
                  . ($personId !== null ? ' AND person_id = :p' : '') . ' ORDER BY id ASC';
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['f' => $from] + ($personId !== null ? ['p' => $personId] : []));
+            $stmt->execute(['f' => $from] + ($to !== null ? ['t' => $to] : []) + ($personId !== null ? ['p' => $personId] : []));
             $base = rtrim((string) ($this->cfg['app']['url'] ?? ''), '/');
             foreach ($stmt->fetchAll() as $r) {
                 $out[] = [
                     'person_id'  => (string) $r['person_id'],
+                    'cam_key'    => 'kiosk',
                     'time'       => (string) ($r['captured_at'] ?? ''),
                     'location'   => (string) ($r['location'] ?: 'Check-in kiosk'),
                     'camera'     => 'KIOSK ' . strtoupper((string) ($r['kiosk'] ?? '')),
@@ -992,6 +1064,15 @@ final class EventStore
 
         usort($out, static fn ($a, $b) => strcmp($a['time'], $b['time']));
         return $out;
+    }
+
+    /**
+     * Sightings in [$from, $to) for the attendance engine and reports — the
+     * same merged camera + kiosk stream the journey uses.
+     */
+    public function sightingsBetween(string $from, string $to, array $locMap, ?string $personId = null): array
+    {
+        return $this->sightings($personId, $from, $locMap, $to);
     }
 
     /** Device serial → dashboard stream label (lower-case, alphanumeric only). */

@@ -90,6 +90,7 @@ final class Database
         self::migratePersonId($pdo);
         self::migratePersonProfiles($pdo);
         self::migrateKiosk($pdo);
+        self::migrateEmployees($pdo);
     }
 
     /**
@@ -196,6 +197,32 @@ SQL);
             'age'      => self::$driver === 'sqlite' ? 'TEXT' : 'VARCHAR(8) NULL',
             'gender'   => self::$driver === 'sqlite' ? 'TEXT' : 'VARCHAR(16) NULL',
             'staff_id' => self::$driver === 'sqlite' ? 'TEXT' : 'VARCHAR(64) NULL',
+        ];
+        foreach ($cols as $c => $ddl) {
+            if (!self::columnExists($pdo, 'person_profiles', $c)) {
+                $pdo->exec("ALTER TABLE person_profiles ADD COLUMN {$c} {$ddl}");
+            }
+        }
+    }
+
+    /**
+     * v8: employee details for the attendance register. A profile becomes an
+     * employee record: department, plant, shift and active flag, plus the
+     * SenseStudio person uid it was synced to (`ss_uid`) so camera matches
+     * against the employee group resolve back to this profile.
+     */
+    private static function migrateEmployees(PDO $pdo): void
+    {
+        $txt = static fn (int $n) => self::$driver === 'sqlite' ? 'TEXT' : "VARCHAR({$n}) NULL";
+        $cols = [
+            'department' => $txt(80),
+            'plant'      => $txt(80),
+            'shift'      => $txt(40),
+            'active'     => self::$driver === 'sqlite' ? "TEXT DEFAULT '1'" : "VARCHAR(1) NULL DEFAULT '1'",
+            'ss_uid'     => $txt(64),
+            'ss_sync'    => $txt(16),
+            'ss_error'   => $txt(255),
+            'ss_synced'  => self::$driver === 'sqlite' ? 'TEXT' : 'DATETIME NULL',
         ];
         foreach ($cols as $c => $ddl) {
             if (!self::columnExists($pdo, 'person_profiles', $c)) {

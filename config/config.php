@@ -228,6 +228,64 @@ $config['poc'] = [
     ],
 ];
 
+// Attendance rules (Settings → Attendance, stored in app_settings.json).
+// Official attendance is computed from detections at clock cameras under
+// these shift rules — not from every camera sighting.
+$attList = static function ($v, array $def, int $max = 40): array {
+    $v = is_array($v) ? $v : [];
+    $v = array_values(array_unique(array_filter(array_map(
+        static fn ($s) => substr(trim((string) $s), 0, 80), $v))));
+    return $v ? array_slice($v, 0, $max) : $def;
+};
+$attShifts = [];
+foreach ((is_array($app['att_shifts'] ?? null) ? $app['att_shifts'] : []) as $s) {
+    $id = strtolower(preg_replace('/[^a-z0-9_-]+/i', '', (string) ($s['id'] ?? '')));
+    if ($id === '' || !preg_match('/^\d{2}:\d{2}$/', (string) ($s['start'] ?? ''))
+        || !preg_match('/^\d{2}:\d{2}$/', (string) ($s['end'] ?? ''))) {
+        continue;
+    }
+    $days = array_values(array_unique(array_filter(array_map('intval', (array) ($s['days'] ?? [])),
+        static fn ($d) => $d >= 1 && $d <= 7)));
+    sort($days);
+    $attShifts[] = [
+        'id'           => substr($id, 0, 40),
+        'name'         => substr(trim((string) ($s['name'] ?? $id)), 0, 40) ?: $id,
+        'start'        => (string) $s['start'],
+        'end'          => (string) $s['end'],
+        'grace'        => max(0, min(240, (int) ($s['grace'] ?? 10))),
+        'absent_after' => max(15, min(720, (int) ($s['absent_after'] ?? 120))),
+        'days'         => $days ?: [1, 2, 3, 4, 5],
+    ];
+}
+$roles = [];
+foreach ((is_array($app['att_cam_roles'] ?? null) ? $app['att_cam_roles'] : []) as $k => $v) {
+    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+    if ($k !== '' && in_array($v, ['clock_in', 'clock_out', 'both', 'movement'], true)) {
+        $roles[$k] = $v;
+    }
+}
+$locPlants = [];
+foreach ((is_array($app['att_loc_plants'] ?? null) ? $app['att_loc_plants'] : []) as $k => $v) {
+    $k = substr(trim((string) $k), 0, 64);
+    $v = substr(trim((string) $v), 0, 80);
+    if ($k !== '' && $v !== '') {
+        $locPlants[$k] = $v;
+    }
+}
+$config['attendance'] = [
+    'plants'       => $attList($app['att_plants'] ?? null, ['Plant 1', 'Plant 2']),
+    'departments'  => $attList($app['att_departments'] ?? null, ['Production', 'Warehouse', 'Quality', 'Maintenance', 'Admin']),
+    'shifts'       => $attShifts ?: [[
+        'id' => 'day', 'name' => 'Day shift', 'start' => '08:00', 'end' => '17:00',
+        'grace' => 10, 'absent_after' => 120, 'days' => [1, 2, 3, 4, 5],
+    ]],
+    'cam_roles'    => $roles,          // stream key → clock_in | clock_out | both | movement
+    'loc_plants'   => $locPlants,      // location name → plant
+    'kiosk_clock'  => ($app['att_kiosk_clock'] ?? true) !== false,
+    'dedupe_s'     => 60,
+    'ss_group_prefix' => 'Kian Joo',
+];
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)

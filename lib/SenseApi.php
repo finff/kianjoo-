@@ -227,6 +227,82 @@ final class SenseApi
         return $this->call('POST', '/COGNITIVESVC/cognitive/face/compareFaceImage', $body, true);
     }
 
+    // ── Person library (employee registration sync) ──────────
+    // Enrolment flow from §1.3.1: upload the face image → create (or update)
+    // the person with that image URI → add the person to a person group.
+
+    /** §7.2.1 Upload Image in Base64 — serviceType "person" runs the face quality check. data = image URI. */
+    public function uploadPersonImage(string $raw, string $name): array
+    {
+        return $this->call('POST', '/UTILITY/files/uploadImageBase64', [
+            'imageContent' => base64_encode($raw),
+            'imageName'    => $name,
+            'serviceType'  => 'person',
+        ]);
+    }
+
+    /** §2.2.1 Create Person. data = the new person uid. */
+    public function createPerson(string $imageUri, string $name, string $idNumber, string $desc = ''): array
+    {
+        return $this->call('POST', '/PERSON/person/create', [
+            'imageURI'      => $imageUri,
+            'cnName'        => $name,
+            'enName'        => $name,
+            'idNumber'      => $idNumber,
+            'operatePerson' => $this->account,
+            'desc'          => $desc,
+        ]);
+    }
+
+    /** §2.2.5 Update Person. Pass $imageUri to replace the face photo. */
+    public function updatePerson(string $uid, string $name, string $idNumber, ?string $imageUri, string $desc = ''): array
+    {
+        return $this->call('POST', '/PERSON/person/update', [
+            'uid'           => $uid,
+            'isUpdateImage' => $imageUri !== null ? '1' : '0',
+            'imageURI'      => (string) $imageUri,
+            'cnName'        => $name,
+            'enName'        => $name,
+            'idNumber'      => $idNumber,
+            'operatePerson' => $this->account,
+            'desc'          => $desc,
+        ]);
+    }
+
+    /** §2.2.2 Deactivate Person (soft delete). */
+    public function deactivatePerson(string $uid): array
+    {
+        return $this->call('POST', '/PERSON/person/deactivate', [
+            'uidList' => [$uid], 'operatePerson' => $this->account,
+        ]);
+    }
+
+    /** §2.3.4 List Person Group (pagination), optionally filtered by group name. data = [{groupId, cnName, sts, …}]. */
+    public function listPersonGroups(string $name = '', int $current = 1, int $size = 100): array
+    {
+        return $this->call('POST', '/PERSON/personGroup/list', [
+            'current' => $current, 'size' => $size, 'cnName' => $name,
+        ]);
+    }
+
+    /** §2.3.1 Create Person Group. data = the new group id. */
+    public function createPersonGroup(string $name, string $desc = ''): array
+    {
+        return $this->call('POST', '/PERSON/personGroup/create', [
+            'cnName' => $name, 'enName' => $name, 'type' => '0',
+            'operatePerson' => $this->account, 'desc' => $desc,
+        ]);
+    }
+
+    /** §2.4.1 Add Group Members. */
+    public function addGroupMembers(string $groupId, array $uids): array
+    {
+        return $this->call('POST', '/PERSON/member/addGroupMember', [
+            'groupId' => $groupId, 'uidList' => array_values(array_map('strval', $uids)),
+            'operatePerson' => $this->account,
+        ]);
+    }
+
     // ── internals ────────────────────────────────────────────
 
     private function token(bool $force = false): ?string

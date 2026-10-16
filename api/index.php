@@ -629,6 +629,123 @@ try {
     //                                  Unknown Personnel
     // GET /attendance/person?person_id=&days= → chronological movement journey
     //                                  across the predefined camera points
+    // ── Official attendance (shift rules) + reports ──────────
+    // GET /attendance/daily?date=&plant=&department=&q=&status=   → register + KPIs + recent recognitions
+    // GET /attendance/export?report=daily|range|movement&date=&from=&to=&person_id=&plant=&department=&q=  → CSV
+    if ($route === '/attendance/daily' || $route === '/attendance/export') {
+        $requireToken($config['auth']['read_token']);
+        require_once APP_ROOT . '/lib/Attendance.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $att   = new Attendance($store, $config);
+        $f = [];
+        foreach (['plant', 'department', 'q', 'status'] as $k) {
+            $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+        }
+
+        if ($route === '/attendance/daily') {
+            $day = $att->daily((string) ($_GET['date'] ?? ''), $f);
+            Response::ok($day + [
+                'plants'      => $config['attendance']['plants'],
+                'departments' => $config['attendance']['departments'],
+                'shifts'      => $config['attendance']['shifts'],
+                'enrolled'    => count($store->personProfiles()),
+            ]);
+        }
+
+        $report = (string) ($_GET['report'] ?? 'daily');
+        $date   = Attendance::cleanDate((string) ($_GET['date'] ?? ''));
+        $from   = Attendance::cleanDate((string) ($_GET['from'] ?? $date));
+        $to     = Attendance::cleanDate((string) ($_GET['to'] ?? $from));
+        $hm     = static fn (?string $t) => $t ? substr($t, 11, 5) : '';
+        $statusTxt = ['present' => 'Present', 'late' => 'Late', 'absent' => 'Absent', 'pending' => 'Not yet in', 'off' => 'Off day'];
+        $flagTxt   = ['missing_out' => 'Missing clock-out', 'early_out' => 'Early clock-out', 'off_day' => 'Worked on off day'];
+
+        if ($report === 'movement') {
+            $head = ['Date', 'Employee', 'Staff ID', 'Department', 'Plant', 'Location', 'Camera', 'Source',
+                     'Arrive', 'Depart', 'Dwell (min)', 'Detections', 'Confidence', 'Counts for'];
+            $rows = array_map(static fn ($v) => [
+                substr($v['arrive'], 0, 10), $v['name'], $v['staffId'], $v['department'], $v['plant'],
+                $v['location'], $v['camera'], $v['source'] === 'kiosk' ? 'Kiosk' : 'CCTV',
+                $hm($v['arrive']), $hm($v['depart']), $v['dwellMin'], $v['captures'], $v['similarity'],
+                $v['role'] === 'movement' ? 'Movement' : 'Attendance + movement',
+            ], $att->movement($from, $to, trim((string) ($_GET['person_id'] ?? '')) ?: null, $f));
+            $name = "movement-{$from}" . ($to !== $from ? "-to-{$to}" : '');
+        } else {
+            $list = $report === 'range' ? $att->range($from, $to, $f)
+                : array_map(static fn ($r) => ['date' => $date] + $r, $att->daily($date, $f)['rows']);
+            $head = ['Date', 'Staff ID', 'Employee', 'Department', 'Plant', 'Shift', 'Clock-in', 'Clock-in location',
+                     'Clock-out', 'Clock-out location', 'Hours', 'Status', 'Late (min)', 'Exceptions', 'Plants visited'];
+            $rows = array_map(static fn ($r) => [
+                $r['date'], $r['staffId'], $r['name'], $r['department'], $r['plant'],
+                $r['shift'] . ' ' . $r['shiftStart'] . '–' . $r['shiftEnd'],
+                $hm($r['clockIn']), (string) $r['clockInLoc'], $hm($r['clockOut']), (string) $r['clockOutLoc'],
+                $r['hours'] ?? '', $statusTxt[$r['status']] ?? $r['status'], $r['lateMin'] ?: '',
+                implode('; ', array_map(static fn ($x) => $flagTxt[$x] ?? $x, $r['flags'])),
+                implode(' → ', $r['plants']),
+            ], $list);
+            $name = $report === 'range' ? "attendance-{$from}-to-{$to}" : "attendance-{$date}";
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $name . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");   // BOM so Excel opens UTF-8 names correctly
+        fputcsv($out, $head);
+        foreach ($rows as $r) {
+            // Neutralise spreadsheet formulas in operator-entered text.
+            fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+        }
+        fclose($out);
+        exit;
+    }
+
+    // ── Employee sync to the SenseStudio person library ─────
+    // POST /employees/sync {person_id} | {all:true}  (settings permission)
+    if ($route === '/employees/sync') {
+        require_once APP_ROOT . '/lib/Auth.php';
+        require_once APP_ROOT . '/lib/Attendance.php';
+        require_once APP_ROOT . '/lib/Kiosk.php';
+        if (Auth::user() === null) {
+            Response::error('Sign in to sync employees.', 401);
+        }
+        if (!Auth::can('settings')) {
+            Response::error('Forbidden: syncing employees needs the settings permission.', 403);
+        }
+        if ($method !== 'POST') {
+            Response::error('POST {person_id} or {all:true}.', 405);
+        }
+        $in    = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $att   = new Attendance($store, $config);
+        $api   = new SenseApi($config['sense_api'] ?? [], APP_ROOT . '/storage');
+        $kiosk = new Kiosk($pdo, APP_ROOT, (string) ($config['app']['url'] ?? ''));
+        $profiles = $store->personProfiles();
+
+        if (!empty($in['all'])) {
+            $res = ['synced' => 0, 'failed' => 0, 'errors' => []];
+            foreach ($profiles as $p) {
+                if (!$p['active'] && $p['ssUid'] === '') {
+                    continue;
+                }
+                $r = $att->sync($p, $api, APP_ROOT, $kiosk);
+                $r['ok'] ? $res['synced']++ : $res['failed']++;
+                if (!$r['ok']) {
+                    $res['errors'][] = $p['name'] . ': ' . $r['error'];
+                }
+            }
+            Response::ok($res + ['profiles' => $store->personProfiles()]);
+        }
+        $pid = trim((string) ($in['person_id'] ?? ''));
+        if (!isset($profiles[$pid])) {
+            Response::error('Unknown employee.', 404);
+        }
+        $r = $att->sync($profiles[$pid], $api, APP_ROOT, $kiosk);
+        Response::ok($r + ['profiles' => $store->personProfiles()]);
+    }
+
     if ($route === '/attendance' || $route === '/attendance/person') {
         $requireToken($config['auth']['read_token']);
         $pdo    = Database::connect($config['storage']);
@@ -844,8 +961,25 @@ try {
         if ($method === 'POST') {
             $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
             $pid = trim((string) ($in['person_id'] ?? ''));
+            $staffIn = preg_replace('/[^A-Za-z0-9_\-\/]/', '', (string) ($in['staff_id'] ?? ''));
+            // Registering a new employee from the Employees list: no tracked
+            // face yet, so the record is keyed on the staff ID.
+            if ($pid === '' && !empty($in['new_employee']) && $staffIn !== '') {
+                $pid = 'e' . strtolower(preg_replace('/[^A-Za-z0-9]/', '', $staffIn));
+            }
             if ($pid === '') {
                 Response::error('person_id is required.', 400);
+            }
+            if ($route !== '/persons/delete' && $staffIn !== '') {
+                $existing = $store->personProfiles();
+                if (!empty($in['new_employee']) && isset($existing[$pid])) {
+                    Response::error('Staff ID ' . $staffIn . ' already belongs to ' . $existing[$pid]['name'] . '.', 409);
+                }
+                foreach ($existing as $op) {
+                    if ($op['personId'] !== $pid && strcasecmp($op['staffId'], $staffIn) === 0) {
+                        Response::error('Staff ID ' . $staffIn . ' already belongs to ' . $op['name'] . '.', 409);
+                    }
+                }
             }
             if ($route === '/persons/delete') {
                 $store->deletePersonProfile($pid);
@@ -857,14 +991,29 @@ try {
             }
             $gender = strtolower(trim((string) ($in['gender'] ?? '')));
             $gender = in_array($gender, ['male', 'female', 'other', ''], true) ? $gender : '';
-            $ok = $store->savePersonProfile($pid, [
+            $prof = [
                 'name'     => $name,
-                'staff_id' => preg_replace('/[^A-Za-z0-9_\-\/]/', '', (string) ($in['staff_id'] ?? '')),
+                'staff_id' => $staffIn,
                 'age'      => preg_replace('/[^0-9\-]/', '', (string) ($in['age'] ?? '')),
                 'gender'   => $gender,
                 'about'    => (string) ($in['about'] ?? $in['notes'] ?? ''),
                 'photo'    => !empty($in['photo_url']) ? substr((string) $in['photo_url'], 0, 500) : null,
-            ], substr((string) ($in['actor'] ?? ''), 0, 64) ?: null);
+            ];
+            // Employee details — only the keys the caller sends are changed.
+            $att = $config['attendance'];
+            if (array_key_exists('department', $in)) {
+                $prof['department'] = in_array($in['department'], $att['departments'], true) ? $in['department'] : '';
+            }
+            if (array_key_exists('plant', $in)) {
+                $prof['plant'] = in_array($in['plant'], $att['plants'], true) ? $in['plant'] : '';
+            }
+            if (array_key_exists('shift', $in)) {
+                $prof['shift'] = in_array($in['shift'], array_column($att['shifts'], 'id'), true) ? $in['shift'] : '';
+            }
+            if (array_key_exists('active', $in)) {
+                $prof['active'] = (bool) $in['active'];
+            }
+            $ok = $store->savePersonProfile($pid, $prof, substr((string) ($in['actor'] ?? ''), 0, 64) ?: null);
             Response::ok(['saved' => $ok, 'person_id' => $pid, 'profiles' => $store->personProfiles()]);
         }
 
@@ -1035,6 +1184,49 @@ try {
             if (isset($in['poc_inactivity_min'])) {
                 $out['poc_inactivity_min'] = max(5, min(720, (int) $in['poc_inactivity_min']));
             }
+            // Attendance rules — config.php validates the shapes again on load.
+            foreach (['att_plants', 'att_departments'] as $k) {
+                if (isset($in[$k])) {
+                    $list = is_array($in[$k]) ? $in[$k] : explode(',', (string) $in[$k]);
+                    $out[$k] = array_values(array_slice(array_unique(array_filter(array_map(
+                        static fn ($s) => substr(trim((string) $s), 0, 80), $list))), 0, 40));
+                }
+            }
+            if (isset($in['att_shifts']) && is_array($in['att_shifts'])) {
+                $out['att_shifts'] = array_values(array_map(static fn ($s) => [
+                    'id'           => substr(strtolower(preg_replace('/[^a-z0-9_-]+/i', '', (string) ($s['id'] ?? ''))), 0, 40),
+                    'name'         => substr(trim((string) ($s['name'] ?? '')), 0, 40),
+                    'start'        => substr((string) ($s['start'] ?? ''), 0, 5),
+                    'end'          => substr((string) ($s['end'] ?? ''), 0, 5),
+                    'grace'        => (int) ($s['grace'] ?? 10),
+                    'absent_after' => (int) ($s['absent_after'] ?? 120),
+                    'days'         => array_map('intval', (array) ($s['days'] ?? [])),
+                ], array_slice(array_filter($in['att_shifts'], 'is_array'), 0, 12)));
+            }
+            if (isset($in['att_cam_roles']) && is_array($in['att_cam_roles'])) {
+                $map = [];
+                foreach (array_slice($in['att_cam_roles'], 0, 200, true) as $k => $v) {
+                    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+                    if ($k !== '' && in_array($v, ['clock_in', 'clock_out', 'both', 'movement'], true)) {
+                        $map[$k] = $v;
+                    }
+                }
+                $out['att_cam_roles'] = $map;
+            }
+            if (isset($in['att_loc_plants']) && is_array($in['att_loc_plants'])) {
+                $map = [];
+                foreach (array_slice($in['att_loc_plants'], 0, 100, true) as $k => $v) {
+                    $k = substr(trim((string) $k), 0, 64);
+                    $v = substr(trim((string) $v), 0, 80);
+                    if ($k !== '' && $v !== '') {
+                        $map[$k] = $v;
+                    }
+                }
+                $out['att_loc_plants'] = $map;
+            }
+            if (isset($in['att_kiosk_clock'])) {
+                $out['att_kiosk_clock'] = (bool) $in['att_kiosk_clock'];
+            }
             if (isset($in['ai_source']) && in_array($in['ai_source'], ['weststar', 'anthropic', 'off'], true)) {
                 $out['ai_source'] = $in['ai_source'];
             }
@@ -1101,6 +1293,13 @@ try {
             'cam_locations'      => (object) ($config['poc']['cam_locations'] ?? []),
             'poc_inactivity_min' => $config['poc']['inactivity_min'] ?? 45,
             'poc_locations'      => $config['poc']['locations'] ?? [],
+            // Attendance rules
+            'att_plants'         => $config['attendance']['plants'],
+            'att_departments'    => $config['attendance']['departments'],
+            'att_shifts'         => $config['attendance']['shifts'],
+            'att_cam_roles'      => (object) $config['attendance']['cam_roles'],
+            'att_loc_plants'     => (object) $config['attendance']['loc_plants'],
+            'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken

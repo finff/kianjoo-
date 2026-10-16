@@ -88,6 +88,11 @@ class Component extends DCLogic {
       att: null,                                      // {known[], unknown[], days, inactivity_min, …}
       attBusy: false, attDays: 1, attQ: '', attErr: '',
       jn: null,                                       // journey modal {personId, loading, data, name, staffId, photo}
+      attView: 'register',                            // register | employees | live | reports
+      reg: {date:'', plant:'', dept:'', q:'', status:'', busy:false, err:'', data:null},   // official register (/api/attendance/daily)
+      rep: {from:'', to:'', person:''},               // Reports tab range + employee
+      empQ: '', empMsg: '', empBusy: false,           // Employees tab
+      attShiftDraft: null, attListDraft: {},          // Settings → Attendance drafts
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this.API = (window.TMNS && window.TMNS.api) || '/api';
@@ -405,7 +410,7 @@ class Component extends DCLogic {
     else if(p==='fire'||p==='ppe'||p==='intr'){ this._reportJson=null; this.fetchFeed(); }  // pull that module's report now
     if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
     if(p==='face') this.loadPeople();
-    if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); }
+    if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
     if(p==='ppe') this.loadApp();   // camera→location map for the POC PPE matrix
     if(p==='rules') this.loadAlerts();
     if(p==='settings'){ this.loadApp(); this.loadAlerts(); }
@@ -576,8 +581,13 @@ class Component extends DCLogic {
       about: existing?(existing.about||existing.notes||''):'',
       photo: (existing&&existing.photo)||person.image||'',
       shots: person.image?[person.image]:[],
+      department: existing?(existing.department||''):'',
+      plant: existing?(existing.plant||''):'',
+      shift: existing?(existing.shift||''):'',
+      active: existing?existing.active!==false:true,
       isEdit: !!existing, msg:'', saving:false,
     }});
+    if(!this.state.reg.data) this.loadRegister();   // plant / department / shift options
     fetch(`${this.API}/events?token=${this.TOK}&person_id=${encodeURIComponent(person.personId)}&limit=60`, {cache:'no-store'})
       .then(r=>r.json())
       .then(d=>{ if(!(d&&d.ok)) return;
@@ -602,7 +612,7 @@ class Component extends DCLogic {
     if(!/^image\//.test(file.type||'')){ this.setState(st=>({pf:{...st.pf, msg:'Pick an image file (JPG/PNG/WEBP)'}})); return; }
     if(file.size>6*1024*1024){ this.setState(st=>({pf:{...st.pf, msg:'Image is larger than 6 MB'}})); return; }
     this.setState(st=>({pf:{...st.pf, uploading:true, msg:'Uploading photo…'}}));
-    const fd=new FormData(); fd.append('file', file); fd.append('person_id', f.personId);
+    const fd=new FormData(); fd.append('file', file); fd.append('person_id', f.personId||'new');
     fetch(`${this.API}/persons/photo?token=${this.TOK}`, {method:'POST', body:fd})
       .then(r=>r.json())
       .then(d=>{ if(!(d&&d.ok&&d.url)) throw new Error((d&&(d.error||d.msg))||'upload failed');
@@ -616,15 +626,22 @@ class Component extends DCLogic {
     const f=this.state.pf; if(!f) return;
     const name=String(f.name||'').trim();
     if(!name){ this.setState(st=>({pf:{...st.pf, msg:'Full name is required'}})); return; }
+    if(f.isNew && !String(f.staff||'').trim()){ this.setState(st=>({pf:{...st.pf, msg:'Staff / employee ID is required'}})); return; }
     this.setState(st=>({pf:{...st.pf, saving:true, msg:'Saving…'}}));
     fetch(`${this.API}/persons?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({person_id:f.personId, name, staff_id:f.staff||'', age:f.age, gender:f.gender, about:f.about,
+      body:JSON.stringify({person_id:f.personId, new_employee:!!f.isNew, name, staff_id:f.staff||'', age:f.age, gender:f.gender, about:f.about,
+        department:f.department||'', plant:f.plant||'', shift:f.shift||'', active:f.active!==false,
         photo_url:f.photo||'', actor:this.UNAME})})
       .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad');
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&(d.error||d.msg))||'Save failed');
         this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}, modal:null, pf:null}));
-        this.loadPeople(); this.fetchFeed(); })
-      .catch(()=>this.setState(st=>({pf:{...st.pf, saving:false, msg:'Save failed'}})));
+        this.loadPeople(); this.fetchFeed();
+        if(this.state.page==='attendance') this.loadRegister();
+        // Keep SenseStudio's employee library in step: sync when there is a
+        // staff ID and a photo (or when deactivating an already-synced person).
+        const prof=(d.profiles||{})[d.person_id]||{};
+        if(this.PERMS.settings && (prof.ssUid || (prof.staffId && prof.photo))) this.syncEmployee(d.person_id, true); })
+      .catch(e=>this.setState(st=>({pf:{...st.pf, saving:false, msg:(e&&e.message&&e.message!=='bad')?e.message:'Save failed'}})));
   }
 
   // Enrol (or rename) a tracked person. The latest capture becomes the profile
@@ -1165,6 +1182,62 @@ class Component extends DCLogic {
               name:st.jn.name||((d.profile&&d.profile.name)||''), staffId:st.jn.staffId||((d.profile&&d.profile.staffId)||''),
               photo:st.jn.photo||((d.profile&&d.profile.photo)||'')}} : {}); })
       .catch(()=>this.setState(st=>st.jn?{jn:{...st.jn, loading:false, failed:true}}:{}));
+  }
+
+  // ── Official attendance register (/api/attendance/daily) ──
+  // Shift rules decide Present / Late / Absent; the Live sightings view above
+  // stays the raw detection log.
+  todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  loadRegister(){
+    const r=this.state.reg;
+    const qs=new URLSearchParams({token:this.TOK, date:r.date||this.todayStr(), plant:r.plant||'', department:r.dept||'', q:r.q||'', status:r.status||''});
+    this.setState(st=>({reg:{...st.reg, busy:true, err:''}}));
+    fetch(`${this.API}/attendance/daily?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({reg:{...st.reg, busy:false, data:d}})); })
+      .catch(()=>this.setState(st=>({reg:{...st.reg, busy:false, err:'Could not load the attendance register'}})));
+  }
+  setReg(patch){
+    this.setState(st=>({reg:{...st.reg, ...patch}}));
+    if(this._regT) clearTimeout(this._regT);
+    this._regT=setTimeout(()=>this.loadRegister(), patch.q!=null?350:0);
+  }
+  setAttView(v){
+    this.setState({attView:v});
+    if(v==='register') this.loadRegister();
+    if(v==='live') this.loadAttendance(true);
+    if(v==='employees'||v==='reports'){ this.loadPeople(); if(!this.state.reg.data) this.loadRegister(); }
+  }
+  // CSV download: daily register, a date range, or the movement report.
+  exportAtt(report){
+    const r=this.state.reg, rp=this.state.rep, day=r.date||this.todayStr();
+    const from=report==='daily'?day:(rp.from||day), to=report==='daily'?day:(rp.to||from);
+    const qs=new URLSearchParams({token:this.TOK, report, date:day, from, to,
+      plant:r.plant||'', department:r.dept||'', person_id:report==='movement'?(rp.person||''):''});
+    if(report==='daily'){ qs.set('q', r.q||''); qs.set('status', r.status||''); }
+    window.open(`${this.API}/attendance/export?${qs}`, '_blank');
+  }
+  // Register a new employee (no tracked face yet — keyed on the staff ID).
+  newEmployee(){
+    if(!this.state.reg.data) this.loadRegister();
+    this.setState({modal:{type:'profile', data:null}, pf:{personId:'', isNew:true, name:'', staff:'', age:'', gender:'', about:'',
+      department:'', plant:this.state.reg.plant||'', shift:'', active:true, photo:'', shots:[], isEdit:false, msg:'', saving:false}});
+  }
+  // Push employees to the SenseStudio person library (one group per plant).
+  syncEmployee(pid, quiet){
+    if(!this.PERMS.settings){ if(!quiet) this.setState({empMsg:'Syncing needs the settings permission'}); return; }
+    this.setState({empMsg:pid?'Syncing to SenseStudio…':'Syncing all employees to SenseStudio…', empBusy:true});
+    fetch(`${this.API}/employees/sync`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify(pid?{person_id:pid}:{all:true})})
+      .then(x=>x.json())
+      .then(d=>{
+        const msg=!(d&&d.ok) ? ('✗ '+((d&&(d.error||d.msg))||'Sync failed'))
+          : (pid ? (d.error?('✗ '+d.error):(d.warning?('⚠ '+d.warning):'Synced to SenseStudio ✓'))
+                 : ('Synced '+(d.synced||0)+' · failed '+(d.failed||0)+((d.errors&&d.errors.length)?(' — '+d.errors.slice(0,3).join(' | ')):'')));
+        this.setState(st=>({empBusy:false, empMsg:msg,
+          people:{...st.people, profiles:(d&&d.profiles)||st.people.profiles}}));
+      })
+      .catch(()=>this.setState({empBusy:false, empMsg:'✗ Sync failed — network error'}));
   }
 
   // ── Settings page (via /api/settings) ─────────────────────
@@ -2361,6 +2434,96 @@ class Component extends DCLogic {
           : '',
       }; })() : {visits:[]};
 
+    // ===== OFFICIAL ATTENDANCE — register · employees · reports =====
+    const reg=st.reg, regD=reg.data||{};
+    const hm=(t)=>t?String(t).slice(11,16):'—';
+    const attViews=[['register','Daily register'],['employees','Employees'],['live','Live sightings'],['reports','Reports']]
+      .map(([k,label])=>({label, cls:st.attView===k?'chip on':'chip', onClick:()=>this.setAttView(k)}));
+    const optList=(list,blank)=>[{v:'',label:blank}, ...(list||[]).map(x=>({v:x,label:x}))];
+    const regPlantSel={value:reg.plant, options:optList(regD.plants,'All plants'),
+      onChange:(e)=>this.setReg({plant:(e&&e.target)?e.target.value:''})};
+    const regDeptSel={value:reg.dept, options:optList(regD.departments,'All departments'),
+      onChange:(e)=>this.setReg({dept:(e&&e.target)?e.target.value:''})};
+    const regStatusSel={value:reg.status, onChange:(e)=>this.setReg({status:(e&&e.target)?e.target.value:''}),
+      options:[['','All statuses'],['present','Present (incl. late)'],['late','Late'],['absent','Absent'],['pending','Not yet in'],['missing_out','Missing clock-out'],['off','Off day']]
+        .map(([v,label])=>({v,label}))};
+    const STATUS={present:['PRESENT','var(--ok)'], late:['LATE','var(--gold)'], absent:['ABSENT','var(--crit)'],
+      pending:['NOT YET IN','var(--text3)'], off:['OFF DAY','var(--text3)']};
+    const FLAG={missing_out:'Missing clock-out', early_out:'Early clock-out', off_day:'Worked on off day'};
+    const rk=regD.kpi||{};
+    const regKpis=[
+      ['','SCHEDULED','total','var(--text)','active employees on shift today'],
+      ['present','PRESENT','present','var(--ok)','clocked in (on time or late)'],
+      ['late','LATE','late','var(--gold)','clock-in after start + grace'],
+      ['absent','ABSENT','absent','var(--crit)','no clock-in by absent threshold'],
+      ['pending','NOT YET IN','pending','var(--text3)','shift not started / within threshold'],
+      ['missing_out','MISSING CLOCK-OUT','missingOut','var(--high)','clocked in, no clock-out'],
+    ].map(([f,label,key,tone,sub])=>({label, value:String(rk[key]||0), tone, sub,
+      cls:'att-kpi att-kpi-btn'+(reg.status===f&&f?' on':''), onClick:()=>this.setReg({status:reg.status===f?'':f})}));
+    const regRows=(regD.rows||[]).map(r=>{ const s=STATUS[r.status]||[r.status,'var(--text3)'];
+      return {
+        photoBg:r.photo?`url('${r.photo}') center/cover no-repeat`:grad,
+        name:r.name||'—', staff:r.staffId?('Staff ID '+r.staffId):'',
+        org:[r.department,r.plant].filter(Boolean).join(' · ')||'—',
+        shift:r.shift+' '+r.shiftStart+'–'+r.shiftEnd,
+        clockIn:hm(r.clockIn), inLoc:r.clockIn?((r.clockInLoc||'')+(r.clockInSrc==='kiosk'?' · kiosk':'')):'',
+        clockOut:hm(r.clockOut), outLoc:r.clockOutLoc||'',
+        hours:r.hours!=null?(r.hours+' h'):'—',
+        status:s[0]+(r.status==='late'?(' · '+r.lateMin+' MIN'):''), statusCol:s[1],
+        flags:(r.flags||[]).map(x=>FLAG[x]||x).join(' · '),
+        route:(r.plants||[]).join(' → '),
+        onJourney:()=>this.openJourney({personId:r.personId, name:r.name, staffId:r.staffId, photo:r.photo}),
+      }; });
+    const regRecent=(regD.recent||[]).slice(0,14).map(e=>({
+      time:hm(e.time), who:e.known?(e.name+(e.staffId?(' · '+e.staffId):'')):('Unknown #'+e.personId),
+      whoCol:e.known?'var(--text)':'var(--high)',
+      where:[e.plant,e.location].filter(Boolean).join(' · ')+' · '+(e.source==='kiosk'?'kiosk':'CCTV'),
+      conf:e.similarity?(String(e.similarity).indexOf('.')>=0&&Number(e.similarity)<=1?Math.round(Number(e.similarity)*100)+'%':e.similarity):'',
+      tag:e.role==='movement'?'movement':'clock point',
+      thumb:e.image?`url('${e.image}') center/cover no-repeat`:grad,
+      onOpen:()=>{ if(e.image) this.openLightbox(e.image,(e.name||('#'+e.personId))+' · '+e.location+' · '+hm(e.time)); },
+    }));
+    const regStatusLine=reg.busy?'Loading register…':(reg.err||'');
+    const regNoRoles=!!regD.date && !regD.rolesSet;
+    const regEmpty=!!regD.date && !reg.busy && regRows.length===0;
+    const regSummary=regD.date?((regD.enrolled||0)+' employee profiles · '+((regD.kpi&&regD.kpi.unknown)||0)+' unknown faces seen today'):'';
+
+    // Employees directory (person_profiles = employee records)
+    const profs=Object.values((st.people&&st.people.profiles)||{});
+    const eq=(st.empQ||'').trim().toLowerCase();
+    const SYNC={synced:['SYNCED','var(--ok)'], partial:['PARTIAL','var(--gold)'], failed:['FAILED','var(--crit)'], inactive:['DEACTIVATED','var(--text3)']};
+    const shiftName=(id)=>{ const s=(regD.shifts||[]).find(x=>x.id===id)||(regD.shifts||[])[0]; return s?(s.name+' '+s.start+'–'+s.end):'Default'; };
+    const empRows=profs
+      .filter(p=>(!reg.plant||p.plant===reg.plant) && (!reg.dept||p.department===reg.dept)
+        && (!eq || (p.name+' '+(p.staffId||'')).toLowerCase().indexOf(eq)>=0))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name)))
+      .map(p=>{ const s=SYNC[p.ssSync]||['NOT SYNCED','var(--text3)'];
+        return {
+          photoBg:p.photo?`url('${p.photo}') center/cover no-repeat`:grad,
+          name:p.name, staff:p.staffId||'— no staff ID',
+          dept:p.department||'—', plant:p.plant||'—', shift:shiftName(p.shift),
+          active:p.active!==false?'Active':'Inactive', activeCol:p.active!==false?'var(--ok)':'var(--text3)',
+          sync:s[0], syncCol:s[1], syncTip:p.ssError||(p.ssUid?('SenseStudio uid '+p.ssUid+(p.ssSynced?(' · '+p.ssSynced):'')):'Not in the SenseStudio library yet'),
+          onEdit:()=>this.openProfile({personId:p.personId, image:p.photo}),
+          onSync:()=>this.syncEmployee(p.personId),
+          onJourney:()=>this.openJourney({personId:p.personId, name:p.name, staffId:p.staffId, photo:p.photo}),
+        }; });
+    const empCount=profs.length+' employee'+(profs.length===1?'':'s')+' · '+profs.filter(p=>p.ssSync==='synced').length+' synced to SenseStudio';
+
+    // Reports
+    const rp=st.rep, today=this.todayStr();
+    const repPersonSel={value:rp.person, onChange:(e)=>this.setState(s=>({rep:{...s.rep, person:(e&&e.target)?e.target.value:''}})),
+      options:[{v:'',label:'All employees'}, ...profs.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)))
+        .map(p=>({v:p.personId, label:p.name+(p.staffId?(' · '+p.staffId):'')}))]};
+    const repCards=[
+      {title:'Daily attendance', desc:'One row per employee for the register date: shift, clock-in / clock-out with location, hours, status, late minutes, exceptions and plants visited.',
+        scope:'Date '+(reg.date||today)+' · register filters', onClick:()=>this.exportAtt('daily')},
+      {title:'Attendance by date range', desc:'The daily register for every day in the range (max 62 days) — use for monthly attendance, late arrivals and absentee summaries.',
+        scope:(rp.from||reg.date||today)+' → '+(rp.to||rp.from||reg.date||today), onClick:()=>this.exportAtt('range')},
+      {title:'Employee movement', desc:'Every detection grouped into visits: plant, location, camera, source, arrive / depart, dwell and whether the camera counts for attendance.',
+        scope:(rp.person?'One employee':'All employees')+' · '+(rp.from||reg.date||today)+' → '+(rp.to||rp.from||reg.date||today), onClick:()=>this.exportAtt('movement')},
+    ];
+
     // ===== POC SETTINGS — camera points + PPE requirement matrix =====
     const spLocOpts=((ap&&ap.poc_locations&&ap.poc_locations.length)?ap.poc_locations
       :['Plant 1 Guard Post','Plant 2 Guard Post','Lobby Entrance','8 Color Entrance','Conventional Entrance','Line 5','Waste Area — Spot 9']);
@@ -2381,6 +2544,58 @@ class Component extends DCLogic {
     const spInact=chipRow([[15,'15 min'],[30,'30 min'],[45,'45 min'],[60,'60 min'],[120,'2 hours']],
       (ad.poc_inactivity_min!=null?ad.poc_inactivity_min:((ap&&ap.poc_inactivity_min)||45)),
       v=>{ this.setDraft('poc_inactivity_min',v); this.saveApp({poc_inactivity_min:v}, 'Inactivity interval saved ✓'); });
+
+    // ===== SETTINGS → ATTENDANCE RULES =====
+    const attLists=st.attListDraft||{};
+    const attPlantsCur=(ap&&ap.att_plants)||[], attDeptsCur=(ap&&ap.att_departments)||[];
+    const attPlantsVal=attLists.plants!=null?attLists.plants:attPlantsCur.join(', ');
+    const attDeptsVal=attLists.depts!=null?attLists.depts:attDeptsCur.join(', ');
+    const splitList=(s)=>String(s||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const saveAttLists=()=>{ this.saveApp({att_plants:splitList(attPlantsVal), att_departments:splitList(attDeptsVal)}, 'Plants & departments saved ✓');
+      this.setState({attListDraft:{}}); };
+    // Shifts editor
+    const shiftsCur=st.attShiftDraft||((ap&&ap.att_shifts)||[]);
+    const DAYS=[[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat'],[7,'Sun']];
+    const setShift=(i,patch)=>this.setState(s=>{ const base=(s.attShiftDraft||((s.appCfg&&s.appCfg.att_shifts)||[])).map(x=>({...x}));
+      base[i]={...base[i], ...patch}; return {attShiftDraft:base}; });
+    const attShiftRows=shiftsCur.map((s,i)=>({
+      name:s.name, start:s.start, end:s.end, grace:String(s.grace), absent:String(s.absent_after),
+      onName:(e)=>setShift(i,{name:(e&&e.target)?e.target.value:''}),
+      onStart:(e)=>setShift(i,{start:(e&&e.target)?e.target.value:''}),
+      onEnd:(e)=>setShift(i,{end:(e&&e.target)?e.target.value:''}),
+      onGrace:(e)=>setShift(i,{grace:parseInt((e&&e.target)?e.target.value:'0',10)||0}),
+      onAbsent:(e)=>setShift(i,{absent_after:parseInt((e&&e.target)?e.target.value:'0',10)||0}),
+      days:DAYS.map(([d,label])=>{ const on=(s.days||[]).indexOf(d)>=0;
+        return {label, cls:on?'chip on':'chip', onClick:()=>setShift(i,{days:on?(s.days||[]).filter(x=>x!==d):[...(s.days||[]),d].sort()})}; }),
+      canRemove:shiftsCur.length>1,
+      onRemove:()=>this.setState(s=>({attShiftDraft:shiftsCur.filter((_,j)=>j!==i)})),
+    }));
+    const addShift=()=>this.setState({attShiftDraft:[...shiftsCur.map(x=>({...x})),
+      {id:'shift'+(shiftsCur.length+1), name:'Night shift', start:'20:00', end:'05:00', grace:10, absent_after:120, days:[1,2,3,4,5]}]});
+    const saveShifts=()=>{ const ids={}; const out=shiftsCur.map((s,i)=>{ let id=String(s.id||s.name||('shift'+(i+1))).toLowerCase().replace(/[^a-z0-9_-]+/g,'')||('shift'+(i+1));
+        while(ids[id]) id+='x'; ids[id]=1; return {...s, id}; });
+      this.saveApp({att_shifts:out}, 'Shift rules saved ✓'); this.setState({attShiftDraft:null}); };
+    // Camera roles: which detections count as clock-in / clock-out
+    const rolesCur=(ap&&ap.att_cam_roles)||{};
+    const ROLES=[['clock_in','Clock-in'],['clock_out','Clock-out'],['both','Clock-in + out'],['movement','Movement only']];
+    const attCamRows=pocStreams.map(c=>{ const cur=rolesCur[c.key]||'';
+      const setRole=(v)=>{ const next={...rolesCur}; if(v) next[c.key]=v; else delete next[c.key];
+        this.saveApp({att_cam_roles:next}, 'Camera role saved ✓'); };
+      return {name:c.name, key:String(c.key).toUpperCase(), loc:spCamLocCur[c.key]||'not mapped to a camera point',
+        cur:cur?(ROLES.find(r=>r[0]===cur)||[0,cur])[1]:'No role', curCol:cur&&cur!=='movement'?'var(--ok)':'var(--text3)',
+        chips:ROLES.map(([v,label])=>({label, cls:cur===v?'chip on':'chip', onClick:()=>setRole(cur===v?'':v)}))}; });
+    const attRolesSet=Object.values(rolesCur).some(v=>v!=='movement');
+    // Location → plant
+    const locPlantsCur=(ap&&ap.att_loc_plants)||{};
+    const locNames=[...new Set([...spLocOpts, ...Object.values(spCamLocCur)])];
+    const guessPlant=(L)=>{ const m=/\bplant\s*([a-z0-9]+)/i.exec(L); return m?('Plant '+m[1].toUpperCase()):''; };
+    const attLocRows=locNames.map(L=>{ const cur=locPlantsCur[L]||'';
+      return {name:L, cur:cur||(guessPlant(L)?('auto: '+guessPlant(L)):'No plant'), curCol:cur?'var(--ok)':'var(--text3)',
+        chips:attPlantsCur.map(P=>({label:P, cls:cur===P?'chip on':'chip',
+          onClick:()=>{ const next={...locPlantsCur}; if(cur===P) delete next[L]; else next[L]=P;
+            this.saveApp({att_loc_plants:next}, 'Location plant saved ✓'); }}))}; });
+    const attKioskChips=chipRow([[1,'Kiosk check-ins count as clock-in / out'],[0,'Kiosk = movement only']],
+      (ap&&ap.att_kiosk_clock===false)?0:1, v=>this.saveApp({att_kiosk_clock:!!v}, 'Kiosk rule saved ✓'));
 
     // Per-location PPE requirements (POC Use Case 3): Line 5 cleaning PPE and
     // Waste Area Spot 9 forklift PPE, evaluated live from decoded attributes.
@@ -2447,10 +2662,22 @@ class Component extends DCLogic {
       noop:(e)=>{ if(e&&e.stopPropagation)e.stopPropagation(); },
       isMIncidents:mt==='incidents', isMEvent:mt==='event', isMCameras:mt==='cameras',
       isMVideo:mt==='video', isMGpu:mt==='gpu', isMPpe:mt==='ppe', isMAddCam:mt==='addcam',
-      isMProfile:mt==='profile', pf:(()=>{ const f=st.pf; if(!f) return {shots:[], genders:[]};
+      isMProfile:mt==='profile', pf:(()=>{ const f=st.pf; if(!f) return {shots:[], genders:[], activeChips:[],
+          deptSel:{options:[]}, plantSel:{options:[]}, shiftSel:{options:[]}};
         const gval=(f.gender||'').toLowerCase();
         return {
-          personId:f.personId, title:f.isEdit?'Edit person profile':'Create person profile',
+          personId:f.personId, title:f.isNew?'Register employee':(f.isEdit?'Edit person profile':'Create person profile'),
+          idLine: f.isNew?'new employee · add a clear face photo so SenseStudio can recognise them':('person #'+f.personId+' · shown on every future detection'),
+          ...(()=>{ const o=st.reg.data||{};
+            const sel=(key,list,blank)=>({value:f[key]||'', onChange:(e)=>this.pfSet(key,(e&&e.target)?e.target.value:''),
+              options:[{v:'',label:blank}, ...list]});
+            return {
+              deptSel: sel('department', (o.departments||[]).map(x=>({v:x,label:x})), '— Department —'),
+              plantSel: sel('plant', (o.plants||[]).map(x=>({v:x,label:x})), '— Plant —'),
+              shiftSel: sel('shift', (o.shifts||[]).map(s=>({v:s.id,label:s.name+' · '+s.start+'–'+s.end})), 'Default shift'),
+              activeChips:[[true,'Active'],[false,'Inactive']].map(([v,label])=>({label,
+                cls:(f.active!==false)===v?'chip on':'chip', onClick:()=>this.pfSet('active',v)})),
+            }; })(),
           name:f.name, staff:f.staff||'', age:f.age, about:f.about, msg:f.msg||'',
           photoBg: f.photo? `url('${f.photo}') center/cover no-repeat` : 'linear-gradient(160deg,#141830,#0c0f1d)',
           hasPhoto:!!f.photo, saveLabel:f.saving?'Saving…':(f.isEdit?'Save changes':'Create profile'),
@@ -2537,6 +2764,33 @@ class Component extends DCLogic {
       reloadAtt:()=>this.loadAttendance(true),
       goSettingsPoc:()=>{ this.setState({spTab:'poc'}); this.setPage('settings'); },
       isMJourney:mt==='journey', jn:jnV,
+      attViews, attViewRegister:st.attView==='register', attViewEmployees:st.attView==='employees',
+      attViewLive:st.attView==='live', attViewReports:st.attView==='reports',
+      regDate:reg.date||this.todayStr(), onRegDate:(e)=>this.setReg({date:(e&&e.target)?e.target.value:''}),
+      regPrevDay:()=>{ const d=new Date((reg.date||this.todayStr())+'T12:00:00'); d.setDate(d.getDate()-1); this.setReg({date:d.toISOString().slice(0,10)}); },
+      regNextDay:()=>{ const d=new Date((reg.date||this.todayStr())+'T12:00:00'); d.setDate(d.getDate()+1); this.setReg({date:d.toISOString().slice(0,10)}); },
+      regToday:()=>this.setReg({date:''}),
+      regQ:reg.q, onRegQ:(e)=>this.setReg({q:(e&&e.target)?e.target.value:''}),
+      regPlantSel, regDeptSel, regStatusSel, regKpis, regRows, regRecent, regNoRecent:!!regD.date && regRecent.length===0,
+      regStatusLine, regNoRoles, regEmpty, regSummary,
+      reloadReg:()=>this.loadRegister(), exportDaily:()=>this.exportAtt('daily'),
+      goSettingsAtt:()=>{ this.setState({spTab:'att'}); this.setPage('settings'); },
+      empRows, empEmpty:empRows.length===0, empCount, empMsg:st.empMsg, empQ:st.empQ,
+      onEmpQ:(e)=>this.setState({empQ:(e&&e.target)?e.target.value:''}),
+      newEmployee:()=>this.newEmployee(), syncAll:()=>this.syncEmployee(null),
+      canSync:!!this.PERMS.settings, syncAllLabel:st.empBusy?'Syncing…':'⇅ Sync all to SenseStudio',
+      repFrom:rp.from||reg.date||today, repTo:rp.to||rp.from||reg.date||today,
+      onRepFrom:(e)=>this.setState(s=>({rep:{...s.rep, from:(e&&e.target)?e.target.value:''}})),
+      onRepTo:(e)=>this.setState(s=>({rep:{...s.rep, to:(e&&e.target)?e.target.value:''}})),
+      repPersonSel, repCards,
+      spTabAtt:st.spTab==='att', attPlantsVal, attDeptsVal,
+      onAttPlants:(e)=>this.setState(s=>({attListDraft:{...s.attListDraft, plants:(e&&e.target)?e.target.value:''}})),
+      onAttDepts:(e)=>this.setState(s=>({attListDraft:{...s.attListDraft, depts:(e&&e.target)?e.target.value:''}})),
+      saveAttLists, attShiftRows, addShift, saveShifts, shiftsDirty:!!st.attShiftDraft,
+      attCamRows, attHasCams:attCamRows.length>0, attRolesLine:attRolesSet
+        ? 'Only detections at clock cameras (and the kiosk, if enabled) count as clock-in / clock-out. All cameras still record movement.'
+        : 'No clock cameras set yet — every detection currently counts as a clock point. Give the entrance / guard-post cameras a clock role.',
+      attLocRows, attKioskChips,
       // POC settings + per-location PPE requirement matrix
       spTabPoc:st.spTab==='poc', pocRows, pocHasCams:pocRows.length>0, spInact,
       isPpePage:st.page==='ppe', pocPpe,
@@ -2581,7 +2835,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',
