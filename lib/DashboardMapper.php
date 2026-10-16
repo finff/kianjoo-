@@ -100,6 +100,21 @@ final class DashboardMapper
 
     // ── classification ───────────────────────────────────────
 
+    private const INTR_RE = '/roi|intrusion|intrude|crossline|cross|tripwire|perimeter|region|area|breach|loiter|tailgat/';
+
+    /**
+     * True only when the policy / trigger type itself is a boundary or zone
+     * detection — not modOf()'s fallback, which also calls an attribute-less
+     * event 'intr'. Restricted-zone checks key on this.
+     */
+    public static function isIntrusionPolicy(array $e): bool
+    {
+        $t = strtolower(($e['trigger_image_type'] ?? '') . ' ' . ($e['event_type'] ?? '') . ' '
+            . ($e['policy_name'] ?? '') . ' ' . ($e['policy_desc'] ?? ''));
+        return !preg_match('/fire|smoke|flame|thermal|ppe|helmet|hardhat|hard.?hat|vest|glove|safety/', $t)
+            && (bool) preg_match(self::INTR_RE, $t);
+    }
+
     public static function modOf(array $e): string
     {
         // policy_name included so a SenseStudio policy named e.g. "TMLabFire"
@@ -130,7 +145,7 @@ final class DashboardMapper
         if (preg_match('/ppe|helmet|hardhat|hard.?hat|vest|glove|mask.?policy|safety/', $t)) {
             return 'ppe';
         }
-        if (preg_match('/roi|intrusion|intrude|crossline|cross|tripwire|perimeter|region|area|breach|loiter|tailgat/', $t)) {
+        if (preg_match(self::INTR_RE, $t)) {
             return 'intr';
         }
         if (preg_match('/face|stranger/', $t) || self::isStranger($e)) {
@@ -208,6 +223,16 @@ final class DashboardMapper
         if (!empty($dec['PpeMissing'])) {
             $sev = self::maxSev($sev, 'high');
         }
+        // Restricted zone verdict: confirmed unauthorized entry is High, an
+        // unverifiable one Medium (for review), a cleared one Low.
+        $ra = (string) ($dec['RaVerdict'] ?? '');
+        if ($ra === 'violation') {
+            $sev = self::maxSev($sev, 'high');
+        } elseif ($ra === 'review') {
+            $sev = self::maxSev($sev, 'medium');
+        } elseif ($ra === 'authorized' || $ra === 'outside_hours') {
+            $sev = 'low';
+        }
         return $sev;
     }
 
@@ -248,6 +273,17 @@ final class DashboardMapper
         }
         if ($mod === 'face' && self::isStranger($e)) {
             return 'Stranger detected — ' . $person . ' (no watchlist match)';
+        }
+        $ra = (string) ($dec['RaVerdict'] ?? '');
+        if ($mod === 'intr' && $ra !== '') {
+            $zone = (string) ($dec['RaZone'] ?? 'restricted zone');
+            $who  = (string) ($dec['RaWho'] ?? 'unidentified person');
+            return [
+                'violation'     => 'Unauthorized entry — ' . $zone . ' (' . $who . ')',
+                'review'        => 'Restricted area entry — needs review · ' . $zone . ' (' . $who . ')',
+                'authorized'    => 'Authorized entry — ' . $zone . ' (' . $who . ')',
+                'outside_hours' => 'Entry outside restricted hours — ' . $zone,
+            ][$ra] ?? ('Restricted area entry — ' . $zone);
         }
         if ($mod === 'ppe' && !empty($dec['PpeMissing'])) {
             return 'PPE violation — no ' . $dec['PpeMissing'] . ' (' . $person . ')';

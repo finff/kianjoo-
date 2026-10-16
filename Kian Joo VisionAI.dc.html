@@ -939,6 +939,113 @@
       </div>
       </sc-if>
 
+      <!-- ===== RESTRICTED AREA MONITORING (Use Case 3) ===== -->
+      <sc-if value="{{ isIntrPage }}" hint-placeholder-val="{{ false }}">
+      <div class="c207 poc-ppe-wrap">
+        <div class="att-panel">
+          <div class="c129">Restricted areas <span class="c100">— every entry into a restricted zone is checked against its access rules; unverifiable entries go to review</span></div>
+          <div class="att-bar">
+            <span class="sel-lab">From</span>
+            <input class="c665 att-date" type="date" value="{{ raFrom }}" onChange="{{ onRaFrom }}">
+            <span class="sel-lab">To</span>
+            <input class="c665 att-date" type="date" value="{{ raTo }}" onChange="{{ onRaTo }}">
+            <select class="sel" value="{{ raPlantSel.value }}" onChange="{{ raPlantSel.onChange }}">
+              <sc-for list="{{ raPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ raCamSel.value }}" onChange="{{ raCamSel.onChange }}">
+              <sc-for list="{{ raCamSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ raVerdictSel.value }}" onChange="{{ raVerdictSel.onChange }}">
+              <sc-for list="{{ raVerdictSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ raStatusSel.value }}" onChange="{{ raStatusSel.onChange }}">
+              <sc-for list="{{ raStatusSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button class="c185 chip" onClick="{{ reloadRa }}">⟳</button>
+            <button class="c185 chip on" onClick="{{ exportRaInc }}">⇩ Incidents CSV</button>
+            <button class="c185 chip on" onClick="{{ exportRaSum }}">⇩ Summary CSV</button>
+            <button class="c185 chip" onClick="{{ goSettingsRa }}">⚙ Restricted zones</button>
+            <span class="c100">{{ raStatus }}</span>
+          </div>
+
+          <sc-if value="{{ raNoZones }}" hint-placeholder-val="{{ false }}">
+            <div class="att-note">No camera is set as a restricted zone yet. Draw the boundary or zone in SenseStudio, then mark that camera as restricted and set who may enter.
+              <button class="c185 chip on" onClick="{{ goSettingsRa }}">Open Restricted Zones</button>
+            </div>
+          </sc-if>
+
+          <div class="att-kpis att-kpis-6">
+            <sc-for list="{{ raKpis }}" as="k" hint-placeholder-count="6">
+              <div class="att-kpi">
+                <div class="att-kpi-label">{{ k.label }}</div>
+                <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+                <div class="att-kpi-sub">{{ k.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div class="ppe-grid ra-grid">
+            <div class="ppe-card">
+              <div class="att-kpi-label">DAILY ENTRIES BY VERDICT</div>
+              <div class="ppe-trend">
+                <sc-for list="{{ raDaily }}" as="d" hint-placeholder-count="7">
+                  <div class="ppe-day" title="{{ d.title }}">
+                    <div class="ppe-day-v">{{ d.v }}</div>
+                    <div class="ppe-day-bars">
+                      <div class="ppe-bar-bad" style="height:{{ d.vH }}"></div>
+                      <div class="ra-bar-review" style="height:{{ d.rH }}"></div>
+                      <div class="ppe-bar-ok" style="height:{{ d.aH }}"></div>
+                    </div>
+                    <div class="ppe-day-l">{{ d.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div class="c100"><span class="ppe-key ppe-key-bad"></span>unauthorized <span class="ppe-key ra-key-review"></span>needs review <span class="ppe-key ppe-key-ok"></span>cleared</div>
+            </div>
+            <div class="ppe-card">
+              <div class="att-kpi-label">BY ZONE</div>
+              <sc-for list="{{ raByZone }}" as="z" hint-placeholder-count="3">
+                <div class="ppe-meter ppe-click ra-zone" onClick="{{ z.onClick }}">
+                  <div class="c247"><span>{{ z.zone }} <span class="c100">{{ z.sub }}</span></span></div>
+                  <div class="att-src" style="color:{{ z.col }}">{{ z.line }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Incident history <span class="c100">— newest first · review entries whose authorization could not be verified</span> <span class="c100">{{ raMsg }}</span></div>
+          <div class="ppe-viol-grid ra-inc-grid">
+            <sc-for list="{{ raInc }}" as="v" hint-placeholder-count="6">
+              <div class="ppe-viol">
+                <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
+                <div class="ppe-viol-miss" style="color:{{ v.vCol }}">{{ v.verdict }}</div>
+                <div class="att-name">{{ v.zone }}</div>
+                <div class="att-loc">{{ v.where }}</div>
+                <div class="att-src">{{ v.cam }}</div>
+                <div class="att-src">{{ v.time }}</div>
+                <div class="att-loc">{{ v.who }}</div>
+                <div class="att-attrs">{{ v.reason }}</div>
+                <div class="att-src">{{ v.status }}</div>
+                <div class="att-unk-btns ra-btns">
+                  <sc-if value="{{ v.canConfirm }}" hint-placeholder-val="{{ false }}">
+                    <button class="c185 chip ra-btn-bad" onClick="{{ v.onConfirm }}">Confirm violation</button>
+                  </sc-if>
+                  <sc-if value="{{ v.canClear }}" hint-placeholder-val="{{ false }}">
+                    <button class="c185 chip" onClick="{{ v.onClear }}">Mark authorized</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ raNoInc }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No restricted-area entries for these filters.</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
       <!-- ===== PPE COMPLIANCE BY AREA (Use Case 2) ===== -->
       <sc-if value="{{ isPpePage }}" hint-placeholder-val="{{ false }}">
       <div class="c207 poc-ppe-wrap">
@@ -1780,6 +1887,40 @@
                 </div>
               </sc-for>
             </div>
+          </div>
+          </sc-if>
+
+          <!-- Restricted zones -->
+          <sc-if value="{{ spTabRa }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Restricted Zones</h3><span class="c351">{{ appMsg }}</span></div>
+            <div class="c431">Draw the virtual boundary or zone on the camera in <b>SenseStudio</b> (intrusion / cross-line policy), then mark the camera as a restricted zone here and set who may enter. Each entry is judged: an enrolled employee on the access list (staff ID or department) is <b>authorized</b>; an enrolled employee not on it is an <b>unauthorized entry</b> (High alert); an unidentified or unknown person is marked <b>needs review</b> — never confirmed automatically. Outside the restricted hours entries are only logged.</div>
+            <sc-for list="{{ raZoneRows }}" as="z" hint-placeholder-count="4">
+              <div class="poc-cam">
+                <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="c100">{{ z.loc }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
+                <div class="c428" style="color:{{ z.polsCol }}">{{ z.pols }}</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ z.enableChips }}" as="l" hint-placeholder-count="2">
+                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                  </sc-for>
+                  <sc-for list="{{ z.hoursChips }}" as="l" hint-placeholder-count="2">
+                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                  </sc-for>
+                </div>
+                <div class="ra-zone-grid">
+                  <div><div class="c426">ZONE NAME</div><input class="c427" value="{{ z.name }}" onInput="{{ z.onName }}" placeholder="e.g. Waste Area — Spot 9"></div>
+                  <div><div class="c426">RESTRICTED HOURS (HH:MM-HH:MM, blank = 24 h)</div><input class="c427" value="{{ z.hours }}" onInput="{{ z.onHours }}" placeholder="e.g. 18:00-07:00"></div>
+                  <div><div class="c426">AUTHORIZED STAFF IDS (comma-separated)</div><input class="c427" value="{{ z.staff }}" onInput="{{ z.onStaff }}" placeholder="e.g. KJ-0142, KJ-0200"></div>
+                </div>
+                <div class="c426">AUTHORIZED DEPARTMENTS</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ z.deptChips }}" as="l" hint-placeholder-count="4">
+                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                  </sc-for>
+                  <button class="c429 ra-save" onClick="{{ z.onSave }}">Save zone</button>
+                </div>
+              </div>
+            </sc-for>
           </div>
           </sc-if>
 

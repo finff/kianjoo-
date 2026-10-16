@@ -78,6 +78,29 @@ final class EventStore
             }
         }
 
+        // Restricted zone: an intrusion detection at a configured zone camera
+        // gets an authorization verdict (authorized / violation / review).
+        $raZone = $raJudge = null;
+        if (!empty($this->cfg['restricted']['zones'])) {
+            require_once __DIR__ . '/Restricted.php';
+            $ra     = new Restricted($this->pdo, $this->cfg, $this);
+            $raZone = $ra->zoneOf($stream, $this->str($payload, 'deviceName'));
+            $isIntr = $raZone !== null && DashboardMapper::isIntrusionPolicy([
+                'trigger_image_type' => $this->str($payload, 'triggerImageType') ?? '',
+                'event_type'  => $this->str($payload, 'eventType') ?? '',
+                'policy_name' => $this->str($payload, 'policyName') ?? '',
+                'policy_desc' => $this->str($payload, 'policyDesc') ?? '',
+            ]);
+            if ($isIntr) {
+                $raJudge = Restricted::judge($raZone,
+                    $this->str($payload, 'personId') ?: $this->str($payload, 'triggerPersonId'),
+                    time(), $this->personProfiles(), $ra->aliases());
+                $decoded['map']['RaVerdict'] = $raJudge['verdict'];
+                $decoded['map']['RaZone']    = (string) $raZone['name'];
+                $decoded['map']['RaWho']     = $raJudge['name'] !== '' ? $raJudge['name'] : 'unidentified person';
+            }
+        }
+
         $row = [
             'uuid'               => $this->str($payload, 'uuid'),
             'trigger_event_id'   => $this->str($payload, 'triggerEventId'),
@@ -140,6 +163,13 @@ final class EventStore
             }
         }
 
+        if ($raJudge !== null) {
+            try {
+                (new Restricted($this->pdo, $this->cfg, $this))->record($eventId, $row, $raZone, $raJudge);
+            } catch (Throwable $e) {
+                error_log('[restricted] ' . $e->getMessage());
+            }
+        }
         if ($ppeEval !== null) {
             try {
                 (new Ppe($this->pdo, $this->cfg, $this))->record($eventId, $row, $ppeEval, $ppeLoc);
@@ -1252,6 +1282,10 @@ final class EventStore
                 'attributes' => isset($row['attributes_json']) && $row['attributes_json'] ? (json_decode((string) $row['attributes_json'], true) ?: []) : []];
         $mod = DashboardMapper::modOf($ev);
         $sev = DashboardMapper::sevOf($ev, $mod);
+        // A restricted-zone entry cleared by the access rules is logged, not alerted.
+        if (in_array($decoded['RaVerdict'] ?? '', ['authorized', 'outside_hours'], true)) {
+            return;
+        }
 
         $alerts = $this->cfg['alerts'] ?? ['min_severity' => 'high', 'always_mods' => ['fire'], 'intr_armed' => 'always'];
         $rank = ['low' => 0, 'medium' => 1, 'high' => 2, 'critical' => 3];
@@ -1297,7 +1331,7 @@ final class EventStore
 
         $attrRows = [];
         foreach (['Gender' => 'Gender', 'Age' => 'Age group', 'TopsType' => 'Tops', 'TopsColor' => 'Tops colour',
-                  'PpeMissing' => 'Missing PPE (area rule)',
+                  'PpeMissing' => 'Missing PPE (area rule)', 'RaZone' => 'Restricted zone', 'RaWho' => 'Identified as',
                   'HatsType' => 'Head cover', 'WithMask' => 'Mask', 'WithReflectiveVest' => 'Reflective vest', 'WithGlove' => 'Gloves',
                   'Smoking' => 'Smoking'] as $k => $label) {
             if (isset($decoded[$k])) {

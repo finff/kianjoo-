@@ -92,6 +92,7 @@ final class Database
         self::migrateKiosk($pdo);
         self::migrateEmployees($pdo);
         self::migratePpeChecks($pdo);
+        self::migrateRestricted($pdo);
     }
 
     /**
@@ -204,6 +205,65 @@ SQL);
                 $pdo->exec("ALTER TABLE person_profiles ADD COLUMN {$c} {$ddl}");
             }
         }
+    }
+
+    /**
+     * v10: restricted-area entries — one row per intrusion detection in a
+     * configured restricted zone, with the authorization verdict and review.
+     */
+    private static function migrateRestricted(PDO $pdo): void
+    {
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS restricted_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id    INTEGER NOT NULL,
+    detected_at TEXT,
+    stream      TEXT,
+    device_name TEXT,
+    location    TEXT,
+    plant       TEXT,
+    zone        TEXT,
+    policy      TEXT,
+    verdict     TEXT,
+    reason      TEXT,
+    person_id   TEXT,
+    person_name TEXT,
+    staff_id    TEXT,
+    image       TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    note        TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ra_time ON restricted_events(detected_at)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ra_event ON restricted_events(event_id)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS restricted_events (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_id    BIGINT UNSIGNED NOT NULL,
+    detected_at DATETIME,
+    stream      VARCHAR(191),
+    device_name VARCHAR(191),
+    location    VARCHAR(80),
+    plant       VARCHAR(80),
+    zone        VARCHAR(80),
+    policy      VARCHAR(191),
+    verdict     VARCHAR(20),
+    reason      VARCHAR(255),
+    person_id   VARCHAR(64),
+    person_name VARCHAR(160),
+    staff_id    VARCHAR(64),
+    image       TEXT,
+    reviewed_by VARCHAR(100),
+    reviewed_at DATETIME NULL,
+    note        VARCHAR(500),
+    KEY idx_ra_time (detected_at),
+    KEY idx_ra_event (event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
     }
 
     /**

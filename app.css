@@ -1118,3 +1118,18 @@
   .ppe-kpis{grid-template-columns:repeat(2,1fr)}
   .ppe-grid{grid-template-columns:1fr}
 }
+
+/* ═══ Restricted area monitoring ═══ */
+.ra-grid{grid-template-columns:1.4fr 1fr}
+.ra-bar-review{background:var(--gold);border-radius:3px 3px 0 0}
+.ra-key-review{background:var(--gold)}
+.ra-zone{padding:6px 0;border-bottom:1px dashed var(--line)}
+.ra-zone:last-child{border-bottom:none}
+.ra-inc-grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.ra-btns{justify-content:flex-start;margin-top:6px;flex-wrap:wrap}
+.ra-btn-bad{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 50%,transparent)}
+.ra-zone-grid{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:10px;margin:10px 0 8px}
+.ra-save{margin-left:auto}
+@media (max-width:1100px){
+  .ra-grid,.ra-zone-grid{grid-template-columns:1fr}
+}

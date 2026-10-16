@@ -95,6 +95,8 @@ class Component extends DCLogic {
       attShiftDraft: null, attListDraft: {},          // Settings → Attendance drafts
       ppeF: {from:'', to:'', plant:'', location:'', camera:'', item:'', busy:false, err:''},   // PPE compliance filters
       ppeD: null,                                     // /api/ppe/summary result
+      raF: {from:'', to:'', plant:'', camera:'', verdict:'', status:'', busy:false, err:''},   // restricted-area filters
+      raD: null, raMsg: '', raDraft: {},              // /api/restricted/summary result · review msg · zone drafts
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this.API = (window.TMNS && window.TMNS.api) || '/api';
@@ -414,6 +416,7 @@ class Component extends DCLogic {
     if(p==='face') this.loadPeople();
     if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
     if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
+    if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
     if(p==='rules') this.loadAlerts();
     if(p==='settings'){ this.loadApp(); this.loadAlerts(); }
     if(p==='forecast') this.loadForecast();
@@ -1241,6 +1244,45 @@ class Component extends DCLogic {
       })
       .catch(()=>this.setState({empBusy:false, empMsg:'✗ Sync failed — network error'}));
   }
+
+  // ── Restricted area monitoring (/api/restricted/*) ─────────
+  loadRa(){
+    const f=this.state.raF;
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    this.setState(st=>({raF:{...st.raF, busy:true, err:''}}));
+    fetch(`${this.API}/restricted/summary?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({raD:d, raF:{...st.raF, busy:false}})); })
+      .catch(()=>this.setState(st=>({raF:{...st.raF, busy:false, err:'Could not load restricted-area data'}})));
+  }
+  setRaF(patch){ this.setState(st=>({raF:{...st.raF, ...patch}})); if(this._raT) clearTimeout(this._raT); this._raT=setTimeout(()=>this.loadRa(), 0); }
+  exportRa(report){
+    const f=this.state.raF, d=this.state.raD||{};
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    window.open(`${this.API}/restricted/export?${qs}`, '_blank');
+  }
+  // Reviewer decision on an entry: confirm the violation or clear it as authorized.
+  reviewRa(item, verdict){
+    const note=window.prompt((verdict==='violation'?'Confirm unauthorized entry':'Clear as authorized')+' — '+(item.zone||'zone')+'\n\nOptional note (who it was, why):', '');
+    if(note===null) return;
+    this.setState({raMsg:'Saving review…'});
+    fetch(`${this.API}/restricted/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify({id:item.id, verdict, note})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
+        this.setState({raMsg:verdict==='violation'?'Confirmed as unauthorized entry ✓':'Cleared as authorized ✓'});
+        this.loadRa(); this.fetchFeed(); })
+      .catch(e=>this.setState({raMsg:'✗ '+(e&&e.message||'Review failed')}));
+  }
+  // Settings → Restricted Zones: save one camera's zone (merged over the stored set).
+  saveRaZone(key, patch){
+    const all={...(((this.state.appCfg||{}).ra_zones)||{})};
+    const cur=all[key]||{enabled:false, name:'', hours:'always', staff:[], depts:[]};
+    all[key]={...cur, ...patch};
+    this.saveApp({ra_zones:all}, 'Restricted zone saved ✓');
+    this.setState(st=>{ const d={...st.raDraft}; delete d[key]; return {raDraft:d}; });
+  }
+  raDraftSet(key, k, v){ this.setState(st=>({raDraft:{...st.raDraft, [key]:{...(st.raDraft[key]||{}), [k]:v}}})); }
 
   // ── PPE compliance by area (/api/ppe/summary) ─────────────
   loadPpe(){
@@ -2624,6 +2666,77 @@ class Component extends DCLogic {
     const attKioskChips=chipRow([[1,'Kiosk check-ins count as clock-in / out'],[0,'Kiosk = movement only']],
       (ap&&ap.att_kiosk_clock===false)?0:1, v=>this.saveApp({att_kiosk_clock:!!v}, 'Kiosk rule saved ✓'));
 
+    // ===== RESTRICTED AREA MONITORING (/api/restricted/summary) =====
+    const rd=st.raD||{}, rf=st.raF, rk2=rd.kpi||{};
+    const VERD={violation:['UNAUTHORIZED','var(--crit)'], review:['NEEDS REVIEW','var(--gold)'],
+      authorized:['AUTHORIZED','var(--ok)'], outside_hours:['OUTSIDE HOURS','var(--text3)']};
+    const raSel=(key,list,blank)=>({value:rf[key]||'', options:[{v:'',label:blank}, ...list],
+      onChange:(e)=>this.setRaF({[key]:(e&&e.target)?e.target.value:''})});
+    const raPlantSel=raSel('plant', (rd.plants||[]).map(x=>({v:x,label:x})), 'All plants');
+    const raCamSel=raSel('camera', (rd.zones||[]).map(z=>({v:z.key, label:z.name+' · '+z.key})), 'All zones / cameras');
+    const raVerdictSel=raSel('verdict', Object.keys(VERD).map(k=>({v:k, label:(rd.verdicts||{})[k]||k})), 'All verdicts');
+    const raStatusSel=raSel('status', [{v:'open',label:'Open'},{v:'ack',label:'Acknowledged'},{v:'resolved',label:'Resolved'}], 'Any alert status');
+    const raKpis=[
+      ['ENTRIES', rk2.entries||0, 'var(--text)', 'detections in restricted zones'],
+      ['UNAUTHORIZED', rk2.violation||0, (rk2.violation?'var(--crit)':'var(--ok)'), 'confirmed violations'],
+      ['NEEDS REVIEW', rk2.review||0, (rk2.review?'var(--gold)':'var(--ok)'), 'authorization not verifiable'],
+      ['OPEN ALERTS', rk2.open||0, (rk2.open?'var(--high)':'var(--ok)'), 'unauthorized / review not yet handled'],
+      ['TODAY', rk2.today||0, (rk2.today?'var(--high)':'var(--ok)'), 'unauthorized + review since midnight'],
+      ['AUTHORIZED', (rk2.authorized||0)+(rk2.outside_hours||0), 'var(--text3)', 'cleared by access rules / hours'],
+    ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
+    const raMax=Math.max(1, ...(rd.daily||[]).map(d=>d.violation+d.review+d.authorized+d.outside_hours));
+    const raDaily=(rd.daily||[]).map(d=>({label:String(d.date).slice(5),
+      title:d.date+' · '+d.violation+' unauthorized · '+d.review+' review · '+(d.authorized+d.outside_hours)+' cleared',
+      vH:Math.round(100*d.violation/raMax)+'%', rH:Math.round(100*d.review/raMax)+'%', aH:Math.round(100*(d.authorized+d.outside_hours)/raMax)+'%',
+      v:(d.violation+d.review)?String(d.violation+d.review):''}));
+    const raByZone=(rd.byZone||[]).map(z=>({zone:z.zone, sub:[z.plant, z.camera].filter(Boolean).join(' · '),
+      line:z.violation+' unauthorized · '+z.review+' review · '+(z.authorized+z.outside_hours)+' cleared',
+      col:z.violation?'var(--crit)':(z.review?'var(--gold)':'var(--ok)'),
+      onClick:()=>this.setRaF({camera:rf.camera===z.camera?'':z.camera})}));
+    const raInc=(rd.incidents||[]).map(i=>{ const vv=VERD[i.verdict]||[i.verdict,'var(--text3)'];
+      const open=(i.status||'open')==='open'||i.status==='ack';
+      return {
+        thumb:i.image?`url('${i.image}') center/cover no-repeat`:grad,
+        verdict:vv[0], vCol:vv[1], zone:i.zone||i.camera,
+        where:[i.plant, i.location].filter(Boolean).join(' · '), cam:i.camera+(i.policy?(' · '+i.policy):''),
+        time:String(i.time).slice(0,16), who:i.name?(i.name+(i.staffId?(' · '+i.staffId):'')):(i.personId?('Unknown #'+i.personId):'Unidentified person'),
+        reason:i.reason, status:'Alert: '+(i.status||'open')+(i.reviewedBy?(' · reviewed by '+i.reviewedBy):'')+(i.note?(' — '+i.note):''),
+        canConfirm:open && i.verdict==='review', canClear:open && (i.verdict==='review'||i.verdict==='violation'),
+        onConfirm:()=>this.reviewRa(i,'violation'), onClear:()=>this.reviewRa(i,'authorized'),
+        onOpen:()=>{ if(i.image) this.openLightbox(i.image, (i.zone||i.camera)+' · '+String(i.time).slice(0,16)); },
+      }; });
+    const raNoZones=!!rd.from && !(rd.zones||[]).some(z=>z.enabled);
+    // Settings → Restricted Zones (one row per camera)
+    const raZonesCur=(ap&&ap.ra_zones)||{};
+    const raDeptOpts=(ap&&ap.att_departments)||[];
+    const raCamPolicies=(key)=>[...new Set((st.policies||[]).filter(p=>String(p.stream).toLowerCase()===key && p.mod==='intr').map(p=>p.policy))];
+    const raZoneRows=[...new Set([...pocStreams.map(c=>c.key), ...Object.keys(raZonesCur)])].map(key=>{
+      const z={enabled:false, name:'', hours:'always', staff:[], depts:[], ...(raZonesCur[key]||{})};
+      const dr=(st.raDraft||{})[key]||{};
+      const cam=pocStreams.find(c=>c.key===key);
+      const pols=raCamPolicies(key);
+      const custom=z.hours!=='always';
+      return {
+        key:key.toUpperCase(), camName:cam?cam.name:key.toUpperCase(), loc:spCamLocCur[key]||'not mapped to a camera point',
+        pols:pols.length?('SenseStudio boundary / zone policies: '+pols.join(', ')):'No intrusion (boundary / zone) policy has fired on this camera yet — draw one in SenseStudio',
+        polsCol:pols.length?'var(--text3)':'var(--high)',
+        state:z.enabled?'RESTRICTED ZONE':'Not restricted', stateCol:z.enabled?'var(--crit)':'var(--text3)',
+        enableChips:[[true,'Restricted'],[false,'Off']].map(([v,label])=>({label, cls:z.enabled===v?'chip on':'chip',
+          onClick:()=>this.saveRaZone(key,{enabled:v, name:z.name||((spCamLocCur[key]||key.toUpperCase())+' restricted zone')})})),
+        name:dr.name!=null?dr.name:z.name, onName:(e)=>this.raDraftSet(key,'name',(e&&e.target)?e.target.value:''),
+        hours:dr.hours!=null?dr.hours:(custom?z.hours:''), onHours:(e)=>this.raDraftSet(key,'hours',(e&&e.target)?e.target.value:''),
+        hoursChips:[['always','Restricted 24 h'],['custom','Only during hours ↓']].map(([v,label])=>({label,
+          cls:(v==='always')===!custom?'chip on':'chip',
+          onClick:()=>v==='always'?this.saveRaZone(key,{hours:'always'}):this.raDraftSet(key,'hours',custom?z.hours:'18:00-07:00')})),
+        staff:dr.staff!=null?dr.staff:(z.staff||[]).join(', '), onStaff:(e)=>this.raDraftSet(key,'staff',(e&&e.target)?e.target.value:''),
+        deptChips:raDeptOpts.map(d=>{ const on=(z.depts||[]).indexOf(d)>=0;
+          return {label:d, cls:on?'chip on':'chip', onClick:()=>this.saveRaZone(key,{depts:on?z.depts.filter(x=>x!==d):[...(z.depts||[]),d]})}; }),
+        dirty:Object.keys(dr).length>0,
+        onSave:()=>this.saveRaZone(key,{
+          name:String(dr.name!=null?dr.name:z.name).trim(),
+          hours:dr.hours!=null?(String(dr.hours).trim()||'always'):z.hours,
+          staff:String(dr.staff!=null?dr.staff:(z.staff||[]).join(',')).split(',').map(s=>s.trim()).filter(Boolean)}),
+      }; });
     // ===== PPE COMPLIANCE BY AREA (/api/ppe/summary) =====
     const pd=st.ppeD||{}, pf=st.ppeF, pk=pd.kpi||{};
     const PPE_ITEMS=pd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves'};
@@ -2854,6 +2967,15 @@ class Component extends DCLogic {
       goSettingsPpe:()=>{ this.setState({spTab:'ppe'}); this.setPage('settings'); },
       ppeNoRules:!!pd.from && !Object.keys(pd.rules||{}).length,
       spTabPpe:st.spTab==='ppe', ppeRuleRows,
+      isIntrPage:st.page==='intr', raKpis, raDaily, raByZone, raInc, raNoInc:!!rd.from && raInc.length===0, raNoZones,
+      raPlantSel, raCamSel, raVerdictSel, raStatusSel, raMsg:st.raMsg||'',
+      raStatus:rf.busy?'Loading…':(rf.err||''),
+      raFrom:rf.from||rd.from||'', raTo:rf.to||rd.to||'',
+      onRaFrom:(e)=>this.setRaF({from:(e&&e.target)?e.target.value:''}),
+      onRaTo:(e)=>this.setRaF({to:(e&&e.target)?e.target.value:''}),
+      reloadRa:()=>this.loadRa(), exportRaInc:()=>this.exportRa('incidents'), exportRaSum:()=>this.exportRa('summary'),
+      goSettingsRa:()=>{ this.setState({spTab:'ra'}); this.setPage('settings'); },
+      spTabRa:st.spTab==='ra', raZoneRows,
       gotoCameras:()=>this.setPage('cameras'), openCamera:(s)=>this.openCamera(s),
       // logged-in user + user management
       meName:this.UNAME, meRole:(this.ME&&this.ME.role)||'operator',
@@ -2895,7 +3017,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',

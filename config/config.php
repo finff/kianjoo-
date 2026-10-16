@@ -302,6 +302,26 @@ if (is_array($app['ppe_rules'] ?? null)) {
 }
 $config['ppe'] = ['rules' => $ppeRules];
 
+// Restricted zones (Settings → Restricted Zones): camera stream key → zone
+// name, restricted hours ("always" or "HH:MM-HH:MM") and the staff IDs /
+// departments allowed in. Boundaries themselves are drawn in SenseStudio.
+$raZones = [];
+foreach ((is_array($app['ra_zones'] ?? null) ? $app['ra_zones'] : []) as $k => $z) {
+    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+    if ($k === '' || !is_array($z)) {
+        continue;
+    }
+    $hours = strtolower(trim((string) ($z['hours'] ?? 'always')));
+    $raZones[$k] = [
+        'enabled' => !empty($z['enabled']),
+        'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80) ?: strtoupper($k),
+        'hours'   => preg_match('/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/', $hours) ? $hours : 'always',
+        'staff'   => array_values(array_filter(array_map(static fn ($s) => substr(trim((string) $s), 0, 64), (array) ($z['staff'] ?? [])))),
+        'depts'   => array_values(array_filter(array_map(static fn ($s) => substr(trim((string) $s), 0, 80), (array) ($z['depts'] ?? [])))),
+    ];
+}
+$config['restricted'] = ['zones' => $raZones];
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)

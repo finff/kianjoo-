@@ -747,6 +747,70 @@ try {
         exit;
     }
 
+    // ── Restricted area monitoring ───────────────────────────
+    // GET  /restricted/summary?from=&to=&plant=&camera=&zone=&verdict=&status=  → KPIs, trend, zones, incidents
+    // GET  /restricted/export?report=incidents|summary&…                       → CSV
+    // POST /restricted/review {id, verdict: violation|authorized, note}        → reviewer decision (signed in)
+    if ($route === '/restricted/summary' || $route === '/restricted/export' || $route === '/restricted/review') {
+        require_once APP_ROOT . '/lib/Restricted.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $ra    = new Restricted($pdo, $config, $store);
+
+        if ($route === '/restricted/review') {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to review restricted-area entries.', 401);
+            }
+            if ($method !== 'POST') {
+                Response::error('POST {id, verdict, note}.', 405);
+            }
+            $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+            $ok = $ra->review((int) ($in['id'] ?? 0), (string) ($in['verdict'] ?? ''),
+                trim((string) ($in['note'] ?? '')), (string) ($me['name'] ?? $me['username'] ?? 'operator'));
+            $ok ? Response::ok(['reviewed' => (int) ($in['id'] ?? 0)]) : Response::error('Unknown entry or verdict.', 422);
+        }
+
+        $requireToken($config['auth']['read_token']);
+        $ra->catchUp();
+        $f = [];
+        foreach (['from', 'to', 'plant', 'camera', 'zone', 'verdict', 'status'] as $k) {
+            $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+        }
+        $f['camera'] = strtolower(preg_replace('/[^a-z0-9]+/i', '', $f['camera']));
+        if ($f['from'] === '') {
+            $f['from'] = date('Y-m-d', time() - 6 * 86400);
+        }
+        if ($f['status'] !== '' && !in_array($f['status'], ['open', 'ack', 'resolved'], true)) {
+            $f['status'] = '';
+        }
+
+        if ($route === '/restricted/summary') {
+            $zones = [];
+            foreach ($config['restricted']['zones'] as $key => $z) {
+                $zones[] = ['key' => strtoupper($key), 'name' => $z['name'], 'enabled' => $z['enabled'], 'hours' => $z['hours']];
+            }
+            Response::ok($ra->summary($f) + [
+                'zones' => $zones, 'verdicts' => Restricted::VERDICTS, 'plants' => $config['attendance']['plants'],
+            ]);
+        }
+
+        $report = (string) ($_GET['report'] ?? 'incidents') === 'summary' ? 'summary' : 'incidents';
+        $rows   = $report === 'summary' ? $ra->exportSummary($f) : $ra->exportIncidents($f);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="restricted-' . $report . '-' . Attendance::cleanDate($f['from'])
+            . '-to-' . Attendance::cleanDate($f['to'] ?: $f['from']) . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        foreach ($rows as $r) {
+            fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+        }
+        fclose($out);
+        exit;
+    }
+
     // ── Employee sync to the SenseStudio person library ─────
     // POST /employees/sync {person_id} | {all:true}  (settings permission)
     if ($route === '/employees/sync') {
@@ -1283,6 +1347,26 @@ try {
                 }
                 $out['ppe_rules'] = (object) $rules;
             }
+            // Restricted zones: {stream key → {enabled, name, hours, staff[], depts[]}}.
+            if (isset($in['ra_zones']) && is_array($in['ra_zones'])) {
+                $zones = [];
+                foreach (array_slice($in['ra_zones'], 0, 200, true) as $k => $z) {
+                    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+                    if ($k === '' || !is_array($z)) {
+                        continue;
+                    }
+                    $list = static fn ($v, int $n) => array_values(array_slice(array_unique(array_filter(array_map(
+                        static fn ($s) => substr(trim((string) $s), 0, $n), is_array($v) ? $v : explode(',', (string) $v)))), 0, 200));
+                    $zones[$k] = [
+                        'enabled' => !empty($z['enabled']),
+                        'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80),
+                        'hours'   => substr(trim((string) ($z['hours'] ?? 'always')), 0, 20),
+                        'staff'   => $list($z['staff'] ?? [], 64),
+                        'depts'   => $list($z['depts'] ?? [], 80),
+                    ];
+                }
+                $out['ra_zones'] = (object) $zones;
+            }
             if (isset($in['att_kiosk_clock'])) {
                 $out['att_kiosk_clock'] = (bool) $in['att_kiosk_clock'];
             }
@@ -1360,6 +1444,7 @@ try {
             'att_loc_plants'     => (object) $config['attendance']['loc_plants'],
             'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
             'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
+            'ra_zones'           => (object) ($config['restricted']['zones'] ?? []),
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken
