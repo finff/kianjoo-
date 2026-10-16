@@ -939,13 +939,113 @@
       </div>
       </sc-if>
 
-      <!-- ===== POC PPE REQUIREMENTS BY LOCATION (Use Case 3) ===== -->
+      <!-- ===== PPE COMPLIANCE BY AREA (Use Case 2) ===== -->
       <sc-if value="{{ isPpePage }}" hint-placeholder-val="{{ false }}">
       <div class="c207 poc-ppe-wrap">
         <div class="att-panel">
-          <div class="c129">POC PPE requirements by location <span class="c100">— Line 5 &amp; Waste Area, Spot 9</span></div>
+          <div class="c129">PPE compliance by area <span class="c100">— every person at an area with a PPE rule is checked; missing items raise a PPE incident and alert</span></div>
+          <div class="att-bar ppe-bar">
+            <span class="sel-lab">From</span>
+            <input class="c665 att-date" type="date" value="{{ ppeFrom }}" onChange="{{ onPpeFrom }}">
+            <span class="sel-lab">To</span>
+            <input class="c665 att-date" type="date" value="{{ ppeTo }}" onChange="{{ onPpeTo }}">
+            <select class="sel" value="{{ ppePlantSel.value }}" onChange="{{ ppePlantSel.onChange }}">
+              <sc-for list="{{ ppePlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ ppeLocSel.value }}" onChange="{{ ppeLocSel.onChange }}">
+              <sc-for list="{{ ppeLocSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ ppeCamSel.value }}" onChange="{{ ppeCamSel.onChange }}">
+              <sc-for list="{{ ppeCamSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ ppeItemSel.value }}" onChange="{{ ppeItemSel.onChange }}">
+              <sc-for list="{{ ppeItemSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button class="c185 chip" onClick="{{ reloadPpe }}">⟳</button>
+            <button class="c185 chip on" onClick="{{ exportPpeViol }}">⇩ Violations CSV</button>
+            <button class="c185 chip on" onClick="{{ exportPpeComp }}">⇩ Compliance CSV</button>
+            <button class="c185 chip" onClick="{{ goSettingsPpe }}">⚙ PPE area rules</button>
+            <span class="c100">{{ ppeStatus }}</span>
+          </div>
+
+          <sc-if value="{{ ppeNoRules }}" hint-placeholder-val="{{ false }}">
+            <div class="att-note">No area has a PPE rule yet, so nobody is being checked. Set the required PPE per camera point.
+              <button class="c185 chip on" onClick="{{ goSettingsPpe }}">Open PPE Area Rules</button>
+            </div>
+          </sc-if>
+
+          <div class="att-kpis ppe-kpis">
+            <sc-for list="{{ ppeKpis }}" as="k" hint-placeholder-count="5">
+              <div class="att-kpi">
+                <div class="att-kpi-label">{{ k.label }}</div>
+                <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+                <div class="att-kpi-sub">{{ k.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div class="ppe-grid">
+            <div class="ppe-card">
+              <div class="att-kpi-label">DAILY CHECKS · VIOLATIONS</div>
+              <div class="ppe-trend">
+                <sc-for list="{{ ppeDaily }}" as="d" hint-placeholder-count="7">
+                  <div class="ppe-day" title="{{ d.title }}">
+                    <div class="ppe-day-v">{{ d.v }}</div>
+                    <div class="ppe-day-bars">
+                      <div class="ppe-bar-bad" style="height:{{ d.badH }}"></div>
+                      <div class="ppe-bar-ok" style="height:{{ d.okH }}"></div>
+                    </div>
+                    <div class="ppe-day-l">{{ d.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div class="c100"><span class="ppe-key ppe-key-ok"></span>compliant <span class="ppe-key ppe-key-bad"></span>violation</div>
+            </div>
+            <div class="ppe-card">
+              <div class="att-kpi-label">MISSED BY PPE TYPE</div>
+              <sc-for list="{{ ppeByItem }}" as="i" hint-placeholder-count="4">
+                <div class="ppe-meter">
+                  <div class="c247"><span>{{ i.label }}</span><span class="c243">{{ i.value }}</span></div>
+                  <div class="c313"><div class="c245" style="width:{{ i.w }}; background:{{ i.col }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+            <div class="ppe-card">
+              <div class="att-kpi-label">COMPLIANCE BY AREA</div>
+              <sc-for list="{{ ppeByLoc }}" as="l" hint-placeholder-count="3">
+                <div class="ppe-meter ppe-click" onClick="{{ l.onClick }}">
+                  <div class="c247"><span>{{ l.loc }} <span class="c100">{{ l.plant }}</span></span><span class="c243">{{ l.value }}</span></div>
+                  <div class="c313"><div class="c245" style="width:{{ l.w }}; background:{{ l.col }}"></div></div>
+                  <div class="att-src">{{ l.req }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Violation history <span class="c100">— newest first · click a frame to enlarge</span></div>
+          <div class="ppe-viol-grid">
+            <sc-for list="{{ ppeViol }}" as="v" hint-placeholder-count="8">
+              <div class="ppe-viol">
+                <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
+                <div class="ppe-viol-miss">{{ v.missing }}</div>
+                <div class="att-loc">{{ v.where }}</div>
+                <div class="att-src">{{ v.cam }}</div>
+                <div class="att-src">{{ v.time }}</div>
+                <div class="att-attrs">{{ v.unchecked }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ ppeNoViol }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No PPE violations for these filters.</div>
+          </sc-if>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Area PPE rules <span class="c100">— what each camera point requires</span></div>
           <div class="poc-ppe-grid">
-            <sc-for list="{{ pocPpe }}" as="p" hint-placeholder-count="3">
+            <sc-for list="{{ pocPpe }}" as="p" hint-placeholder-count="2">
               <div class="poc-ppe-card">
                 <div class="poc-ppe-tag">{{ p.tag }}</div>
                 <div class="poc-ppe-loc">{{ p.loc }}</div>
@@ -1680,6 +1780,25 @@
                 </div>
               </sc-for>
             </div>
+          </div>
+          </sc-if>
+
+          <!-- PPE area rules -->
+          <sc-if value="{{ spTabPpe }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">PPE Area Rules</h3><span class="c351">{{ appMsg }}</span></div>
+            <div class="c431">Pick the PPE required at each camera point. Everyone detected at that point is checked; a person missing a required item becomes a <b>PPE incident</b> (High severity) with the captured frame, and is emailed under Alert Rules. Items the model did not report are listed as “not checked”, never as violations. Safety goggles use the model’s glasses estimate until a dedicated goggles attribute is available.</div>
+            <sc-for list="{{ ppeRuleRows }}" as="c" hint-placeholder-count="5">
+              <div class="poc-cam">
+                <div class="poc-cam-head"><b>{{ c.name }}</b><span class="c100" style="color:{{ c.camsCol }}">{{ c.cams }}</span><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
+                <div class="poc-chips">
+                  <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="4">
+                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <div class="c428">Areas come from Settings → POC Camera Points. Map a camera to a point there before its people can be checked.</div>
           </div>
           </sc-if>
 

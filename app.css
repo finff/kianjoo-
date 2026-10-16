@@ -1093,3 +1093,28 @@
   .att-row.reg-cols,.att-row.emp-cols{grid-template-columns:1fr 1fr}
   .pfm-row3,.att-shift-grid{grid-template-columns:1fr 1fr}
 }
+
+/* ═══ PPE compliance by area ═══ */
+.ppe-kpis{grid-template-columns:repeat(5,1fr);margin-top:12px}
+.ppe-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px}
+.ppe-card{background:var(--bg3);border:1px solid var(--line);border-radius:11px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.ppe-trend{display:flex;align-items:flex-end;gap:4px;height:150px}
+.ppe-day{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;height:100%}
+.ppe-day-v{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;color:var(--crit);height:12px}
+.ppe-day-bars{flex:1;width:100%;max-width:26px;display:flex;flex-direction:column;justify-content:flex-end;gap:1px}
+.ppe-bar-ok{background:var(--ok);opacity:.55;border-radius:3px 3px 0 0}
+.ppe-bar-bad{background:var(--crit);border-radius:3px 3px 0 0}
+.ppe-day-l{font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--text3);margin-top:4px;white-space:nowrap}
+.ppe-key{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 4px 0 8px;vertical-align:-1px}
+.ppe-key-ok{background:var(--ok);opacity:.55}
+.ppe-key-bad{background:var(--crit)}
+.ppe-meter{display:flex;flex-direction:column;gap:4px}
+.ppe-click{cursor:pointer}
+.ppe-viol-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:11px;margin-top:12px}
+.ppe-viol{background:var(--bg3);border:1px solid var(--line);border-radius:11px;padding:9px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ppe-viol-img{height:120px;border-radius:8px;background:var(--bg4);cursor:zoom-in;border:1px solid var(--line);margin-bottom:5px}
+.ppe-viol-miss{font-size:12px;font-weight:700;color:var(--crit)}
+@media (max-width:1100px){
+  .ppe-kpis{grid-template-columns:repeat(2,1fr)}
+  .ppe-grid{grid-template-columns:1fr}
+}

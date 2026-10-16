@@ -701,6 +701,52 @@ try {
         exit;
     }
 
+    // ── PPE compliance by area ───────────────────────────────
+    // GET /ppe/summary?from=&to=&plant=&location=&camera=&item=  → KPIs, trend, breakdowns, violations
+    // GET /ppe/export?report=violations|compliance&…             → CSV
+    if ($route === '/ppe/summary' || $route === '/ppe/export') {
+        $requireToken($config['auth']['read_token']);
+        require_once APP_ROOT . '/lib/Ppe.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $ppe   = new Ppe($pdo, $config, $store);
+        $ppe->catchUp();
+        $f = [];
+        foreach (['from', 'to', 'plant', 'location', 'camera', 'item'] as $k) {
+            $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+        }
+        $f['camera'] = strtolower(preg_replace('/[^a-z0-9]+/i', '', $f['camera']));
+        if ($f['from'] === '') {
+            $f['from'] = date('Y-m-d', time() - 6 * 86400);
+        }
+
+        if ($route === '/ppe/summary') {
+            $cams = $pdo->query("SELECT DISTINCT stream FROM ppe_checks WHERE stream <> '' ORDER BY stream")->fetchAll(PDO::FETCH_COLUMN);
+            Response::ok($ppe->summary($f) + [
+                'rules'     => (object) ($config['ppe']['rules'] ?? []),
+                'items'     => Ppe::ITEMS,
+                'plants'    => $config['attendance']['plants'],
+                'locations' => array_values(array_unique(array_merge(
+                    $config['poc']['locations'] ?? [], array_values($config['poc']['cam_locations'] ?? [])))),
+                'cameras'   => array_map('strtoupper', $cams),
+            ]);
+        }
+
+        $report = (string) ($_GET['report'] ?? 'violations') === 'compliance' ? 'compliance' : 'violations';
+        $rows   = $report === 'compliance' ? $ppe->exportCompliance($f) : $ppe->exportViolations($f);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="ppe-' . $report . '-' . Attendance::cleanDate($f['from'])
+            . '-to-' . Attendance::cleanDate($f['to'] ?: $f['from']) . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        foreach ($rows as $r) {
+            fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+        }
+        fclose($out);
+        exit;
+    }
+
     // ── Employee sync to the SenseStudio person library ─────
     // POST /employees/sync {person_id} | {all:true}  (settings permission)
     if ($route === '/employees/sync') {
@@ -1224,6 +1270,19 @@ try {
                 }
                 $out['att_loc_plants'] = $map;
             }
+            // PPE area rules: {location → [helmet|vest|goggles|gloves]}; an
+            // empty list removes the rule for that location.
+            if (isset($in['ppe_rules']) && is_array($in['ppe_rules'])) {
+                $rules = [];
+                foreach (array_slice($in['ppe_rules'], 0, 100, true) as $loc => $items) {
+                    $loc   = substr(trim((string) $loc), 0, 64);
+                    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) $items));
+                    if ($loc !== '' && $items) {
+                        $rules[$loc] = $items;
+                    }
+                }
+                $out['ppe_rules'] = (object) $rules;
+            }
             if (isset($in['att_kiosk_clock'])) {
                 $out['att_kiosk_clock'] = (bool) $in['att_kiosk_clock'];
             }
@@ -1300,6 +1359,7 @@ try {
             'att_cam_roles'      => (object) $config['attendance']['cam_roles'],
             'att_loc_plants'     => (object) $config['attendance']['loc_plants'],
             'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
+            'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken

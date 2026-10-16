@@ -64,6 +64,20 @@ final class EventStore
         $this->loadLiveDictionary();
         $decoded       = Attributes::decodeAll($attributesRaw);
 
+        // PPE area rule: a person at a location that requires PPE they are not
+        // wearing is tagged PpeMissing → classified, titled and alerted as PPE.
+        $ppeEval = null;
+        $ppeLoc  = '';
+        $ppeRules = $this->cfg['ppe']['rules'] ?? [];
+        if ($ppeRules && $decoded['map']) {
+            require_once __DIR__ . '/Ppe.php';
+            $ppeLoc  = (string) (($this->cfg['poc']['cam_locations'] ?? [])[self::streamLabel((string) ($stream ?: ''))] ?? '');
+            $ppeEval = $ppeLoc !== '' ? Ppe::evaluate($decoded['map'], $ppeLoc, $ppeRules) : null;
+            if ($ppeEval && $ppeEval['missing']) {
+                $decoded['map']['PpeMissing'] = implode(', ', $ppeEval['missing']);
+            }
+        }
+
         $row = [
             'uuid'               => $this->str($payload, 'uuid'),
             'trigger_event_id'   => $this->str($payload, 'triggerEventId'),
@@ -123,6 +137,14 @@ final class EventStore
                     'value_name'   => $a['value_name'],
                     'conf'         => $a['conf'],
                 ]);
+            }
+        }
+
+        if ($ppeEval !== null) {
+            try {
+                (new Ppe($this->pdo, $this->cfg, $this))->record($eventId, $row, $ppeEval, $ppeLoc);
+            } catch (Throwable $e) {
+                error_log('[ppe] ' . $e->getMessage());
             }
         }
 
@@ -1275,7 +1297,8 @@ final class EventStore
 
         $attrRows = [];
         foreach (['Gender' => 'Gender', 'Age' => 'Age group', 'TopsType' => 'Tops', 'TopsColor' => 'Tops colour',
-                  'HatsType' => 'Head cover', 'WithMask' => 'Mask', 'WithReflectiveVest' => 'Reflective vest',
+                  'PpeMissing' => 'Missing PPE (area rule)',
+                  'HatsType' => 'Head cover', 'WithMask' => 'Mask', 'WithReflectiveVest' => 'Reflective vest', 'WithGlove' => 'Gloves',
                   'Smoking' => 'Smoking'] as $k => $label) {
             if (isset($decoded[$k])) {
                 $attrRows[] = [$label, (string) $decoded[$k]];

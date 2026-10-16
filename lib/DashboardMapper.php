@@ -122,6 +122,11 @@ final class DashboardMapper
         if (($dec['Smoking'] ?? '') === 'IsSmoking') {
             return 'fire';
         }
+        // A person missing PPE required at their location (Settings → PPE
+        // Area Rules) is a PPE incident whatever feed delivered it.
+        if (!empty($dec['PpeMissing'])) {
+            return 'ppe';
+        }
         if (preg_match('/ppe|helmet|hardhat|hard.?hat|vest|glove|mask.?policy|safety/', $t)) {
             return 'ppe';
         }
@@ -199,6 +204,10 @@ final class DashboardMapper
         if (self::isStranger($e)) {
             $sev = self::maxSev($sev, 'high');
         }
+        // Missing PPE in an area that requires it is a safety violation.
+        if (!empty($dec['PpeMissing'])) {
+            $sev = self::maxSev($sev, 'high');
+        }
         return $sev;
     }
 
@@ -239,6 +248,9 @@ final class DashboardMapper
         }
         if ($mod === 'face' && self::isStranger($e)) {
             return 'Stranger detected — ' . $person . ' (no watchlist match)';
+        }
+        if ($mod === 'ppe' && !empty($dec['PpeMissing'])) {
+            return 'PPE violation — no ' . $dec['PpeMissing'] . ' (' . $person . ')';
         }
         if ($mod === 'ppe') {
             $missing = [];

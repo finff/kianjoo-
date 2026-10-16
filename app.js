@@ -93,6 +93,8 @@ class Component extends DCLogic {
       rep: {from:'', to:'', person:''},               // Reports tab range + employee
       empQ: '', empMsg: '', empBusy: false,           // Employees tab
       attShiftDraft: null, attListDraft: {},          // Settings → Attendance drafts
+      ppeF: {from:'', to:'', plant:'', location:'', camera:'', item:'', busy:false, err:''},   // PPE compliance filters
+      ppeD: null,                                     // /api/ppe/summary result
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this.API = (window.TMNS && window.TMNS.api) || '/api';
@@ -411,7 +413,7 @@ class Component extends DCLogic {
     if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
     if(p==='face') this.loadPeople();
     if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
-    if(p==='ppe') this.loadApp();   // camera→location map for the POC PPE matrix
+    if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
     if(p==='rules') this.loadAlerts();
     if(p==='settings'){ this.loadApp(); this.loadAlerts(); }
     if(p==='forecast') this.loadForecast();
@@ -1238,6 +1240,31 @@ class Component extends DCLogic {
           people:{...st.people, profiles:(d&&d.profiles)||st.people.profiles}}));
       })
       .catch(()=>this.setState({empBusy:false, empMsg:'✗ Sync failed — network error'}));
+  }
+
+  // ── PPE compliance by area (/api/ppe/summary) ─────────────
+  loadPpe(){
+    const f=this.state.ppeF;
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', location:f.location||'', camera:f.camera||'', item:f.item||''});
+    this.setState(st=>({ppeF:{...st.ppeF, busy:true, err:''}}));
+    fetch(`${this.API}/ppe/summary?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({ppeD:d, ppeF:{...st.ppeF, busy:false}})); })
+      .catch(()=>this.setState(st=>({ppeF:{...st.ppeF, busy:false, err:'Could not load PPE compliance'}})));
+  }
+  setPpeF(patch){ this.setState(st=>({ppeF:{...st.ppeF, ...patch}})); if(this._ppeT) clearTimeout(this._ppeT); this._ppeT=setTimeout(()=>this.loadPpe(), 0); }
+  exportPpe(report){
+    const f=this.state.ppeF, d=this.state.ppeD||{};
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', location:f.location||'', camera:f.camera||'', item:f.item||''});
+    window.open(`${this.API}/ppe/export?${qs}`, '_blank');
+  }
+  // Settings → PPE Area Rules: toggle one item for one location (saves immediately).
+  togglePpeRule(loc, item){
+    const cur={...(((this.state.appCfg||{}).ppe_rules)||{})};
+    const items=(cur[loc]||[]).slice(); const i=items.indexOf(item);
+    if(i>=0) items.splice(i,1); else items.push(item);
+    if(items.length) cur[loc]=items; else delete cur[loc];
+    this.saveApp({ppe_rules:cur}, items.length?('PPE rule saved for '+loc+' ✓'):('PPE rule removed for '+loc));
   }
 
   // ── Settings page (via /api/settings) ─────────────────────
@@ -2597,35 +2624,59 @@ class Component extends DCLogic {
     const attKioskChips=chipRow([[1,'Kiosk check-ins count as clock-in / out'],[0,'Kiosk = movement only']],
       (ap&&ap.att_kiosk_clock===false)?0:1, v=>this.saveApp({att_kiosk_clock:!!v}, 'Kiosk rule saved ✓'));
 
-    // Per-location PPE requirements (POC Use Case 3): Line 5 cleaning PPE and
-    // Waste Area Spot 9 forklift PPE, evaluated live from decoded attributes.
-    const pocPpe=(()=>{
-      const map=(ap&&ap.cam_locations)||{};
-      const locOfCam=(cam)=>map[String(cam||'').toLowerCase()]||'';
-      const tally={line5:{seen:0,glove:0,vest:0,helm:0}, waste:{seen:0,glove:0,vest:0,helm:0}};
-      (st.events||[]).forEach(e=>{
-        const L=locOfCam(e.camera); const k=L==='Line 5'?'line5':(/waste/i.test(L)?'waste':'');
-        if(!k) return; const d=e.decoded||{}; const t=tally[k];
-        if(d.WithGlove==null && d.WithReflectiveVest==null && d.HatsType==null) return;
-        t.seen++;
-        if(d.WithGlove!=null && /no/i.test(String(d.WithGlove))) t.glove++;
-        if(d.WithReflectiveVest!=null && /no/i.test(String(d.WithReflectiveVest))) t.vest++;
-        if(d.HatsType!=null && !/helmet/i.test(String(d.HatsType))) t.helm++;
-      });
-      const item=(label,viol,seen,live)=>({label,
-        value: live?(seen?(viol+' violation'+(viol===1?'':'s')+' / '+seen+' checks'):'No checks in window'):'Awaiting model support',
-        col: !live?'var(--text3)':(viol>0?'var(--crit)':'var(--ok)')});
-      return [
-        {loc:'Line 5', tag:'CLEANING ACTIVITY PPE', note:'Approved cleaning work requires gloves + goggles inside the cleaning zone',
-          items:[item('Cleaning gloves',tally.line5.glove,tally.line5.seen,true),
-                 item('Safety goggles',0,0,false)]},
-        {loc:'Waste Area — Spot 9', tag:'FORKLIFT OPERATOR PPE', note:'Forklift operators are assessed for safety vest + hard helmet',
-          items:[item('Safety vest',tally.waste.vest,tally.waste.seen,true),
-                 item('Hard helmet',tally.waste.helm,tally.waste.seen,true)]},
-        {loc:'Proposed POC items', tag:'FULL PPE SCOPE', note:'Vest · helmet · gloves · goggles · boots · hair net · ear protection (subject to camera visibility and model support)',
-          items:[]},
-      ];
-    })();
+    // ===== PPE COMPLIANCE BY AREA (/api/ppe/summary) =====
+    const pd=st.ppeD||{}, pf=st.ppeF, pk=pd.kpi||{};
+    const PPE_ITEMS=pd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves'};
+    const itemLabel=(i)=>PPE_ITEMS[i]||i;
+    const ppeSel=(key,list,blank)=>({value:pf[key]||'', options:[{v:'',label:blank}, ...list],
+      onChange:(e)=>this.setPpeF({[key]:(e&&e.target)?e.target.value:''})});
+    const ppePlantSel=ppeSel('plant', (pd.plants||[]).map(x=>({v:x,label:x})), 'All plants');
+    const ppeLocSel=ppeSel('location', (pd.locations||[]).map(x=>({v:x,label:x})), 'All areas');
+    const ppeCamSel=ppeSel('camera', (pd.cameras||[]).map(x=>({v:x,label:x})), 'All cameras');
+    const ppeItemSel=ppeSel('item', Object.keys(PPE_ITEMS).map(k=>({v:k,label:PPE_ITEMS[k]})), 'All PPE types');
+    const topItem=Object.entries(pd.byItem||{}).sort((a,b)=>b[1].missing-a[1].missing)[0];
+    const ppeKpis=[
+      ['PEOPLE CHECKED', String(pk.checks||0), 'var(--text)', 'detections at areas with PPE rules'],
+      ['VIOLATIONS', String(pk.violations||0), (pk.violations?'var(--crit)':'var(--ok)'), 'missing required PPE in range'],
+      ['TODAY', String(pk.today||0), (pk.today?'var(--high)':'var(--ok)'), 'violations since midnight'],
+      ['COMPLIANCE', pk.compliance==null?'—':(pk.compliance+'%'), pk.compliance==null?'var(--text3)':(pk.compliance>=95?'var(--ok)':(pk.compliance>=80?'var(--gold)':'var(--crit)')), 'checks with all required PPE'],
+      ['MOST MISSED', topItem&&topItem[1].missing?itemLabel(topItem[0]):'—', 'var(--gold)', topItem&&topItem[1].missing?(topItem[1].missing+' times'):'no misses'],
+    ].map(([label,value,tone,sub])=>({label,value,tone,sub}));
+    const dailyMax=Math.max(1, ...(pd.daily||[]).map(d=>d.checks));
+    const ppeDaily=(pd.daily||[]).map(d=>({
+      label:String(d.date).slice(5), title:d.date+' · '+d.violations+' violations / '+d.checks+' checks',
+      okH:Math.round(100*(d.checks-d.violations)/dailyMax)+'%', badH:Math.round(100*d.violations/dailyMax)+'%',
+      v:d.violations?String(d.violations):''}));
+    const ppeByItem=Object.keys(PPE_ITEMS).map(k=>{ const b=(pd.byItem||{})[k]||{required:0,missing:0};
+      const pct=b.required?Math.round(100*b.missing/b.required):0;
+      return {label:PPE_ITEMS[k], value:b.required?(b.missing+' missed / '+b.required+' required'):'not required in range',
+        w:pct+'%', col:pct>20?'var(--crit)':(pct>5?'var(--gold)':'var(--ok)')}; });
+    const ppeByLoc=(pd.byLocation||[]).map(l=>{ const c=l.checks?Math.round(100*(l.checks-l.violations)/l.checks):100;
+      return {loc:l.location, plant:l.plant||'', req:(l.required||[]).map(itemLabel).join(' · '),
+        value:c+'% compliant · '+l.violations+' / '+l.checks, w:c+'%', col:c>=95?'var(--ok)':(c>=80?'var(--gold)':'var(--crit)'),
+        onClick:()=>this.setPpeF({location:pf.location===l.location?'':l.location})}; });
+    const ppeViol=(pd.violations||[]).map(v=>({
+      thumb:v.image?`url('${v.image}') center/cover no-repeat`:grad,
+      missing:'No '+v.missing.map(i=>itemLabel(i).replace('Safety ','').toLowerCase()).join(', '),
+      where:[v.plant, v.location].filter(Boolean).join(' · '), cam:v.camera+(v.device&&v.device.toUpperCase()!==v.camera?(' · '+v.device):''),
+      time:String(v.time).slice(0,16).replace('T',' '),
+      unchecked:v.unchecked&&v.unchecked.length?('not checked: '+v.unchecked.map(i=>itemLabel(i).replace('Safety ','').toLowerCase()).join(', ')):'',
+      onOpen:()=>{ if(v.image) this.openLightbox(v.image, 'PPE violation · '+v.location+' · '+String(v.time).slice(0,16)); },
+    }));
+    // Rule cards (what each area requires) — live from the server rules.
+    const pocPpe=Object.entries(pd.rules||((ap&&ap.ppe_rules)||{})).map(([loc,items])=>{
+      const l=(pd.byLocation||[]).find(x=>x.location===loc);
+      return {loc, tag:'REQUIRED PPE', note:l?(l.checks+' people checked · '+l.violations+' violations in range'):'No checks in range',
+        items:items.map(i=>({label:itemLabel(i)+(i==='goggles'?' (glasses estimate)':''), value:'required', col:'var(--ok)'}))}; });
+    const ppeStatus=pf.busy?'Loading…':(pf.err||'');
+    // Settings → PPE Area Rules
+    const ppeRulesCur=(ap&&ap.ppe_rules)||{};
+    const ppeRuleRows=[...new Set([...spLocOpts, ...Object.values(spCamLocCur), ...Object.keys(ppeRulesCur)])].map(L=>{
+      const cur=ppeRulesCur[L]||[];
+      const cams=Object.keys(spCamLocCur).filter(k=>spCamLocCur[k]===L).map(k=>k.toUpperCase());
+      return {name:L, cams:cams.length?cams.join(', '):'no camera mapped', camsCol:cams.length?'var(--text3)':'var(--high)',
+        cur:cur.length?(cur.length+' item'+(cur.length===1?'':'s')+' required'):'Not monitored', curCol:cur.length?'var(--ok)':'var(--text3)',
+        chips:Object.keys(PPE_ITEMS).map(i=>({label:PPE_ITEMS[i], cls:cur.indexOf(i)>=0?'chip on':'chip', onClick:()=>this.togglePpeRule(L,i)}))}; });
 
     return {
       theme:st.theme, clock, dateStr, infLoad:st.infLoad,
@@ -2793,7 +2844,16 @@ class Component extends DCLogic {
       attLocRows, attKioskChips,
       // POC settings + per-location PPE requirement matrix
       spTabPoc:st.spTab==='poc', pocRows, pocHasCams:pocRows.length>0, spInact,
-      isPpePage:st.page==='ppe', pocPpe,
+      isPpePage:st.page==='ppe', pocPpe, ppeKpis, ppeDaily, ppeByItem, ppeByLoc, ppeViol,
+      ppeHasViol:ppeViol.length>0, ppeNoViol:!!pd.from && ppeViol.length===0, ppeStatus,
+      ppeFrom:pf.from||pd.from||'', ppeTo:pf.to||pd.to||'',
+      onPpeFrom:(e)=>this.setPpeF({from:(e&&e.target)?e.target.value:''}),
+      onPpeTo:(e)=>this.setPpeF({to:(e&&e.target)?e.target.value:''}),
+      ppePlantSel, ppeLocSel, ppeCamSel, ppeItemSel,
+      reloadPpe:()=>this.loadPpe(), exportPpeViol:()=>this.exportPpe('violations'), exportPpeComp:()=>this.exportPpe('compliance'),
+      goSettingsPpe:()=>{ this.setState({spTab:'ppe'}); this.setPage('settings'); },
+      ppeNoRules:!!pd.from && !Object.keys(pd.rules||{}).length,
+      spTabPpe:st.spTab==='ppe', ppeRuleRows,
       gotoCameras:()=>this.setPage('cameras'), openCamera:(s)=>this.openCamera(s),
       // logged-in user + user management
       meName:this.UNAME, meRole:(this.ME&&this.ME.role)||'operator',
@@ -2835,7 +2895,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',

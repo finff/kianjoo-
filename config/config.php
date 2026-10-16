@@ -286,6 +286,22 @@ $config['attendance'] = [
     'ss_group_prefix' => 'Kian Joo',
 ];
 
+// PPE area rules (Settings → PPE Area Rules): camera point → required PPE.
+// Defaults are the POC requirements for Line 5 and Waste Area Spot 9.
+$ppeRules = [];
+if (is_array($app['ppe_rules'] ?? null)) {
+    foreach ($app['ppe_rules'] as $loc => $items) {
+        $loc   = substr(trim((string) $loc), 0, 64);
+        $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) $items));
+        if ($loc !== '' && $items) {
+            $ppeRules[$loc] = $items;
+        }
+    }
+} else {
+    $ppeRules = ['Line 5' => ['gloves', 'goggles'], 'Waste Area — Spot 9' => ['helmet', 'vest']];
+}
+$config['ppe'] = ['rules' => $ppeRules];
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)

@@ -91,6 +91,7 @@ final class Database
         self::migratePersonProfiles($pdo);
         self::migrateKiosk($pdo);
         self::migrateEmployees($pdo);
+        self::migratePpeChecks($pdo);
     }
 
     /**
@@ -203,6 +204,53 @@ SQL);
                 $pdo->exec("ALTER TABLE person_profiles ADD COLUMN {$c} {$ddl}");
             }
         }
+    }
+
+    /**
+     * v9: PPE area-rule checks. One row per person detection checked against
+     * its location's required PPE; `missing` is empty when compliant.
+     */
+    private static function migratePpeChecks(PDO $pdo): void
+    {
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS ppe_checks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id    INTEGER NOT NULL,
+    checked_at  TEXT,
+    stream      TEXT,
+    device_name TEXT,
+    location    TEXT,
+    plant       TEXT,
+    required    TEXT,
+    missing     TEXT,
+    unknown     TEXT,
+    image       TEXT,
+    person_id   TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ppe_time ON ppe_checks(checked_at)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ppe_event ON ppe_checks(event_id)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS ppe_checks (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_id    BIGINT UNSIGNED NOT NULL,
+    checked_at  DATETIME,
+    stream      VARCHAR(191),
+    device_name VARCHAR(191),
+    location    VARCHAR(80),
+    plant       VARCHAR(80),
+    required    VARCHAR(80),
+    missing     VARCHAR(80),
+    unknown     VARCHAR(80),
+    image       TEXT,
+    person_id   VARCHAR(64),
+    KEY idx_ppe_time (checked_at),
+    KEY idx_ppe_event (event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
     }
 
     /**
