@@ -68,13 +68,17 @@ final class EventStore
         // wearing is tagged PpeMissing → classified, titled and alerted as PPE.
         $ppeEval = null;
         $ppeLoc  = '';
-        $ppeRules = $this->cfg['ppe']['rules'] ?? [];
-        if ($ppeRules && $decoded['map']) {
+        $ppeReq = null;
+        if ((!empty($this->cfg['ppe']['rules']) || !empty($this->cfg['cleaning']['schedules'])) && $decoded['map']) {
             require_once __DIR__ . '/Ppe.php';
             $ppeLoc  = (string) (($this->cfg['poc']['cam_locations'] ?? [])[self::streamLabel((string) ($stream ?: ''))] ?? '');
-            $ppeEval = $ppeLoc !== '' ? Ppe::evaluate($decoded['map'], $ppeLoc, $ppeRules) : null;
+            $ppeReq  = $ppeLoc !== '' ? Ppe::requirement($ppeLoc, time(), $this->cfg) : null;
+            $ppeEval = $ppeReq ? Ppe::evaluate($decoded['map'], $ppeReq['items']) : null;
             if ($ppeEval && $ppeEval['missing']) {
                 $decoded['map']['PpeMissing'] = implode(', ', $ppeEval['missing']);
+                if ($ppeReq['schedule']) {
+                    $decoded['map']['PpeCleaning'] = $ppeReq['schedule']['name'];   // violation during a cleaning session
+                }
             }
         }
 
@@ -172,7 +176,7 @@ final class EventStore
         }
         if ($ppeEval !== null) {
             try {
-                (new Ppe($this->pdo, $this->cfg, $this))->record($eventId, $row, $ppeEval, $ppeLoc);
+                (new Ppe($this->pdo, $this->cfg, $this))->record($eventId, $row, $ppeEval, $ppeLoc, $ppeReq['schedule'] ?? null);
             } catch (Throwable $e) {
                 error_log('[ppe] ' . $e->getMessage());
             }
@@ -1331,7 +1335,7 @@ final class EventStore
 
         $attrRows = [];
         foreach (['Gender' => 'Gender', 'Age' => 'Age group', 'TopsType' => 'Tops', 'TopsColor' => 'Tops colour',
-                  'PpeMissing' => 'Missing PPE (area rule)', 'RaZone' => 'Restricted zone', 'RaWho' => 'Identified as',
+                  'PpeMissing' => 'Missing PPE (area rule)', 'PpeCleaning' => 'Cleaning session', 'RaZone' => 'Restricted zone', 'RaWho' => 'Identified as',
                   'HatsType' => 'Head cover', 'WithMask' => 'Mask', 'WithReflectiveVest' => 'Reflective vest', 'WithGlove' => 'Gloves',
                   'Smoking' => 'Smoking'] as $k => $label) {
             if (isset($decoded[$k])) {

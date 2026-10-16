@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/EventStore.php';
 require_once __DIR__ . '/Attendance.php';
+require_once __DIR__ . '/Cleaning.php';
 
 final class Ppe
 {
@@ -75,14 +76,31 @@ final class Ppe
     }
 
     /**
-     * Check one detection against a location's rule.
-     * Null when the location has no rule or the model reported none of the items.
+     * PPE required at a location at a moment: the area's standing rule plus
+     * the items of any cleaning schedule running there then. `schedule` is
+     * the active cleaning session (null outside cleaning periods).
+     *
+     * @return array{items:list<string>,schedule:?array}
+     */
+    public static function requirement(string $location, int $ts, array $config): array
+    {
+        $items = $config['ppe']['rules'][$location] ?? [];
+        $sched = null;
+        foreach (Cleaning::activeAt($location, $ts, $config['cleaning']['schedules'] ?? []) as $s) {
+            $sched ??= $s;
+            $items = array_merge($items, $s['items']);
+        }
+        return ['items' => array_values(array_unique($items)), 'schedule' => $sched];
+    }
+
+    /**
+     * Check one detection against the required items.
+     * Null when nothing is required or the model reported none of the items.
      *
      * @return array{required:list<string>,missing:list<string>,unknown:list<string>}|null
      */
-    public static function evaluate(array $dec, string $location, array $rules): ?array
+    public static function evaluate(array $dec, array $required): ?array
     {
-        $required = $rules[$location] ?? [];
         if (!$required) {
             return null;
         }
@@ -110,13 +128,13 @@ final class Ppe
 
     // ── Storage ──────────────────────────────────────────────
 
-    public function record(int $eventId, array $row, array $eval, string $location): void
+    public function record(int $eventId, array $row, array $eval, string $location, ?array $schedule = null): void
     {
         $plant = (new Attendance($this->store, $this->config))->plantOf($location);
         $st = $this->pdo->prepare(
             'INSERT INTO ppe_checks (event_id, checked_at, stream, device_name, location, plant,
-                                     required, missing, unknown, image, person_id)
-             VALUES (:e, :t, :s, :d, :l, :p, :r, :m, :u, :i, :pid)'
+                                     required, missing, unknown, image, person_id, schedule_id, schedule_name)
+             VALUES (:e, :t, :s, :d, :l, :p, :r, :m, :u, :i, :pid, :sid, :sn)'
         );
         $st->execute([
             'e' => $eventId, 't' => (string) ($row['received_at'] ?? date('Y-m-d H:i:s')),
@@ -125,6 +143,7 @@ final class Ppe
             'r' => implode(',', $eval['required']), 'm' => implode(',', $eval['missing']),
             'u' => implode(',', $eval['unknown']),
             'i' => $row['trigger_img_url'] ?? null, 'pid' => $row['person_id'] ?? null,
+            'sid' => $schedule['id'] ?? null, 'sn' => $schedule['name'] ?? null,
         ]);
     }
 
@@ -135,7 +154,7 @@ final class Ppe
      */
     public function catchUp(): int
     {
-        $rules = $this->config['ppe']['rules'] ?? [];
+        $rules = ($this->config['ppe']['rules'] ?? []) || ($this->config['cleaning']['schedules'] ?? []);
         $file  = dirname(__DIR__) . '/storage/ppe_cursor.json';
         $cur   = is_file($file) ? (int) ((json_decode((string) file_get_contents($file), true) ?: [])['last'] ?? 0) : 0;
         if ($cur === 0) {
@@ -157,7 +176,8 @@ final class Ppe
             }
             $dec = json_decode((string) ($r['decoded_json'] ?? ''), true) ?: [];
             $loc = $this->locationOf($r['stream'] ?? null, $r['device_name'] ?? null);
-            $ev  = $loc !== '' ? self::evaluate($dec, $loc, $rules) : null;
+            $req = $loc !== '' ? self::requirement($loc, strtotime((string) $r['received_at']) ?: time(), $this->config) : null;
+            $ev  = $req ? self::evaluate($dec, $req['items']) : null;
             if ($ev === null) {
                 continue;
             }
@@ -165,9 +185,12 @@ final class Ppe
             if ((int) $seen->fetchColumn() > 0) {
                 continue;   // already checked at ingest
             }
-            $this->record($cur, $r, $ev, $loc);
+            $this->record($cur, $r, $ev, $loc, $req['schedule']);
             if ($ev['missing'] && empty($dec['PpeMissing'])) {
                 $dec['PpeMissing'] = implode(', ', $ev['missing']);
+                if ($req['schedule']) {
+                    $dec['PpeCleaning'] = $req['schedule']['name'];
+                }
                 $upd->execute(['j' => json_encode($dec, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'id' => $cur]);
             }
             $done++;
@@ -188,11 +211,14 @@ final class Ppe
         }
         $sql  = 'SELECT * FROM ppe_checks WHERE checked_at >= :f AND checked_at < :t';
         $bind = ['f' => $from . ' 00:00:00', 't' => date('Y-m-d', strtotime($to) + 86400) . ' 00:00:00'];
-        foreach (['plant' => 'plant', 'location' => 'location', 'camera' => 'stream'] as $k => $col) {
+        foreach (['plant' => 'plant', 'location' => 'location', 'camera' => 'stream', 'schedule' => 'schedule_id'] as $k => $col) {
             if (!empty($f[$k])) {
                 $sql .= " AND {$col} = :{$k}";
                 $bind[$k] = $f[$k];
             }
+        }
+        if (!empty($f['cleaning'])) {
+            $sql .= " AND schedule_id IS NOT NULL AND schedule_id <> ''";   // checks made during cleaning sessions
         }
         $st = $this->pdo->prepare($sql . ' ORDER BY id ASC LIMIT 50000');
         $st->execute($bind);
@@ -284,6 +310,7 @@ final class Ppe
             'device' => (string) $r['device_name'], 'location' => (string) $r['location'],
             'plant' => (string) $r['plant'], 'required' => $r['req'], 'missing' => $r['mis'],
             'unchecked' => $r['unk'], 'personId' => (string) ($r['person_id'] ?? ''),
+            'schedule' => (string) ($r['schedule_name'] ?? ''),
             'image' => $this->store->fullUrl($r['image'] ?? null),
         ];
     }
@@ -294,7 +321,7 @@ final class Ppe
         [$rows] = $this->checks($f);
         $label  = static fn (array $l) => implode('; ', array_map(static fn ($i) => self::ITEMS[$i] ?? $i, $l));
         $out = [['Date', 'Time', 'Plant', 'Location', 'Camera', 'Device', 'Missing PPE', 'Required PPE',
-                 'Not checked by model', 'Person ID', 'Image URL']];
+                 'Not checked by model', 'Cleaning session', 'Person ID', 'Image URL']];
         foreach (array_reverse($rows) as $r) {
             if (!$r['fail']) {
                 continue;
@@ -302,7 +329,7 @@ final class Ppe
             $v = $this->violationRow($r);
             $out[] = [substr($v['time'], 0, 10), substr($v['time'], 11, 8), $v['plant'], $v['location'], $v['camera'],
                       $v['device'], $label($v['missing']), $label($v['required']), $label($v['unchecked']),
-                      $v['personId'], (string) $v['image']];
+                      $v['schedule'], $v['personId'], (string) $v['image']];
         }
         return $out;
     }

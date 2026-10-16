@@ -72,6 +72,10 @@
         <span class="c15">◈</span>
         PPE Compliance
       </button>
+      <button class="c10 navbtn {{ nav.cleaning.cls }}" onClick="{{ nav.cleaning.go }}">
+        <span class="c15">◈</span>
+        Cleaning Activity
+      </button>
       <button class="c10 navbtn {{ nav.intr.cls }}" onClick="{{ nav.intr.go }}">
         <span class="c16">◈</span>
         Intrusion
@@ -936,6 +940,172 @@
             </div>
           </div>
         </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== CLEANING ACTIVITY MONITORING (Use Case 4) ===== -->
+      <sc-if value="{{ isCleaning }}" hint-placeholder-val="{{ false }}">
+      <div class="c207">
+        <div class="att-views">
+          <sc-for list="{{ clTabs }}" as="t" hint-placeholder-count="2">
+            <button class="c384 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+          </sc-for>
+          <span class="c100">{{ clMsg }}</span>
+        </div>
+
+        <div class="att-note cl-note">
+          <div><b>Scheduled ≠ performed.</b> A schedule only says when cleaning is expected. During that window everyone detected at the area is checked for the required PPE. Each session shows separately what was <b>scheduled</b>, what the cameras <b>observed</b> (people detected) and what a supervisor <b>confirmed</b>. The PPE model cannot recognise cleaning itself.</div>
+        </div>
+
+        <!-- ── Overview ── -->
+        <sc-if value="{{ clTabOverview }}" hint-placeholder-val="{{ true }}">
+        <div class="att-bar">
+          <span class="sel-lab">From</span>
+          <input class="c665 att-date" type="date" value="{{ clFrom }}" onChange="{{ onClFrom }}">
+          <span class="sel-lab">To</span>
+          <input class="c665 att-date" type="date" value="{{ clTo }}" onChange="{{ onClTo }}">
+          <select class="sel" value="{{ clPlantSel.value }}" onChange="{{ clPlantSel.onChange }}">
+            <sc-for list="{{ clPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ clLocSel.value }}" onChange="{{ clLocSel.onChange }}">
+            <sc-for list="{{ clLocSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ clItemSel.value }}" onChange="{{ clItemSel.onChange }}">
+            <sc-for list="{{ clItemSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <button class="c185 chip" onClick="{{ reloadCl }}">⟳</button>
+          <button class="c185 chip on" onClick="{{ exportClSess }}">⇩ Sessions CSV</button>
+          <button class="c185 chip on" onClick="{{ exportClViol }}">⇩ Violations CSV</button>
+          <span class="c100">{{ clStatus }}</span>
+        </div>
+
+        <sc-if value="{{ clNoSchedules }}" hint-placeholder-val="{{ false }}">
+          <div class="att-note">No cleaning schedule yet. Add one with the area, days and times, and the PPE required while cleaning.
+            <button class="c185 chip on" onClick="{{ goClSchedules }}">Add a schedule</button>
+          </div>
+        </sc-if>
+
+        <div class="att-kpis att-kpis-6">
+          <sc-for list="{{ clKpis }}" as="k" hint-placeholder-count="6">
+            <div class="att-kpi">
+              <div class="att-kpi-label">{{ k.label }}</div>
+              <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+              <div class="att-kpi-sub">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Cleaning sessions <span class="c100">— scheduled window · observed at the cameras · PPE results · supervisor confirmation</span></div>
+          <div class="att-thead cl-cols">
+            <span>SESSION</span><span>AREA</span><span>SCHEDULED</span><span>OBSERVED</span><span>PPE DURING CLEANING</span><span>CONFIRMATION</span><span></span>
+          </div>
+          <sc-for list="{{ clSessions }}" as="s" hint-placeholder-count="5">
+            <div class="att-row cl-cols">
+              <div><div class="att-name">{{ s.name }}</div><div class="att-src">{{ s.when }}</div></div>
+              <div><div class="att-loc">{{ s.where }}</div><div class="att-attrs">{{ s.req }}</div></div>
+              <div class="att-status" style="color:{{ s.stateCol }}">{{ s.state }}</div>
+              <div class="att-loc" style="color:{{ s.observedCol }}">{{ s.observed }}</div>
+              <div class="att-loc" style="color:{{ s.ppeCol }}">{{ s.ppe }}</div>
+              <div><div class="att-status" style="color:{{ s.confCol }}">{{ s.conf }}</div><div class="att-attrs">{{ s.note }}</div></div>
+              <div class="att-unk-btns">
+                <sc-if value="{{ s.canConfirm }}" hint-placeholder-val="{{ true }}">
+                  <button class="c185 chip" onClick="{{ s.onDone }}">Cleaned</button>
+                  <button class="c185 chip" onClick="{{ s.onNotDone }}">Not done</button>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ clNoSessions }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No cleaning sessions scheduled in this range.</div>
+          </sc-if>
+        </div>
+
+        <div class="ppe-grid cl-grid">
+          <div class="att-panel">
+            <div class="c129">Recent PPE violations during cleaning</div>
+            <div class="ppe-viol-grid">
+              <sc-for list="{{ clViol }}" as="v" hint-placeholder-count="6">
+                <div class="ppe-viol">
+                  <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
+                  <div class="ppe-viol-miss">{{ v.missing }}</div>
+                  <div class="att-name">{{ v.session }}</div>
+                  <div class="att-loc">{{ v.where }}</div>
+                  <div class="att-src">{{ v.cam }} · {{ v.time }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ clNoViol }}" hint-placeholder-val="{{ false }}">
+              <div class="c100 att-cap">No PPE violations during cleaning for these filters.</div>
+            </sc-if>
+          </div>
+          <div class="att-panel">
+            <div class="c129">Missed by PPE type</div>
+            <sc-for list="{{ clByItem }}" as="i" hint-placeholder-count="4">
+              <div class="ppe-meter cl-meter">
+                <div class="c247"><span>{{ i.label }}</span><span class="c243">{{ i.value }}</span></div>
+                <div class="c313"><div class="c245" style="width:{{ i.w }}; background:{{ i.col }}"></div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Recognising actual cleaning <span class="c100">— what would be needed beyond PPE detection</span></div>
+          <div class="cl-ai">
+            <div><b>Today</b><span>Cleaning is inferred from the schedule. People detected at the area during the window are evidence of presence, not of cleaning. A supervisor confirms each session.</span></div>
+            <div><b>Cleaning-tool detection</b><span>An object model trained on mops, brooms, scrubbers, hoses and buckets. A person with a tool in the zone suggests cleaning activity.</span></div>
+            <div><b>Action recognition</b><span>A pose or video-action model (sweeping, mopping, wiping) running on short clips rather than single frames. This needs clips and GPU time per camera.</span></div>
+            <div><b>Zone dwell + uniform</b><span>Dwell time in the cleaning zone plus a cleaning-crew uniform or apron attribute. This is cheaper, but only a proxy.</span></div>
+          </div>
+          <div class="c428">None of these is available in the current SenseStudio models. If one is added, its detections can mark a session "activity detected" in place of, or alongside, supervisor confirmation.</div>
+        </div>
+        </sc-if>
+
+        <!-- ── Schedules ── -->
+        <sc-if value="{{ clTabSchedules }}" hint-placeholder-val="{{ false }}">
+        <div class="att-panel">
+          <div class="c129">Cleaning schedules <span class="c100">— where and when cleaning is expected, and the PPE required during it</span></div>
+          <sc-for list="{{ clEdit }}" as="s" hint-placeholder-count="2">
+            <div class="poc-cam">
+              <div class="cl-edit-grid">
+                <div><div class="c426">NAME</div><input class="c427" value="{{ s.name }}" onInput="{{ s.onName }}" placeholder="e.g. Line 5 deep clean"></div>
+                <div><div class="c426">CLEANING AREA</div>
+                  <select class="sel pfm-sel" value="{{ s.locSel.value }}" onChange="{{ s.locSel.onChange }}">
+                    <sc-for list="{{ s.locSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                  </select></div>
+                <div><div class="c426">START</div><input class="c427" type="time" value="{{ s.start }}" onInput="{{ s.onStart }}"></div>
+                <div><div class="c426">END</div><input class="c427" type="time" value="{{ s.end }}" onInput="{{ s.onEnd }}"></div>
+              </div>
+              <div class="c426">REPEATS ON</div>
+              <div class="poc-chips">
+                <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
+                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                </sc-for>
+              </div>
+              <div><div class="c426">OR ON SPECIFIC DATES (YYYY-MM-DD, comma-separated — overrides the weekdays)</div>
+                <input class="c427" value="{{ s.dates }}" onInput="{{ s.onDates }}" placeholder="e.g. 2026-10-20, 2026-10-27"></div>
+              <div class="c426">PPE REQUIRED DURING CLEANING</div>
+              <div class="poc-chips">
+                <sc-for list="{{ s.items }}" as="d" hint-placeholder-count="4">
+                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                </sc-for>
+                <sc-for list="{{ s.enabled }}" as="d" hint-placeholder-count="2">
+                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                </sc-for>
+                <button class="c185 chip att-shift-rm" onClick="{{ s.onRemove }}">✕ Remove</button>
+              </div>
+              <div class="c428" style="color:var(--high)">{{ s.warn }}</div>
+            </div>
+          </sc-for>
+          <div class="poc-chips">
+            <button class="c185 chip" onClick="{{ clAdd }}">＋ Add schedule</button>
+            <button class="c429" onClick="{{ clSave }}">Save schedules</button>
+            <span class="c100">{{ clMsg }}</span>
+          </div>
+          <div class="c428">An end time earlier than the start is an overnight session (it belongs to the start date). The PPE here is added to any standing PPE Area Rule for the same area while the session runs.</div>
+        </div>
+        </sc-if>
       </div>
       </sc-if>
 

@@ -93,6 +93,7 @@ final class Database
         self::migrateEmployees($pdo);
         self::migratePpeChecks($pdo);
         self::migrateRestricted($pdo);
+        self::migrateCleaning($pdo);
     }
 
     /**
@@ -205,6 +206,48 @@ SQL);
                 $pdo->exec("ALTER TABLE person_profiles ADD COLUMN {$c} {$ddl}");
             }
         }
+    }
+
+    /**
+     * v11: cleaning sessions. PPE checks made during a scheduled cleaning
+     * period carry the schedule; cleaning_log holds the supervisor's
+     * confirmation that a session was actually performed (or not).
+     */
+    private static function migrateCleaning(PDO $pdo): void
+    {
+        $txt = static fn (int $n) => self::$driver === 'sqlite' ? 'TEXT' : "VARCHAR({$n}) NULL";
+        foreach (['schedule_id' => $txt(40), 'schedule_name' => $txt(80)] as $c => $ddl) {
+            if (!self::columnExists($pdo, 'ppe_checks', $c)) {
+                $pdo->exec("ALTER TABLE ppe_checks ADD COLUMN {$c} {$ddl}");
+            }
+        }
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS cleaning_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    schedule_id TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    note        TEXT,
+    actor       TEXT,
+    created_at  TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_cl_sess ON cleaning_log(schedule_id, session_date)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS cleaning_log (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    schedule_id  VARCHAR(40) NOT NULL,
+    session_date DATE NOT NULL,
+    status       VARCHAR(20) NOT NULL,
+    note         VARCHAR(500),
+    actor        VARCHAR(100),
+    created_at   DATETIME,
+    KEY idx_cl_sess (schedule_id, session_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
     }
 
     /**

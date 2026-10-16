@@ -286,6 +286,9 @@ final class DashboardMapper
             ][$ra] ?? ('Restricted area entry — ' . $zone);
         }
         if ($mod === 'ppe' && !empty($dec['PpeMissing'])) {
+            if (!empty($dec['PpeCleaning'])) {
+                return 'PPE violation during cleaning — no ' . $dec['PpeMissing'] . ' · ' . $dec['PpeCleaning'] . ' (' . $person . ')';
+            }
             return 'PPE violation — no ' . $dec['PpeMissing'] . ' (' . $person . ')';
         }
         if ($mod === 'ppe') {

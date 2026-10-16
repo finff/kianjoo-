@@ -322,6 +322,37 @@ foreach ((is_array($app['ra_zones'] ?? null) ? $app['ra_zones'] : []) as $k => $
 }
 $config['restricted'] = ['zones' => $raZones];
 
+// Cleaning schedules (Cleaning Activity page): when cleaning is expected at
+// an area and the PPE required during it. A schedule is a time window, not
+// proof that cleaning happened — see lib/Cleaning.php.
+$clean = [];
+foreach ((is_array($app['cleaning_schedules'] ?? null) ? $app['cleaning_schedules'] : []) as $s) {
+    if (!is_array($s)) {
+        continue;
+    }
+    $id = substr(strtolower(preg_replace('/[^a-z0-9_-]+/i', '', (string) ($s['id'] ?? ''))), 0, 40);
+    if ($id === '' || trim((string) ($s['location'] ?? '')) === ''
+        || !preg_match('/^\d{2}:\d{2}$/', (string) ($s['start'] ?? '')) || !preg_match('/^\d{2}:\d{2}$/', (string) ($s['end'] ?? ''))) {
+        continue;
+    }
+    $days  = array_values(array_unique(array_filter(array_map('intval', (array) ($s['days'] ?? [])), static fn ($d) => $d >= 1 && $d <= 7)));
+    $dates = array_values(array_filter((array) ($s['dates'] ?? []), static fn ($d) => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d)));
+    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) ($s['items'] ?? [])));
+    sort($days);
+    $clean[] = [
+        'id'       => $id,
+        'name'     => substr(trim((string) ($s['name'] ?? '')), 0, 80) ?: 'Cleaning',
+        'location' => substr(trim((string) $s['location']), 0, 64),
+        'start'    => (string) $s['start'],
+        'end'      => (string) $s['end'],
+        'days'     => $days,
+        'dates'    => $dates,
+        'items'    => $items ?: ['gloves'],
+        'enabled'  => ($s['enabled'] ?? true) !== false,
+    ];
+}
+$config['cleaning'] = ['schedules' => $clean];
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)

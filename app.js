@@ -97,6 +97,8 @@ class Component extends DCLogic {
       ppeD: null,                                     // /api/ppe/summary result
       raF: {from:'', to:'', plant:'', camera:'', verdict:'', status:'', busy:false, err:''},   // restricted-area filters
       raD: null, raMsg: '', raDraft: {},              // /api/restricted/summary result · review msg · zone drafts
+      clF: {from:'', to:'', plant:'', location:'', item:'', busy:false, err:''},   // cleaning filters
+      clD: null, clMsg: '', clDraft: null, clTab: 'overview',   // /api/cleaning/summary · status · schedule editor draft · tab
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this.API = (window.TMNS && window.TMNS.api) || '/api';
@@ -417,13 +419,14 @@ class Component extends DCLogic {
     if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
     if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
     if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
+    if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
     if(p==='rules') this.loadAlerts();
     if(p==='settings'){ this.loadApp(); this.loadAlerts(); }
     if(p==='forecast') this.loadForecast();
     if(p==='users'){ this.loadUsers(); this.loadRoles(); } }
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
   setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  pageFromHash(){ const P=['live','attendance','incidents','cameras','analytics','forecast','fire','ppe','intr','face','rules','settings','users','camera'];
+  pageFromHash(){ const P=['live','attendance','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
@@ -1245,6 +1248,53 @@ class Component extends DCLogic {
       .catch(()=>this.setState({empBusy:false, empMsg:'✗ Sync failed — network error'}));
   }
 
+  // ── Cleaning activity monitoring (/api/cleaning/*) ─────────
+  loadCl(){
+    const f=this.state.clF;
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', location:f.location||'', item:f.item||''});
+    this.setState(st=>({clF:{...st.clF, busy:true, err:''}}));
+    fetch(`${this.API}/cleaning/summary?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({clD:d, clF:{...st.clF, busy:false}})); })
+      .catch(()=>this.setState(st=>({clF:{...st.clF, busy:false, err:'Could not load cleaning data'}})));
+  }
+  setClF(patch){ this.setState(st=>({clF:{...st.clF, ...patch}})); if(this._clT) clearTimeout(this._clT); this._clT=setTimeout(()=>this.loadCl(), 0); }
+  exportCl(report){
+    const f=this.state.clF, d=this.state.clD||{};
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', location:f.location||'', item:f.item||''});
+    window.open(`${this.API}/cleaning/export?${qs}`, '_blank');
+  }
+  // Supervisor confirmation that a scheduled session was actually performed.
+  confirmCl(sess, status){
+    const note=window.prompt((status==='done'?'Confirm cleaning was done':'Record cleaning NOT performed')+' — '+sess.name+' · '+sess.date+'\n\nOptional note:', '');
+    if(note===null) return;
+    this.setState({clMsg:'Saving…'});
+    fetch(`${this.API}/cleaning/confirm`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify({schedule_id:sess.scheduleId, date:sess.date, status, note})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Save failed');
+        this.setState({clMsg:status==='done'?'Session confirmed as cleaned ✓':'Recorded as not performed ✓'}); this.loadCl(); })
+      .catch(e=>this.setState({clMsg:'✗ '+(e&&e.message||'Save failed')}));
+  }
+  // Schedule editor: a local draft of the whole list, saved through /api/settings.
+  clSched(){ return this.state.clDraft || ((this.state.clD&&this.state.clD.schedules)||[]).map(s=>({...s, dates:(s.dates||[]).join(', ')})); }
+  clSet(i, patch){ const l=this.clSched().map(x=>({...x})); l[i]={...l[i], ...patch}; this.setState({clDraft:l, clMsg:''}); }
+  clAdd(){ const l=this.clSched().map(x=>({...x}));
+    l.push({id:'clean'+Date.now().toString(36), name:'Cleaning', location:'', start:'14:00', end:'15:00', days:[1,2,3,4,5], dates:'', items:['gloves'], enabled:true});
+    this.setState({clDraft:l, clMsg:''}); }
+  clRemove(i){ const l=this.clSched().filter((_,j)=>j!==i); this.setState({clDraft:l, clMsg:''}); }
+  clSave(){
+    const l=this.clSched();
+    const bad=l.find(s=>!s.location||!/^\d{2}:\d{2}$/.test(s.start||'')||!/^\d{2}:\d{2}$/.test(s.end||'')||(!(s.days||[]).length&&!String(s.dates||'').trim()));
+    if(bad){ this.setState({clMsg:'✗ "'+(bad.name||'Cleaning')+'" needs an area, start / end time and days or dates'}); return; }
+    const out=l.map(s=>({...s, dates:String(s.dates||'').split(',').map(x=>x.trim()).filter(Boolean)}));
+    this.setState({clMsg:'Saving schedules…'});
+    fetch(`${this.API}/settings?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cleaning_schedules:out})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState({clDraft:null, clMsg:'Schedules saved ✓'}); this.loadCl(); })
+      .catch(()=>this.setState({clMsg:'✗ Save failed'}));
+  }
+
   // ── Restricted area monitoring (/api/restricted/*) ─────────
   loadRa(){
     const f=this.state.raF;
@@ -1528,7 +1578,7 @@ class Component extends DCLogic {
     const navStyle=(p)=>{ const a=st.page===p; return {go:()=>this.setPage(p), cls:a?'nav-on':''}; };
     const nav={live:navStyle('live'), attendance:navStyle('attendance'), incidents:navStyle('incidents'), cameras:navStyle('cameras'), analytics:navStyle('analytics'),
       forecast:navStyle('forecast'), users:navStyle('users'),
-      fire:navStyle('fire'), ppe:navStyle('ppe'), intr:navStyle('intr'), face:navStyle('face'), rules:navStyle('rules'), settings:navStyle('settings')};
+      fire:navStyle('fire'), ppe:navStyle('ppe'), cleaning:navStyle('cleaning'), intr:navStyle('intr'), face:navStyle('face'), rules:navStyle('rules'), settings:navStyle('settings')};
     const modMeta={
       fire:{name:'Fire & Smoke Detection', desc:'Thermal and visual smoke/flame recognition', tag:'FIRE', col:'var(--high)', model:'YOLOv8-fire · v2.4', classes:['Flame','Smoke — light','Smoke — dense','Thermal anomaly']},
       ppe:{name:'PPE Compliance', desc:'Hard hat, vest, gloves and face-shield checks', tag:'PPE', col:'var(--gold)', model:'PPE-Net · v3.1', classes:['Hard hat','Hi-vis vest','Safety gloves','Face shield']},
@@ -1537,6 +1587,7 @@ class Component extends DCLogic {
     };
     const titles={
       live:['Live Monitoring','Kian Joo VisionAI · Plant 1 & 2'],
+      cleaning:['Cleaning Activity','Cleaning schedules and PPE compliance during cleaning'],
       attendance:['Attendance & Movement','Facial-recognition entry, latest location and movement journey'],
       incidents:['Incident Management','Track, triage and resolve detection events'],
       cameras:['Camera Fleet','Manage RTSP streams and detection assignments'],
@@ -2666,6 +2717,70 @@ class Component extends DCLogic {
     const attKioskChips=chipRow([[1,'Kiosk check-ins count as clock-in / out'],[0,'Kiosk = movement only']],
       (ap&&ap.att_kiosk_clock===false)?0:1, v=>this.saveApp({att_kiosk_clock:!!v}, 'Kiosk rule saved ✓'));
 
+    // ===== CLEANING ACTIVITY MONITORING (/api/cleaning/summary) =====
+    const cd=st.clD||{}, cf=st.clF, ck=cd.kpi||{};
+    const CL_ITEMS=cd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves'};
+    const clItem=(i)=>CL_ITEMS[i]||i;
+    const clSel=(key,list,blank)=>({value:cf[key]||'', options:[{v:'',label:blank}, ...list],
+      onChange:(e)=>this.setClF({[key]:(e&&e.target)?e.target.value:''})});
+    const clPlantSel=clSel('plant', (cd.plants||[]).map(x=>({v:x,label:x})), 'All plants');
+    const clLocSel=clSel('location', [...new Set((cd.schedules||[]).map(s=>s.location))].map(x=>({v:x,label:x})), 'All cleaning areas');
+    const clItemSel=clSel('item', Object.keys(CL_ITEMS).map(k=>({v:k,label:CL_ITEMS[k]})), 'All violation types');
+    const clKpis=[
+      ['SCHEDULED SESSIONS', ck.sessions||0, 'var(--text)', 'cleaning windows in range'],
+      ['IN PROGRESS NOW', ck.inProgress||0, ck.inProgress?'var(--gold)':'var(--text3)', 'scheduled window running'],
+      ['PEOPLE CHECKED', ck.checks||0, 'var(--text)', 'PPE checks during cleaning windows'],
+      ['PPE VIOLATIONS', ck.violations||0, ck.violations?'var(--crit)':'var(--ok)', 'missing required PPE while cleaning'],
+      ['COMPLIANCE', ck.compliance==null?'—':(ck.compliance+'%'), ck.compliance==null?'var(--text3)':(ck.compliance>=95?'var(--ok)':(ck.compliance>=80?'var(--gold)':'var(--crit)')), 'checks with all required PPE'],
+      ['NO ACTIVITY SEEN', ck.noActivity||0, ck.noActivity?'var(--high)':'var(--ok)', 'ended sessions with nobody detected'],
+    ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
+    const CL_STATE={upcoming:['UPCOMING','var(--text3)'], in_progress:['IN PROGRESS','var(--gold)'], ended:['ENDED','var(--text2)']};
+    const clSessions=(cd.sessions||[]).map(s=>{ const stt=CL_STATE[s.state]||[s.state,'var(--text3)'];
+      const comp=s.checks?Math.round(100*(s.checks-s.violations)/s.checks):null;
+      return {
+        name:s.name, when:s.date+' · '+String(s.start).slice(11,16)+'–'+String(s.end).slice(11,16),
+        where:[s.plant, s.location].filter(Boolean).join(' · '), req:'Requires '+s.items.map(clItem).join(', '),
+        state:stt[0], stateCol:stt[1],
+        observed:s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'no camera mapped to this area',
+        observedCol:!s.cameras?'var(--high)':(s.state==='ended'&&!s.detections?'var(--high)':'var(--text2)'),
+        ppe:s.checks?(s.checks+' checked · '+s.violations+' violation'+(s.violations===1?'':'s')+' · '+comp+'%'):'no PPE checks',
+        ppeCol:s.violations?'var(--crit)':(s.checks?'var(--ok)':'var(--text3)'),
+        conf:s.confirmed==='done'?('✓ Cleaning done · '+(s.confirmedBy||'')):(s.confirmed==='not_done'?('✗ Not performed · '+(s.confirmedBy||'')):'Not confirmed'),
+        confCol:s.confirmed==='done'?'var(--ok)':(s.confirmed==='not_done'?'var(--crit)':'var(--text3)'),
+        note:s.note||'', canConfirm:s.state!=='upcoming',
+        onDone:()=>this.confirmCl(s,'done'), onNotDone:()=>this.confirmCl(s,'not_done'),
+      }; });
+    const clViol=(cd.violations||[]).map(v=>({
+      thumb:v.image?`url('${v.image}') center/cover no-repeat`:grad,
+      missing:'No '+v.missing.map(i=>clItem(i).replace('Safety ','').toLowerCase()).join(', '),
+      session:v.schedule||'', where:[v.plant, v.location].filter(Boolean).join(' · '), cam:v.camera,
+      time:String(v.time).slice(0,16),
+      onOpen:()=>{ if(v.image) this.openLightbox(v.image, 'PPE violation during cleaning · '+v.location+' · '+String(v.time).slice(0,16)); },
+    }));
+    const clByItem=Object.keys(CL_ITEMS).map(k=>{ const b=(cd.byItem||{})[k]||{required:0,missing:0};
+      const pct=b.required?Math.round(100*b.missing/b.required):0;
+      return {label:CL_ITEMS[k], value:b.required?(b.missing+' missed / '+b.required+' required'):'not required in range',
+        w:pct+'%', col:pct>20?'var(--crit)':(pct>5?'var(--gold)':'var(--ok)')}; });
+    // Schedule editor rows
+    const clLocOpts=(cd.locations||[]);
+    const clMapped=cd.mappedLocations||[];
+    const clDays=[[1,'Mon'],[2,'Tue'],[3,'Wed'],[4,'Thu'],[5,'Fri'],[6,'Sat'],[7,'Sun']];
+    const clEdit=this.clSched().map((s,i)=>({
+      name:s.name, start:s.start, end:s.end, dates:s.dates||'',
+      onName:(e)=>this.clSet(i,{name:(e&&e.target)?e.target.value:''}),
+      onStart:(e)=>this.clSet(i,{start:(e&&e.target)?e.target.value:''}),
+      onEnd:(e)=>this.clSet(i,{end:(e&&e.target)?e.target.value:''}),
+      onDates:(e)=>this.clSet(i,{dates:(e&&e.target)?e.target.value:''}),
+      locSel:{value:s.location||'', onChange:(e)=>this.clSet(i,{location:(e&&e.target)?e.target.value:''}),
+        options:[{v:'',label:'— Cleaning area —'}, ...clLocOpts.map(L=>({v:L, label:L+(clMapped.indexOf(L)>=0?'':' (no camera mapped)')}))]},
+      days:clDays.map(([d,label])=>{ const on=(s.days||[]).indexOf(d)>=0;
+        return {label, cls:on?'chip on':'chip', onClick:()=>this.clSet(i,{days:on?s.days.filter(x=>x!==d):[...(s.days||[]),d].sort()})}; }),
+      items:Object.keys(CL_ITEMS).map(k=>{ const on=(s.items||[]).indexOf(k)>=0;
+        return {label:CL_ITEMS[k], cls:on?'chip on':'chip', onClick:()=>this.clSet(i,{items:on?s.items.filter(x=>x!==k):[...(s.items||[]),k]})}; }),
+      enabled:[[true,'Active'],[false,'Paused']].map(([v,label])=>({label, cls:(s.enabled!==false)===v?'chip on':'chip', onClick:()=>this.clSet(i,{enabled:v})})),
+      onRemove:()=>this.clRemove(i),
+      warn:s.location&&clMapped.indexOf(s.location)<0?'No camera is mapped to this area (Settings → POC Camera Points), so nobody can be checked during it.':'',
+    }));
     // ===== RESTRICTED AREA MONITORING (/api/restricted/summary) =====
     const rd=st.raD||{}, rf=st.raF, rk2=rd.kpi||{};
     const VERD={violation:['UNAUTHORIZED','var(--crit)'], review:['NEEDS REVIEW','var(--gold)'],
@@ -2967,6 +3082,19 @@ class Component extends DCLogic {
       goSettingsPpe:()=>{ this.setState({spTab:'ppe'}); this.setPage('settings'); },
       ppeNoRules:!!pd.from && !Object.keys(pd.rules||{}).length,
       spTabPpe:st.spTab==='ppe', ppeRuleRows,
+      isCleaning:st.page==='cleaning', clKpis, clSessions, clViol, clByItem, clEdit,
+      clNoSessions:!!cd.from && clSessions.length===0, clNoViol:!!cd.from && clViol.length===0,
+      clNoSchedules:!!cd.from && !(cd.schedules||[]).length,
+      clPlantSel, clLocSel, clItemSel, clMsg:st.clMsg||'', clStatus:cf.busy?'Loading…':(cf.err||''),
+      clFrom:cf.from||cd.from||'', clTo:cf.to||cd.to||'',
+      onClFrom:(e)=>this.setClF({from:(e&&e.target)?e.target.value:''}),
+      onClTo:(e)=>this.setClF({to:(e&&e.target)?e.target.value:''}),
+      reloadCl:()=>this.loadCl(), exportClSess:()=>this.exportCl('sessions'), exportClViol:()=>this.exportCl('violations'),
+      clTabOverview:st.clTab!=='schedules', clTabSchedules:st.clTab==='schedules',
+      clTabs:[['overview','Monitoring'],['schedules','Cleaning schedules']].map(([k,label])=>({label,
+        cls:(st.clTab||'overview')===k?'chip on':'chip', onClick:()=>this.setState({clTab:k})})),
+      goClSchedules:()=>this.setState({clTab:'schedules'}),
+      clAdd:()=>this.clAdd(), clSave:()=>this.clSave(),
       isIntrPage:st.page==='intr', raKpis, raDaily, raByZone, raInc, raNoInc:!!rd.from && raInc.length===0, raNoZones,
       raPlantSel, raCamSel, raVerdictSel, raStatusSel, raMsg:st.raMsg||'',
       raStatus:rf.busy?'Loading…':(rf.err||''),

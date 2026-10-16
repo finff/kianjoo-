@@ -747,6 +747,70 @@ try {
         exit;
     }
 
+    // ── Cleaning activity monitoring ─────────────────────────
+    // GET  /cleaning/summary?from=&to=&plant=&location=&item=  → sessions, KPIs, violations during cleaning
+    // GET  /cleaning/export?report=sessions|violations&…       → CSV
+    // POST /cleaning/confirm {schedule_id, date, status: done|not_done, note}  (signed in)
+    if ($route === '/cleaning/summary' || $route === '/cleaning/export' || $route === '/cleaning/confirm') {
+        require_once APP_ROOT . '/lib/Ppe.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $cl    = new Cleaning($pdo, $config, $store);
+
+        if ($route === '/cleaning/confirm') {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to confirm cleaning sessions.', 401);
+            }
+            if ($method !== 'POST') {
+                Response::error('POST {schedule_id, date, status, note}.', 405);
+            }
+            $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+            $ok = $cl->confirm((string) ($in['schedule_id'] ?? ''), (string) ($in['date'] ?? ''), (string) ($in['status'] ?? ''),
+                trim((string) ($in['note'] ?? '')), (string) ($me['name'] ?? $me['username'] ?? 'operator'));
+            $ok ? Response::ok(['confirmed' => true]) : Response::error('Unknown session or status.', 422);
+        }
+
+        $requireToken($config['auth']['read_token']);
+        $ppe = new Ppe($pdo, $config, $store);
+        $ppe->catchUp();
+        $f = [];
+        foreach (['from', 'to', 'plant', 'location', 'item'] as $k) {
+            $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+        }
+        if ($f['from'] === '') {
+            $f['from'] = date('Y-m-d', time() - 6 * 86400);
+        }
+        if ($f['to'] === '') {
+            $f['to'] = date('Y-m-d', time() + 86400);   // include tomorrow's upcoming sessions
+        }
+
+        if ($route === '/cleaning/summary') {
+            Response::ok($cl->summary($f, $ppe) + [
+                'schedules' => $config['cleaning']['schedules'], 'items' => Ppe::ITEMS,
+                'plants'    => $config['attendance']['plants'],
+                'locations' => array_values(array_unique(array_merge(
+                    $config['poc']['locations'] ?? [], array_values($config['poc']['cam_locations'] ?? [])))),
+                'mappedLocations' => array_values(array_unique(array_values($config['poc']['cam_locations'] ?? []))),
+            ]);
+        }
+
+        $report = (string) ($_GET['report'] ?? 'sessions') === 'violations' ? 'violations' : 'sessions';
+        $rows   = $report === 'violations' ? $ppe->exportViolations($f + ['cleaning' => 1]) : $cl->exportSessions($f);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="cleaning-' . $report . '-' . Attendance::cleanDate($f['from'])
+            . '-to-' . Attendance::cleanDate($f['to']) . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        foreach ($rows as $r) {
+            fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+        }
+        fclose($out);
+        exit;
+    }
+
     // ── Restricted area monitoring ───────────────────────────
     // GET  /restricted/summary?from=&to=&plant=&camera=&zone=&verdict=&status=  → KPIs, trend, zones, incidents
     // GET  /restricted/export?report=incidents|summary&…                       → CSV
@@ -1367,6 +1431,20 @@ try {
                 }
                 $out['ra_zones'] = (object) $zones;
             }
+            // Cleaning schedules: [{id, name, location, start, end, days[], dates[], items[], enabled}]
+            if (isset($in['cleaning_schedules']) && is_array($in['cleaning_schedules'])) {
+                $out['cleaning_schedules'] = array_values(array_map(static fn ($c) => [
+                    'id'       => substr(strtolower(preg_replace('/[^a-z0-9_-]+/i', '', (string) ($c['id'] ?? ''))), 0, 40),
+                    'name'     => substr(trim((string) ($c['name'] ?? '')), 0, 80),
+                    'location' => substr(trim((string) ($c['location'] ?? '')), 0, 64),
+                    'start'    => substr((string) ($c['start'] ?? ''), 0, 5),
+                    'end'      => substr((string) ($c['end'] ?? ''), 0, 5),
+                    'days'     => array_map('intval', (array) ($c['days'] ?? [])),
+                    'dates'    => array_values(array_filter(array_map('trim', is_array($c['dates'] ?? null) ? $c['dates'] : explode(',', (string) ($c['dates'] ?? ''))))),
+                    'items'    => array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) ($c['items'] ?? []))),
+                    'enabled'  => ($c['enabled'] ?? true) !== false,
+                ], array_slice(array_filter($in['cleaning_schedules'], 'is_array'), 0, 100)));
+            }
             if (isset($in['att_kiosk_clock'])) {
                 $out['att_kiosk_clock'] = (bool) $in['att_kiosk_clock'];
             }
@@ -1445,6 +1523,7 @@ try {
             'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
             'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
             'ra_zones'           => (object) ($config['restricted']['zones'] ?? []),
+            'cleaning_schedules' => $config['cleaning']['schedules'] ?? [],
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken
