@@ -89,6 +89,72 @@ final class Database
         self::migrateFeedKind($pdo);
         self::migratePersonId($pdo);
         self::migratePersonProfiles($pdo);
+        self::migrateKiosk($pdo);
+    }
+
+    /**
+     * v8: browser check-in kiosk. The kiosk computes a 128-d face descriptor
+     * in the browser; the server matches it against face_templates (one or
+     * more per person_id — enrolled employees and recurring unknown faces
+     * alike) and logs a kiosk_checkins row with the time, location, snapshot
+     * and the attributes the browser estimated. Kept apart from `events` so a
+     * check-in never becomes an incident; attendance merges both sources.
+     */
+    private static function migrateKiosk(PDO $pdo): void
+    {
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS face_templates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id  TEXT NOT NULL,
+    descriptor TEXT NOT NULL,
+    source     TEXT,
+    created_at TEXT
+)
+SQL);
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS kiosk_checkins (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id   TEXT NOT NULL,
+    kiosk       TEXT,
+    location    TEXT,
+    captured_at TEXT,
+    similarity  TEXT,
+    snapshot    TEXT,
+    attrs_json  TEXT,
+    remote_ip   TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_ft_person ON face_templates(person_id)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_kc_person ON kiosk_checkins(person_id)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_kc_time ON kiosk_checkins(captured_at)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS face_templates (
+    id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    person_id  VARCHAR(64) NOT NULL,
+    descriptor TEXT NOT NULL,
+    source     VARCHAR(20),
+    created_at DATETIME,
+    KEY idx_ft_person (person_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS kiosk_checkins (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    person_id   VARCHAR(64) NOT NULL,
+    kiosk       VARCHAR(64),
+    location    VARCHAR(64),
+    captured_at DATETIME,
+    similarity  VARCHAR(24),
+    snapshot    VARCHAR(255),
+    attrs_json  TEXT,
+    remote_ip   VARCHAR(64),
+    KEY idx_kc_person (person_id),
+    KEY idx_kc_time (captured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
     }
 
     /**

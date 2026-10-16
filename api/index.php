@@ -673,7 +673,126 @@ try {
             'locations'      => $config['poc']['locations'] ?? [],
             'mapped_cams'    => count($locMap),
             'enrolled'       => count($profiles),
+            'kiosk_checkins' => (static function () use ($pdo, $days): int {
+                try {
+                    $q = $pdo->prepare('SELECT COUNT(*) FROM kiosk_checkins WHERE captured_at >= :f');
+                    $q->execute(['f' => date('Y-m-d H:i:s', time() - $days * 86400)]);
+                    return (int) $q->fetchColumn();
+                } catch (Throwable $e) {
+                    return 0;
+                }
+            })(),
         ]);
+    }
+
+    // ── Check-in kiosk (browser face attendance; session-gated) ──
+    // GET  /kiosk/config   → locations + enrolled face count
+    // POST /kiosk/checkin  → {descriptor[128], kiosk, location, attrs{}, snapshot} → match + log
+    // POST /kiosk/enrol    → {name, staff_id, descriptors[[128]…], snapshot} (settings permission)
+    // GET  /kiosk/snap?f=  → a stored check-in snapshot (signed-in users only)
+    if (($seg[0] ?? '') === 'kiosk') {
+        require_once APP_ROOT . '/lib/Auth.php';
+        require_once APP_ROOT . '/lib/Kiosk.php';
+        $me = Auth::user();
+        if ($me === null) {
+            Response::error('Sign in to use the check-in kiosk.', 401);
+        }
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $kiosk = new Kiosk($pdo, APP_ROOT, (string) ($config['app']['url'] ?? ''));
+        $act   = $seg[1] ?? '';
+
+        if ($act === 'snap' && $method === 'GET') {
+            $path = $kiosk->snapPath((string) ($_GET['f'] ?? ''));
+            if ($path === null) {
+                http_response_code(404);
+                exit;
+            }
+            header('Content-Type: image/jpeg');
+            header('Cache-Control: private, max-age=86400');
+            header('Content-Length: ' . filesize($path));
+            readfile($path);
+            exit;
+        }
+
+        if ($act === 'config' && $method === 'GET') {
+            Response::ok([
+                'locations' => $config['poc']['locations'] ?? [],
+                'enrolled'  => $kiosk->templateCount(),
+                'canEnrol'  => Auth::can('settings'),
+                'matchDist' => Kiosk::MATCH_DIST,
+                'cooldown'  => Kiosk::COOLDOWN_S,
+            ]);
+        }
+
+        if ($method !== 'POST') {
+            Response::error('Not found: ' . $route, 404);
+        }
+        $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+        $tag = static fn ($v, int $n) => mb_substr(trim(preg_replace('/[^\p{L}\p{N} _\-\/.—&]/u', '', (string) $v) ?? ''), 0, $n);
+
+        if ($act === 'checkin') {
+            $desc = Kiosk::descriptor($in['descriptor'] ?? null);
+            if ($desc === null) {
+                Response::error('descriptor must be 128 numbers.', 422);
+            }
+            $res = $kiosk->checkin($desc, $tag($in['kiosk'] ?? 'kiosk', 64) ?: 'kiosk',
+                $tag($in['location'] ?? '', 64), is_array($in['attrs'] ?? null) ? $in['attrs'] : [],
+                isset($in['snapshot']) ? (string) $in['snapshot'] : null, $_SERVER['REMOTE_ADDR'] ?? null);
+            $pr = $store->personProfiles()[$res['person_id']] ?? null;
+            Response::ok($res + [
+                'known'   => $pr !== null,
+                'name'    => $pr['name'] ?? null,
+                'staffId' => $pr['staffId'] ?? null,
+            ]);
+        }
+
+        if ($act === 'enrol') {
+            if (!Auth::can('settings')) {
+                Response::error('Forbidden: enrolling faces needs the settings permission.', 403);
+            }
+            $name  = mb_substr(trim((string) ($in['name'] ?? '')), 0, 160);
+            $staff = preg_replace('/[^A-Za-z0-9_\-\/]/', '', (string) ($in['staff_id'] ?? ''));
+            if ($name === '' || $staff === '') {
+                Response::error('Full name and staff ID are required.', 422);
+            }
+            $descs = [];
+            foreach (array_slice(is_array($in['descriptors'] ?? null) ? $in['descriptors'] : [], 0, 5) as $d) {
+                if (($d = Kiosk::descriptor($d)) !== null) {
+                    $descs[] = $d;
+                }
+            }
+            if (!$descs) {
+                Response::error('At least one face sample is required.', 422);
+            }
+            $profiles = $store->personProfiles();
+            $pid  = $kiosk->enrolPersonId($descs, $staff, $profiles);
+            // Refuse a face that already belongs to a different enrolled employee.
+            $near = $kiosk->nearest($descs[0]);
+            if ($near['person_id'] !== null && $near['person_id'] !== $pid && $near['dist'] < 0.4
+                && isset($profiles[$near['person_id']])) {
+                $other = $profiles[$near['person_id']];
+                Response::error('This face is already enrolled as ' . $other['name']
+                    . ($other['staffId'] !== '' ? ' (' . $other['staffId'] . ')' : '') . '.', 409);
+            }
+            $file = isset($in['snapshot']) ? $kiosk->saveSnapshot((string) $in['snapshot']) : null;
+            foreach ($descs as $d) {
+                $kiosk->addTemplate($pid, $d, 'enrol');
+            }
+            $old = $profiles[$pid] ?? [];
+            $store->savePersonProfile($pid, [
+                'name'     => $name,
+                'staff_id' => $staff,
+                'age'      => (string) ($old['age'] ?? ''),
+                'gender'   => (string) ($old['gender'] ?? ''),
+                'about'    => (string) ($old['about'] ?? ''),
+                'photo'    => $kiosk->snapUrl($file),
+            ], (string) $me['name']);
+            Response::ok(['person_id' => $pid, 'name' => $name, 'staffId' => $staff,
+                          'samples' => count($descs), 'enrolled' => $kiosk->templateCount()]);
+        }
+
+        Response::error('Not found: ' . $route, 404);
     }
 
     // ── People roster + profiles ─────────────────────────────

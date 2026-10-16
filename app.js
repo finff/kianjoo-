@@ -2291,10 +2291,16 @@ class Component extends DCLogic {
       || String(r.staffId||'').toLowerCase().indexOf(attQ)>=0
       || String(r.name||'').toLowerCase().indexOf(attQ)>=0
       || String(r.personId||'').indexOf(attQ)>=0);
+    // Captured attributes: kiosk estimates (gender, ~age, expression) or the
+    // SenseStudio-decoded ones (gender, age band, mask).
+    const attrTxt=(a)=>{ if(!a) return ''; const age=a.age==null?'':(typeof a.age==='number'?('~'+a.age+' yrs'):String(a.age));
+      return [a.gender, age, a.expression, a.mask].filter(Boolean).join(' · '); };
     const attRows=attKnown.map(r=>({
       photoBg: r.photo?`url('${r.photo}') center/cover no-repeat`:(r.lastImage?`url('${r.lastImage}') center/cover no-repeat`:grad),
       name:r.name||'—',
       staff:r.staffId?('Staff ID '+r.staffId):('#'+r.personId),
+      attrs:attrTxt(r.lastAttrs),
+      entrySrc:r.firstSource==='kiosk'?'via check-in kiosk':'via CCTV camera',
       entry:fmtT(r.firstSeen), entryLoc:r.firstLoc||'—',
       latest:fmtT(r.lastSeen), latestLoc:r.lastLoc||'—',
       route:(r.route||[]).slice(-6).join('  →  ')||'—',
@@ -2309,7 +2315,7 @@ class Component extends DCLogic {
     const attUnknown=attUnknownAll.slice(0,24).map(r=>({
       thumb:r.lastImage?`url('${r.lastImage}') center/cover no-repeat`:grad,
       id:'#'+r.personId,
-      meta:(r.captures||0)+'× · '+(r.lastLoc||'—')+' · '+fmtT(r.lastSeen),
+      meta:(r.captures||0)+'× · '+(r.lastLoc||'—')+' · '+fmtT(r.lastSeen)+(attrTxt(r.lastAttrs)?' · '+attrTxt(r.lastAttrs):''),
       onEnrol:(e)=>{ if(e&&e.stopPropagation)e.stopPropagation(); this.openProfile({personId:r.personId, image:r.lastImage||''}); },
       onJourney:()=>this.openJourney({personId:r.personId, lastImage:r.lastImage}),
       onOpen:()=>{ if(r.lastImage) this.openLightbox(r.lastImage,'Unknown personnel #'+r.personId+' · '+(r.lastLoc||'')+' · '+fmtT(r.lastSeen)); },
@@ -2326,7 +2332,7 @@ class Component extends DCLogic {
     const attMappedLine= att
       ? ((att.mapped_cams||0)+' camera'+(att.mapped_cams===1?'':'s')+' mapped to POC points · movement is captured only at mapped camera points — not continuous GPS-style tracking')
       : '';
-    const attNeedsMap= !!att && (att.mapped_cams||0)===0;
+    const attNeedsMap= !!att && (att.mapped_cams||0)===0 && (att.kiosk_checkins||0)===0;
     const attEmpty= !!att && !st.attBusy && attRows.length===0;
 
     // Journey modal (chronological camera-point detections + dwell)

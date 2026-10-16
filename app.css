@@ -1053,3 +1053,8 @@
   .att-thead{display:none}
   .att-row{grid-template-columns:1fr 1fr;gap:8px}
 }
+
+/* Attendance → check-in kiosk link + captured attributes */
+.att-kiosk-btn{margin-left:auto;text-decoration:none;display:inline-flex;align-items:center}
+.att-attrs{font-size:10.5px;color:var(--text3);margin-top:2px}
+.att-src{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text3);margin-top:2px;letter-spacing:.2px}

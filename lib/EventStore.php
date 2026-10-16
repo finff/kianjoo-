@@ -834,25 +834,20 @@ final class EventStore
     public function attendanceReport(array $locMap, int $days = 1, int $inactivityMin = 45): array
     {
         $from = date('Y-m-d H:i:s', time() - max(1, min(90, $days)) * 86400);
-        $stmt = $this->pdo->prepare(
-            "SELECT person_id, stream, device_name, received_at, trigger_time, trigger_img_url
-             FROM events
-             WHERE person_id IS NOT NULL AND person_id <> '' AND received_at >= :f
-             ORDER BY id ASC"
-        );
-        $stmt->execute(['f' => $from]);
 
         $people = [];
-        foreach ($stmt->fetchAll() as $r) {
-            $pid = (string) $r['person_id'];
-            $loc = $this->locOf($r['stream'] ?? null, $r['device_name'] ?? null, $locMap);
-            $ts  = (string) ($r['received_at'] ?? '');
-            $img = $this->fullUrl($r['trigger_img_url'] ?? null);
+        foreach ($this->sightings(null, $from, $locMap) as $r) {
+            $pid = $r['person_id'];
+            $loc = $r['location'];
+            $ts  = $r['time'];
+            $img = $r['image'];
             if (!isset($people[$pid])) {
                 $people[$pid] = [
                     'personId' => $pid, 'captures' => 0,
                     'firstSeen' => $ts, 'firstLoc' => $loc, 'firstImage' => $img,
+                    'firstSource' => $r['source'], 'firstAttrs' => $r['attrs'],
                     'lastSeen' => $ts, 'lastLoc' => $loc, 'lastImage' => $img,
+                    'lastAttrs' => $r['attrs'],
                     'route' => [],
                 ];
             }
@@ -862,6 +857,9 @@ final class EventStore
             $p['lastLoc']  = $loc;
             if ($img) {
                 $p['lastImage'] = $img;
+            }
+            if ($r['attrs']) {
+                $p['lastAttrs'] = $r['attrs'];
             }
             // Ordered, de-duplicated movement sequence (consecutive repeats collapse).
             if (!$p['route'] || end($p['route']) !== $loc) {
@@ -895,27 +893,21 @@ final class EventStore
     public function movementJourney(string $personId, array $locMap, int $days = 7, int $limit = 1000): array
     {
         $from = date('Y-m-d H:i:s', time() - max(1, min(90, $days)) * 86400);
-        $stmt = $this->pdo->prepare(
-            "SELECT stream, device_name, received_at, trigger_time, trigger_img_url, bk_image_url, similarity
-             FROM events
-             WHERE person_id = :p AND received_at >= :f
-             ORDER BY id ASC
-             LIMIT " . (int) $limit
-        );
-        $stmt->execute(['p' => $personId, 'f' => $from]);
 
         $steps  = [];
         $visits = [];
-        foreach ($stmt->fetchAll() as $r) {
-            $loc  = $this->locOf($r['stream'] ?? null, $r['device_name'] ?? null, $locMap);
-            $ts   = (string) ($r['received_at'] ?? '');
-            $img  = $this->fullUrl($r['trigger_img_url'] ?? null);
+        foreach (array_slice($this->sightings($personId, $from, $locMap), 0, $limit) as $r) {
+            $loc  = $r['location'];
+            $ts   = $r['time'];
+            $img  = $r['image'];
             $steps[] = [
                 'time'       => $ts,
                 'location'   => $loc,
-                'camera'     => strtoupper(Text::latin((string) ($r['stream'] ?: $r['device_name'] ?: ''), '')),
+                'camera'     => $r['camera'],
                 'image'      => $img,
-                'similarity' => (string) ($r['similarity'] ?? ''),
+                'similarity' => $r['similarity'],
+                'source'     => $r['source'],
+                'attrs'      => $r['attrs'],
             ];
             $last = $visits ? count($visits) - 1 : -1;
             if ($last >= 0 && $visits[$last]['location'] === $loc) {
@@ -936,6 +928,70 @@ final class EventStore
         }
         unset($v);
         return ['steps' => $steps, 'visits' => $visits];
+    }
+
+    /**
+     * Every face sighting in time order, from both attendance sources:
+     * SenseStudio face events (location via the camera-point map) and browser
+     * kiosk check-ins (location chosen on the kiosk). `attrs` carries the
+     * captured attributes — age / gender / expression from the kiosk, the
+     * decoded SenseStudio attributes from a camera event.
+     *
+     * @return list<array{person_id:string,time:string,location:string,camera:string,image:?string,similarity:string,source:string,attrs:array}>
+     */
+    private function sightings(?string $personId, string $from, array $locMap): array
+    {
+        $out = [];
+        $sql = "SELECT person_id, stream, device_name, received_at, trigger_img_url, similarity, decoded_json
+                FROM events
+                WHERE person_id IS NOT NULL AND person_id <> '' AND received_at >= :f"
+             . ($personId !== null ? ' AND person_id = :p' : '') . ' ORDER BY id ASC';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['f' => $from] + ($personId !== null ? ['p' => $personId] : []));
+        foreach ($stmt->fetchAll() as $r) {
+            $dec = json_decode((string) ($r['decoded_json'] ?? ''), true) ?: [];
+            $out[] = [
+                'person_id'  => (string) $r['person_id'],
+                'time'       => (string) ($r['received_at'] ?? ''),
+                'location'   => $this->locOf($r['stream'] ?? null, $r['device_name'] ?? null, $locMap),
+                'camera'     => strtoupper(Text::latin((string) ($r['stream'] ?: $r['device_name'] ?: ''), '')),
+                'image'      => $this->fullUrl($r['trigger_img_url'] ?? null),
+                'similarity' => (string) ($r['similarity'] ?? ''),
+                'source'     => 'camera',
+                'attrs'      => array_filter([
+                    'gender' => in_array($dec['Gender'] ?? '', ['Male', 'Female'], true) ? $dec['Gender'] : null,
+                    'age'    => isset($dec['Age']) ? Text::latin((string) $dec['Age'], '') : null,
+                    'mask'   => $dec['WithMask'] ?? null,
+                ]),
+            ];
+        }
+
+        try {
+            $sql = 'SELECT person_id, kiosk, location, captured_at, similarity, snapshot, attrs_json
+                    FROM kiosk_checkins WHERE captured_at >= :f'
+                 . ($personId !== null ? ' AND person_id = :p' : '') . ' ORDER BY id ASC';
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['f' => $from] + ($personId !== null ? ['p' => $personId] : []));
+            $base = rtrim((string) ($this->cfg['app']['url'] ?? ''), '/');
+            foreach ($stmt->fetchAll() as $r) {
+                $out[] = [
+                    'person_id'  => (string) $r['person_id'],
+                    'time'       => (string) ($r['captured_at'] ?? ''),
+                    'location'   => (string) ($r['location'] ?: 'Check-in kiosk'),
+                    'camera'     => 'KIOSK ' . strtoupper((string) ($r['kiosk'] ?? '')),
+                    'image'      => !empty($r['snapshot']) ? $base . '/api/kiosk/snap?f=' . rawurlencode((string) $r['snapshot']) : null,
+                    'similarity' => (string) ($r['similarity'] ?? ''),
+                    'source'     => 'kiosk',
+                    'attrs'      => array_filter(json_decode((string) ($r['attrs_json'] ?? ''), true) ?: [],
+                        static fn ($v) => $v !== null && $v !== ''),
+                ];
+            }
+        } catch (Throwable $e) {
+            // kiosk table not migrated yet — camera events only
+        }
+
+        usort($out, static fn ($a, $b) => strcmp($a['time'], $b['time']));
+        return $out;
     }
 
     /** Device serial → dashboard stream label (lower-case, alphanumeric only). */

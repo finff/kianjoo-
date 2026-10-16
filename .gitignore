@@ -21,6 +21,7 @@ storage/upstream_state.json
 storage/forecast_llm.json
 storage/mail_*.lock
 storage/attachments/
+storage/kiosk/
 
 # Employee/operator-uploaded profile photos — privacy, not source.
 uploads/profiles/

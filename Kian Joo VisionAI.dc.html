@@ -981,11 +981,12 @@
           </sc-for>
           <button class="c185 chip" onClick="{{ reloadAtt }}">⟳ Refresh</button>
           <span class="c100">{{ attStatus }}</span>
+          <a class="c185 chip on att-kiosk-btn" href="/kiosk.php" target="_blank" rel="noopener">◉ Open check-in kiosk</a>
         </div>
 
         <sc-if value="{{ attNeedsMap }}" hint-placeholder-val="{{ false }}">
-          <div class="att-note">No cameras are mapped to POC camera points yet — detections show raw camera labels.
-            Map Plant 1 / Plant 2 Guard Posts, Lobby Entrance, 8 Color Entrance and Conventional Entrance under Settings.
+          <div class="att-note">Attendance comes from two sources: the browser check-in kiosk (open it on a tablet or PC with a webcam at an entrance) and SenseStudio CCTV cameras.
+            For CCTV, map Plant 1 / Plant 2 Guard Posts, Lobby Entrance, 8 Color Entrance and Conventional Entrance under Settings.
             <button class="c185 chip on" onClick="{{ goSettingsPoc }}">Open POC Camera Points</button>
           </div>
         </sc-if>
@@ -1000,9 +1001,9 @@
             <div class="att-row">
               <div class="att-emp">
                 <div class="att-face" style="background:{{ r.photoBg }}" onClick="{{ r.onExpand }}"></div>
-                <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
+                <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.attrs }}</div></div>
               </div>
-              <div><div class="att-time">{{ r.entry }}</div><div class="att-loc">{{ r.entryLoc }}</div></div>
+              <div><div class="att-time">{{ r.entry }}</div><div class="att-loc">{{ r.entryLoc }}</div><div class="att-src">{{ r.entrySrc }}</div></div>
               <div><div class="att-time">{{ r.latest }}</div><div class="att-loc">{{ r.latestLoc }}</div></div>
               <div class="att-route">{{ r.route }}</div>
               <div class="att-status" style="color:{{ r.statusCol }}">{{ r.statusLabel }}</div>
@@ -1010,7 +1011,7 @@
             </div>
           </sc-for>
           <sc-if value="{{ attEmpty }}" hint-placeholder-val="{{ false }}">
-            <div class="c100 att-cap">No enrolled employees detected in this window — enrol faces (with staff IDs) from Face &amp; Body › People, or widen the range.</div>
+            <div class="c100 att-cap">No enrolled employees detected in this window — register faces in the check-in kiosk (Register face), enrol unknown personnel below, or widen the range.</div>
           </sc-if>
         </div>
 
