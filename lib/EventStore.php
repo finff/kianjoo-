@@ -82,10 +82,32 @@ final class EventStore
             }
         }
 
+        // Forklift zone: a vehicle / forklift detection at a configured
+        // forklift-zone camera (or from a policy named "forklift") gets a zone
+        // verdict (violation / logged).
+        $fkZone = $fkJudge = null;
+        $fkProbe = [
+            'trigger_image_type' => $this->str($payload, 'triggerImageType') ?? '',
+            'event_type'  => $this->str($payload, 'eventType') ?? '',
+            'policy_name' => $this->str($payload, 'policyName') ?? '',
+            'policy_desc' => $this->str($payload, 'policyDesc') ?? '',
+            'decoded'     => $decoded['map'],
+        ];
+        if (!empty($this->cfg['forklift']['zones']) || preg_match('/fork.?lift/i', implode(' ', array_slice($fkProbe, 0, 4)))) {
+            require_once __DIR__ . '/Forklift.php';
+            [$fkRec, $fkZone] = (new Forklift($this->pdo, $this->cfg, $this))
+                ->applies($fkProbe, $stream, $this->str($payload, 'deviceName'));
+            if ($fkRec) {
+                $fkJudge = Forklift::judge($fkZone, time());
+                $decoded['map'] = Forklift::tag($decoded['map'], $fkZone, $fkJudge, (string) $stream);
+            }
+        }
+
         // Restricted zone: an intrusion detection at a configured zone camera
         // gets an authorization verdict (authorized / violation / review).
+        // A forklift detection is a vehicle, not a person entry — skip it.
         $raZone = $raJudge = null;
-        if (!empty($this->cfg['restricted']['zones'])) {
+        if (!empty($this->cfg['restricted']['zones']) && $fkJudge === null) {
             require_once __DIR__ . '/Restricted.php';
             $ra     = new Restricted($this->pdo, $this->cfg, $this);
             $raZone = $ra->zoneOf($stream, $this->str($payload, 'deviceName'));
@@ -172,6 +194,13 @@ final class EventStore
                 (new Restricted($this->pdo, $this->cfg, $this))->record($eventId, $row, $raZone, $raJudge);
             } catch (Throwable $e) {
                 error_log('[restricted] ' . $e->getMessage());
+            }
+        }
+        if ($fkJudge !== null) {
+            try {
+                (new Forklift($this->pdo, $this->cfg, $this))->record($eventId, $row, $fkZone, $fkJudge);
+            } catch (Throwable $e) {
+                error_log('[forklift] ' . $e->getMessage());
             }
         }
         if ($ppeEval !== null) {
@@ -1329,7 +1358,7 @@ final class EventStore
         require_once __DIR__ . '/EmailTemplate.php';
         $img      = $this->fullUrl($row['trigger_img_url'] ?? null);
         $sevTag   = strtoupper($sev);
-        $modLabel = ['fire' => 'FIRE & SMOKE', 'ppe' => 'PPE', 'intr' => 'INTRUSION', 'face' => 'FACE & BODY'][$mod] ?? strtoupper($mod);
+        $modLabel = ['fire' => 'FIRE & SMOKE', 'ppe' => 'PPE', 'intr' => 'INTRUSION', 'face' => 'FACE & BODY', 'forklift' => 'FORKLIFT'][$mod] ?? strtoupper($mod);
         $what     = DashboardMapper::titleOf($ev, $mod);
         $sevCol   = EmailTemplate::sevColor($sev);
 

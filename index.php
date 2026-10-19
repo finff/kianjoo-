@@ -63,53 +63,58 @@ if ($user === null) {
     $err = $loginError !== '' ? '<div class="err">' . htmlspecialchars($loginError) . '</div>' : '';
     echo <<<HTML
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kian Joo VisionAI — Sign in</title>
 <link rel="icon" type="image/png" href="/uploads/Kian-Joo-Logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#080A14;
-    font-family:'IBM Plex Sans',system-ui,sans-serif;color:#E9ECF6;
-    background-image:radial-gradient(60% 50% at 50% 0%, rgba(56,38,242,.14), transparent 60%)}
-  .card{width:min(92vw,400px);background:#0E1122;border:1px solid #2F3660;border-radius:18px;
-    padding:34px 32px;box-shadow:0 30px 90px rgba(0,0,0,.55)}
-  .logo{display:flex;align-items:center;gap:12px;margin-bottom:26px}
-  .logo img{height:42px;width:auto;border-radius:10px;background:#fff;padding:5px 8px}
-  .logo b{font-size:17px;display:block}
-  .logo span{font-size:10px;letter-spacing:1.6px;color:#616989;font-weight:600}
-  label{display:block;font-size:11px;color:#616989;font-weight:700;letter-spacing:.5px;margin:15px 0 6px}
-  input{width:100%;font-size:14px;color:#E9ECF6;background:#141830;border:1px solid #232847;
-    border-radius:10px;padding:12px 14px;outline:none;font-family:inherit}
-  input:focus{border-color:#3826F2}
-  button{width:100%;margin-top:22px;font-size:14px;font-weight:700;color:#fff;background:#3826F2;
-    border:none;border-radius:11px;padding:13px;cursor:pointer;font-family:inherit}
-  button:hover{background:#4a3af5}
-  .err{margin-top:16px;font-size:12px;color:#FF4D4D;background:rgba(255,77,77,.09);
-    border:1px solid rgba(255,77,77,.4);border-radius:9px;padding:10px 12px}
-  .foot{margin-top:20px;font-size:10.5px;color:#616989;text-align:center;font-family:'IBM Plex Mono'}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+    padding:24px 16px;background:#F3F5F9;font-family:'Inter',system-ui,sans-serif;color:#1E2A44;
+    -webkit-font-smoothing:antialiased}
+  .card{width:min(100%,420px);background:#fff;border:1px solid #E6EAF1;border-radius:16px;
+    padding:32px 32px 26px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 32px rgba(16,24,40,.08)}
+  .logo{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;margin-bottom:24px}
+  .logo img{height:46px;width:auto;border-radius:10px;background:#fff;padding:5px 8px;border:1px solid #E6EAF1}
+  .logo b{font-size:19px;font-weight:800;display:block;letter-spacing:-.2px}
+  .logo span{display:block;font-size:12.5px;color:#5C6B86;margin-top:3px}
+  label{display:block;font-size:12.5px;color:#1E2A44;font-weight:600;margin:16px 0 6px}
+  input{width:100%;height:44px;font-size:14px;color:#1E2A44;background:#F6F8FB;border:1px solid #D5DBE7;
+    border-radius:10px;padding:0 14px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+  input:focus{border-color:#2F6BFF;background:#fff;box-shadow:0 0 0 3px rgba(47,107,255,.16)}
+  button{width:100%;height:46px;margin-top:22px;font-size:14px;font-weight:700;color:#fff;background:#2F6BFF;
+    border:none;border-radius:10px;cursor:pointer;font-family:inherit;transition:background .15s}
+  button:hover{background:#1F55D6}
+  button:focus-visible{outline:2px solid #2F6BFF;outline-offset:2px}
+  .err{margin-top:16px;font-size:12.5px;color:#B91C1C;background:#FDEAEA;
+    border:1px solid #F7C4C4;border-radius:10px;padding:10px 12px}
+  .note{margin-top:18px;font-size:11.5px;color:#8A96AB;text-align:center}
+  .foot{font-size:12px;color:#8A96AB;text-align:center}
+  .foot a{color:#2F6BFF;text-decoration:none;font-weight:600}
+  .foot a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
   <form class="card" method="post" action="/">
     <div class="logo">
       <img src="/uploads/Kian-Joo-Logo.png" alt="Kian Joo Group">
-      <div><b>Kian Joo VisionAI</b><span>KIAN JOO GROUP · MONITORING</span></div>
+      <div><b>Kian Joo VisionAI</b><span>AI Factory Monitoring Dashboard</span></div>
     </div>
-    <label>USERNAME</label>
-    <input name="username" autocomplete="username" autofocus required>
-    <label>PASSWORD</label>
-    <input name="password" type="password" autocomplete="current-password" required>
+    <label for="lg-user">Username</label>
+    <input id="lg-user" name="username" autocomplete="username" autofocus required>
+    <label for="lg-pass">Password</label>
+    <input id="lg-pass" name="password" type="password" autocomplete="current-password" required>
     <input type="hidden" name="__login" value="1">
     <button type="submit">Sign in</button>
     {$err}
-    <div class="foot">Role-based access · sessions expire on logout</div>
-    <div class="foot"><a href="/" style="color:#9AA1BD;text-decoration:none">← Back to home</a></div>
+    <div class="note">Access is role-based. Your session ends when you sign out.</div>
   </form>
+  <div class="foot"><a href="/">Back to home</a> &nbsp;·&nbsp; Kian Joo Group</div>
 </body>
 </html>
 HTML;

@@ -28,6 +28,11 @@ uploads/profiles/
 
 # Vendor documentation bundle (large, not project source).
 sensetimedocumentation/
+docs/fwdsensetimedocumentation/
+
+# Runtime caches / cursors written by the dashboard.
+storage/overview_*.json
+storage/*_cursor.json
 
 cp_src/
 .playwright-mcp/

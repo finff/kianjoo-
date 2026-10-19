@@ -322,6 +322,26 @@ foreach ((is_array($app['ra_zones'] ?? null) ? $app['ra_zones'] : []) as $k => $
 }
 $config['restricted'] = ['zones' => $raZones];
 
+// Forklift zones (Settings → Forklift Zones): camera stream key → zone name,
+// rule ("prohibited" = no forklifts inside the hours, "restricted" = forklifts
+// only allowed outside the hours) and hours ("always" or "HH:MM-HH:MM").
+$fkZones = [];
+foreach ((is_array($app['fk_zones'] ?? null) ? $app['fk_zones'] : []) as $k => $z) {
+    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+    if ($k === '' || !is_array($z)) {
+        continue;
+    }
+    $hours = strtolower(trim((string) ($z['hours'] ?? 'always')));
+    $fkZones[$k] = [
+        'enabled' => !empty($z['enabled']),
+        'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80) ?: strtoupper($k),
+        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted'], true) ? (string) $z['rule'] : 'prohibited',
+        'hours'   => preg_match('/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/', $hours) ? $hours : 'always',
+        'note'    => substr(trim((string) ($z['note'] ?? '')), 0, 200),
+    ];
+}
+$config['forklift'] = ['zones' => $fkZones];
+
 // Cleaning schedules (Cleaning Activity page): when cleaning is expected at
 // an area and the PPE required during it. A schedule is a time window, not
 // proof that cleaning happened — see lib/Cleaning.php.

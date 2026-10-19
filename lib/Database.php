@@ -94,6 +94,63 @@ final class Database
         self::migratePpeChecks($pdo);
         self::migrateRestricted($pdo);
         self::migrateCleaning($pdo);
+        self::migrateForklift($pdo);
+    }
+
+    /**
+     * v12: forklift detections — one row per vehicle / forklift detection on
+     * a configured forklift-zone camera (or a SenseStudio "forklift" policy),
+     * with the zone rule, verdict and review.
+     */
+    private static function migrateForklift(PDO $pdo): void
+    {
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS forklift_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id    INTEGER NOT NULL,
+    detected_at TEXT,
+    stream      TEXT,
+    device_name TEXT,
+    location    TEXT,
+    plant       TEXT,
+    zone        TEXT,
+    rule        TEXT,
+    policy      TEXT,
+    verdict     TEXT,
+    reason      TEXT,
+    image       TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    note        TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_fk_time ON forklift_events(detected_at)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_fk_event ON forklift_events(event_id)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS forklift_events (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_id    BIGINT UNSIGNED NOT NULL,
+    detected_at DATETIME,
+    stream      VARCHAR(191),
+    device_name VARCHAR(191),
+    location    VARCHAR(80),
+    plant       VARCHAR(80),
+    zone        VARCHAR(80),
+    rule        VARCHAR(20),
+    policy      VARCHAR(191),
+    verdict     VARCHAR(20),
+    reason      VARCHAR(255),
+    image       TEXT,
+    reviewed_by VARCHAR(100),
+    reviewed_at DATETIME NULL,
+    note        VARCHAR(500),
+    KEY idx_fk_time (detected_at),
+    KEY idx_fk_event (event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
     }
 
     /**

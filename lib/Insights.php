@@ -34,7 +34,7 @@ final class Insights
         $hours   = array_fill(0, 24, 0);
         $byCam   = [];
         $sev     = ['low' => 0, 'medium' => 0, 'high' => 0, 'critical' => 0];
-        $byType  = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0];
+        $byType  = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0, 'forklift' => 0];
         $total   = 0;
 
         foreach ($stmt->fetchAll() as $r) {
@@ -49,15 +49,15 @@ final class Insights
             $ts  = strtotime((string) $r['received_at']) ?: time();
             $day = date('Y-m-d', $ts);
             if (!isset($daily[$day])) {
-                $daily[$day] = ['total' => 0, 'fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0];
+                $daily[$day] = ['total' => 0, 'fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0, 'forklift' => 0];
             }
             $daily[$day]['total']++;
-            $daily[$day][$mod]++;
+            $daily[$day][$mod] = ($daily[$day][$mod] ?? 0) + 1;
             $hours[(int) date('G', $ts)]++;
             $cam = strtoupper((string) ($r['stream'] ?: 'CAM'));
             $byCam[$cam] = ($byCam[$cam] ?? 0) + 1;
             $sev[$sv] = ($sev[$sv] ?? 0) + 1;
-            $byType[$mod]++;
+            $byType[$mod] = ($byType[$mod] ?? 0) + 1;
             $total++;
         }
 
@@ -65,7 +65,7 @@ final class Insights
         $series = [];
         for ($i = $days - 1; $i >= 0; $i--) {
             $day = date('Y-m-d', time() - $i * 86400);
-            $series[] = ['day' => $day] + ($daily[$day] ?? ['total' => 0, 'fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0]);
+            $series[] = ['day' => $day] + ($daily[$day] ?? ['total' => 0, 'fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0, 'forklift' => 0]);
         }
         arsort($byCam);
         return [
@@ -107,10 +107,10 @@ final class Insights
         // Per-module momentum: second half vs first half of the window.
         $half = max(1, intdiv($n, 2));
         $trend = [];
-        foreach (['total', 'fire', 'ppe', 'intr', 'face'] as $mod) {
+        foreach (['total', 'fire', 'ppe', 'intr', 'face', 'forklift'] as $mod) {
             $first = $second = 0;
             foreach ($agg['daily'] as $i => $d) {
-                if ($i < $half) { $first += $d[$mod]; } else { $second += $d[$mod]; }
+                if ($i < $half) { $first += $d[$mod] ?? 0; } else { $second += $d[$mod] ?? 0; }
             }
             $trend[$mod] = [
                 'first' => $first, 'second' => $second,
@@ -462,7 +462,7 @@ final class Reporter
         };
         $section = static fn (string $t) => '<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;'
             . 'font-weight:bold;letter-spacing:1.5px;color:#868DA8;margin:16px 0 4px;">' . strtoupper($t) . '</div>';
-        $modLabels = ['fire' => 'Fire & Smoke', 'ppe' => 'PPE', 'intr' => 'Intrusion', 'face' => 'Face & Body'];
+        $modLabels = ['fire' => 'Fire & Smoke', 'ppe' => 'PPE', 'intr' => 'Intrusion', 'face' => 'Face & Body', 'forklift' => 'Forklift'];
         $byType = [];
         foreach ($modLabels as $k => $lbl) {
             $byType[$lbl] = $agg['byType'][$k] ?? 0;

@@ -6,7 +6,7 @@
  *   - camera    {id, name, zone, mod, res, fps, scene, boxes[]}
  *
  * `mod` buckets a detection into the dashboard's four detection modules
- * (fire / ppe / intr / face); `sev` maps SenseTime alertLevel to severity.
+ * (fire / ppe / intr / face / forklift);`sev` maps SenseTime alertLevel to severity.
  */
 
 declare(strict_types=1);
@@ -137,6 +137,10 @@ final class DashboardMapper
         if (($dec['Smoking'] ?? '') === 'IsSmoking') {
             return 'fire';
         }
+        // A forklift-zone verdict (lib/Forklift.php) or a forklift policy.
+        if (!empty($dec['FkVerdict']) || preg_match('/forklift|fork.?lift/', $t)) {
+            return 'forklift';
+        }
         // A person missing PPE required at their location (Settings → PPE
         // Area Rules) is a PPE incident whatever feed delivered it.
         if (!empty($dec['PpeMissing'])) {
@@ -233,6 +237,13 @@ final class DashboardMapper
         } elseif ($ra === 'authorized' || $ra === 'outside_hours') {
             $sev = 'low';
         }
+        // Forklift zone verdict: a violation is High; logged / cleared Low.
+        $fk = (string) ($dec['FkVerdict'] ?? '');
+        if ($fk === 'violation') {
+            $sev = self::maxSev($sev, 'high');
+        } elseif ($fk === 'logged' || $fk === 'cleared') {
+            $sev = 'low';
+        }
         return $sev;
     }
 
@@ -273,6 +284,14 @@ final class DashboardMapper
         }
         if ($mod === 'face' && self::isStranger($e)) {
             return 'Stranger detected — ' . $person . ' (no watchlist match)';
+        }
+        if ($mod === 'forklift') {
+            $cam  = strtoupper((string) (($e['stream'] ?? '') ?: (($e['device_serial'] ?? '') ?: 'camera')));
+            $zone = (string) (($dec['FkZone'] ?? '') ?: $cam);
+            if (($dec['FkVerdict'] ?? '') === 'violation') {
+                return (($dec['FkRule'] ?? '') === 'restricted' ? 'Forklift outside permitted hours — ' : 'Forklift in prohibited zone — ') . $zone;
+            }
+            return 'Forklift detected — ' . $zone;
         }
         $ra = (string) ($dec['RaVerdict'] ?? '');
         if ($mod === 'intr' && $ra !== '') {

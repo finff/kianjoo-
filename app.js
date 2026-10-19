@@ -7,19 +7,20 @@ class Component extends DCLogic {
       ppe:  {tag:'PPE',  tagBg:'var(--gold)'},
       intr: {tag:'INTR', tagBg:'var(--crit)'},
       face: {tag:'FACE', tagBg:'var(--low)'},
+      forklift: {tag:'FORKLIFT', tagBg:'var(--high)'},
     };
     this.SEV = {critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--low)'};
-    // Theme survives refresh via localStorage (falls back to prop/dark).
+    // Theme survives refresh via localStorage (falls back to prop/light).
     let savedTheme=null; try{ savedTheme=localStorage.getItem('tmns-theme'); }catch(e){}
     this.state = {
-      theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'dark'),
+      theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'light'),
       now,
       filter: 'all',
       paused: false,
       selectedId: null,
       infLoad: 72,
       gridCols: 2,
-      page: 'live',
+      page: 'overview',                               // default page: AI Factory Monitoring overview
       incFilter: 'all',
       incSel: 1,
       camFilter: 'all',
@@ -99,6 +100,10 @@ class Component extends DCLogic {
       raD: null, raMsg: '', raDraft: {},              // /api/restricted/summary result · review msg · zone drafts
       clF: {from:'', to:'', plant:'', location:'', item:'', busy:false, err:''},   // cleaning filters
       clD: null, clMsg: '', clDraft: null, clTab: 'overview',   // /api/cleaning/summary · status · schedule editor draft · tab
+      plant: '', plants: [],                          // global plant filter ('' = all) · feed.plants [{name, online, total}]
+      ov: null, ovBusy: false, ovErr: '',             // /api/overview result (Overview page)
+      fkF: {from:'', to:'', plant:'', camera:'', verdict:'', status:'', busy:false, err:''},   // forklift filters
+      fkD: null, fkMsg: '', fkDraft: {},              // /api/forklift/summary result · review msg · zone drafts
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this.API = (window.TMNS && window.TMNS.api) || '/api';
@@ -335,7 +340,12 @@ class Component extends DCLogic {
   componentDidMount(){
     this.clockT = setInterval(()=>{ this.setState({now:Date.now()}); this.mountVideos(); }, 1000);
     if(this.state.demo){ this.applyDemo(); } else { this.fetchFeed(); }
-    this.pollT = setInterval(()=>{ if(!this.state.paused && !this.state.demo) this.fetchFeed(); }, 5000);
+    this._tick = 0;
+    this.pollT = setInterval(()=>{
+      if(!this.state.paused && !this.state.demo) this.fetchFeed();
+      this._tick++;
+      if(this._tick%6===0 && this.state.page==='overview' && !this.state.paused) this.loadOverview();   // every 30 s
+    }, 5000);
     // ⌘K / Ctrl-K focuses search; Esc closes modal/lightbox.
     this._keys = (e)=>{
       if((e.metaKey||e.ctrlKey) && (e.key==='k'||e.key==='K')){ e.preventDefault(); const el=document.getElementById('tmns-search'); if(el) el.focus(); }
@@ -346,8 +356,9 @@ class Component extends DCLogic {
     const initial=this.pageFromHash();
     if(initial==='camera'){ const cs=this.camSelFromHash(); if(cs){ this.setState({camSel:cs}); this.applyPage('camera'); } }
     else if(initial && initial!==this.state.page){ this.applyPage(initial); }
+    if((initial||this.state.page)==='overview') this.loadOverview();   // default page has no applyPage call
     try{ history.replaceState({page:initial||this.state.page}, '', location.hash||('#'+(initial||this.state.page))); }catch(e){}
-    this._pop=()=>{ const p=this.pageFromHash()||'live';
+    this._pop=()=>{ const p=this.pageFromHash()||'overview';
       if(p==='camera'){ const cs=this.camSelFromHash(); this.setState({camSel:cs}); this.applyPage('camera'); }
       else if(p!==this.state.page){ this.applyPage(p); } };
     window.addEventListener('popstate', this._pop);
@@ -390,6 +401,7 @@ class Component extends DCLogic {
           faceR: d.face || null, armed: d.armed || null, mail: d.mail || null,
           metrics: d.metrics || null, report: d.report || null,
           sla: d.sla || null,
+          plants: Array.isArray(d.plants)?d.plants:[],
           // Inference load = server-derived from detection throughput (feed.gpu),
           // not a random number. VisionAI's API exposes no true GPU metric.
           infLoad: (Array.isArray(d.gpu)&&d.gpu.length)?d.gpu[d.gpu.length-1]:this.state.infLoad,
@@ -417,6 +429,10 @@ class Component extends DCLogic {
     if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
     if(p==='face') this.loadPeople();
     if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
+    if(p==='overview') this.loadOverview();
+    if(p==='employees'){ this.loadPeople(); if(!this.state.reg.data) this.loadRegister(); }
+    if(p==='faces') this.loadPeople();                // unknown / registered people roster
+    if(p==='forklift'){ this.loadFk(); this.loadApp(); }
     if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
     if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
     if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
@@ -426,7 +442,7 @@ class Component extends DCLogic {
     if(p==='users'){ this.loadUsers(); this.loadRoles(); } }
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
   setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  pageFromHash(){ const P=['live','attendance','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
+  pageFromHash(){ const P=['overview','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
@@ -644,7 +660,7 @@ class Component extends DCLogic {
       .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&(d.error||d.msg))||'Save failed');
         this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}, modal:null, pf:null}));
         this.loadPeople(); this.fetchFeed();
-        if(this.state.page==='attendance') this.loadRegister();
+        if(this.state.page==='attendance'||this.state.page==='employees') this.loadRegister();
         // Keep SenseStudio's employee library in step: sync when there is a
         // staff ID and a photo (or when deactivating an already-synced person).
         const prof=(d.profiles||{})[d.person_id]||{};
@@ -1334,6 +1350,72 @@ class Component extends DCLogic {
   }
   raDraftSet(key, k, v){ this.setState(st=>({raDraft:{...st.raDraft, [key]:{...(st.raDraft[key]||{}), [k]:v}}})); }
 
+  // ── Forklift monitoring (/api/forklift/*) ─────────────────
+  loadFk(){
+    const f=this.state.fkF;
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    this.setState(st=>({fkF:{...st.fkF, busy:true, err:''}}));
+    fetch(`${this.API}/forklift/summary?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({fkD:d, fkF:{...st.fkF, busy:false}})); })
+      .catch(()=>this.setState(st=>({fkF:{...st.fkF, busy:false, err:'Could not load forklift data'}})));
+  }
+  setFkF(patch){ this.setState(st=>({fkF:{...st.fkF, ...patch}})); if(this._fkT) clearTimeout(this._fkT); this._fkT=setTimeout(()=>this.loadFk(), 0); }
+  exportFk(report){
+    const f=this.state.fkF, d=this.state.fkD||{};
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    window.open(`${this.API}/forklift/export?${qs}`, '_blank');
+  }
+  // Reviewer decision on a forklift event: confirm it as a zone violation or clear it as a false alarm.
+  reviewFk(item, verdict){
+    const note=window.prompt((verdict==='violation'?'Confirm forklift zone violation':'Clear as false alarm')+' — '+(item.zone||item.camera||'zone')+'\n\nOptional note:', '');
+    if(note===null) return;
+    this.setState({fkMsg:'Saving review…'});
+    fetch(`${this.API}/forklift/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify({id:item.id, verdict, note})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
+        this.setState({fkMsg:verdict==='violation'?'Confirmed as zone violation ✓':'Cleared as false alarm ✓'});
+        this.loadFk(); this.fetchFeed(); })
+      .catch(e=>this.setState({fkMsg:'✗ '+(e&&e.message||'Review failed')}));
+  }
+  // Settings → Forklift Zones: save one camera's zone (merged over the stored set).
+  saveFkZone(key, patch){
+    const all={...(((this.state.appCfg||{}).fk_zones)||{})};
+    const cur=all[key]||{enabled:false, name:'', rule:'prohibited', hours:'always', note:''};
+    all[key]={...cur, ...patch};
+    this.saveApp({fk_zones:all}, 'Forklift zone saved ✓');
+    this.setState(st=>{ const d={...st.fkDraft}; delete d[key]; return {fkDraft:d}; });
+  }
+  fkDraftSet(key, k, v){ this.setState(st=>({fkDraft:{...st.fkDraft, [key]:{...(st.fkDraft[key]||{}), [k]:v}}})); }
+
+  // ── Overview dashboard (/api/overview) ─────────────────────
+  // Stale responses (an older plant filter) are dropped via a sequence number.
+  loadOverview(){
+    const seq=(this._ovSeq=(this._ovSeq||0)+1);
+    this.setState({ovBusy:true, ovErr:''});
+    const qs=new URLSearchParams({token:this.TOK, plant:this.state.plant||''});
+    fetch(`${this.API}/overview?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(seq!==this._ovSeq) return; if(!(d&&d.ok)) throw new Error('bad'); this.setState({ov:d, ovBusy:false, ovErr:''}); })
+      .catch(()=>{ if(seq===this._ovSeq) this.setState({ovBusy:false, ovErr:'Could not load the overview'}); });
+  }
+  // Global plant filter (topbar select + sidebar PLANTS rows) — mirrored into
+  // every use-case page's own filter, then the current page reloads.
+  setPlant(p){
+    const plant=p||'';
+    this.setState(st=>({plant, reg:{...st.reg, plant}, ppeF:{...st.ppeF, plant}, raF:{...st.raF, plant},
+      clF:{...st.clF, plant}, fkF:{...st.fkF, plant}}));
+    setTimeout(()=>{ const pg=this.state.page;
+      if(pg==='overview') this.loadOverview();
+      if(pg==='attendance'||pg==='employees') this.loadRegister();
+      if(pg==='ppe') this.loadPpe();
+      if(pg==='intr') this.loadRa();
+      if(pg==='cleaning') this.loadCl();
+      if(pg==='forklift') this.loadFk();
+    }, 0);
+  }
+
   // ── PPE compliance by area (/api/ppe/summary) ─────────────
   loadPpe(){
     const f=this.state.ppeF;
@@ -1453,6 +1535,7 @@ class Component extends DCLogic {
     const pad=n=>String(n).padStart(2,'0');
     const clock=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     const dateStr=d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+    const dateLong=d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
     const openCount = st.events.filter(e=>e.status==='open').length;
 
@@ -1468,7 +1551,7 @@ class Component extends DCLogic {
     ];
 
     // Filters
-    const fdefs=[['all','All'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face']];
+    const fdefs=[['all','All'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift']];
     const filters=fdefs.map(([k,label])=>{
       const active=st.filter===k;
       return {label, onClick:()=>this.setFilter(k),
@@ -1529,7 +1612,7 @@ class Component extends DCLogic {
     // Live Events rail — event-type filter (dropdown in the rail header).
     const evType=st.evType||'all';
     const evTypeSel={value:evType, onChange:(ev)=>this.setState({evType:(ev&&ev.target)?ev.target.value:'all'}),
-      options:[['all','All types'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face']].map(([v,label])=>({v,label}))};
+      options:[['all','All types'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift']].map(([v,label])=>({v,label}))};
     const events=st.events.filter(e=>evType==='all'||e.mod===evType).map(e=>{
       const m=this.MODS[e.mod];
       const sel=st.selectedId===e.id;
@@ -1575,10 +1658,18 @@ class Component extends DCLogic {
     });
 
     // ===== NAV =====
-    const navStyle=(p)=>{ const a=st.page===p; return {go:()=>this.setPage(p), cls:a?'nav-on':''}; };
-    const nav={live:navStyle('live'), attendance:navStyle('attendance'), incidents:navStyle('incidents'), cameras:navStyle('cameras'), analytics:navStyle('analytics'),
-      forecast:navStyle('forecast'), users:navStyle('users'),
-      fire:navStyle('fire'), ppe:navStyle('ppe'), cleaning:navStyle('cleaning'), intr:navStyle('intr'), face:navStyle('face'), rules:navStyle('rules'), settings:navStyle('settings')};
+    // Sidebar items highlight by group: Cameras = live/cameras/camera, Reports =
+    // incidents/analytics/forecast/fire/face, Settings = settings/rules/users.
+    const navGroup={live:'cameras',cameras:'cameras',camera:'cameras',incidents:'reports',analytics:'reports',forecast:'reports',fire:'reports',face:'reports',
+      settings:'settings',rules:'settings',users:'settings'}[st.page]||st.page;
+    const navStyle=(key,target)=>({go:()=>this.setPage(target||key), cls:navGroup===key?'nav-on':''});
+    const navExact=(p)=>({go:()=>this.setPage(p), cls:st.page===p?'nav-on':''});
+    const nav={overview:navStyle('overview'), attendance:navStyle('attendance'), employees:navStyle('employees'), faces:navStyle('faces'),
+      ppe:navStyle('ppe'), intr:navStyle('intr'), cleaning:navStyle('cleaning'), forklift:navStyle('forklift'),
+      cameras:navStyle('cameras'), reports:navStyle('reports','incidents'), settings:navStyle('settings'),
+      // per-page entries kept for any direct link
+      live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
+      fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users')};
     const modMeta={
       fire:{name:'Fire & Smoke Detection', desc:'Thermal and visual smoke/flame recognition', tag:'FIRE', col:'var(--high)', model:'YOLOv8-fire · v2.4', classes:['Flame','Smoke — light','Smoke — dense','Thermal anomaly']},
       ppe:{name:'PPE Compliance', desc:'Hard hat, vest, gloves and face-shield checks', tag:'PPE', col:'var(--gold)', model:'PPE-Net · v3.1', classes:['Hard hat','Hi-vis vest','Safety gloves','Face shield']},
@@ -1586,8 +1677,14 @@ class Component extends DCLogic {
       face:{name:'Face & Body Attribute', desc:'Identity match and body-attribute analysis', tag:'FACE', col:'var(--low)', model:'FaceAttr · v4.0', classes:['Face match','Gender','Age band','Clothing color']},
     };
     const titles={
-      live:['Live Monitoring','Kian Joo VisionAI · Plant 1 & 2'],
-      cleaning:['Cleaning Activity','Cleaning schedules and PPE compliance during cleaning'],
+      overview:['AI Factory Monitoring Dashboard','Real-time monitoring of people, safety and operations across all plants'],
+      live:['Live Feeds','Live camera wall with real-time detections'],
+      employees:['Employees','Employee directory, registration and SenseStudio sync'],
+      faces:['Face Registration','Enrol faces so CCTV can recognise employees'],
+      forklift:['Forklift Monitoring','Forklift detections, zone rules and incident review'],
+      cleaning:['Cleaning Monitoring','Cleaning schedules and PPE compliance during cleaning'],
+      ppe:['PPE Compliance','PPE rules by area, violation history and reports'],
+      intr:['Restricted Area Monitoring','Zone access rules, entry review and reports'],
       attendance:['Attendance & Movement','Facial-recognition entry, latest location and movement journey'],
       incidents:['Incident Management','Track, triage and resolve detection events'],
       cameras:['Camera Fleet','Manage RTSP streams and detection assignments'],
@@ -1600,8 +1697,8 @@ class Component extends DCLogic {
     const isDet=!!modMeta[st.page];
     const dm = isDet ? modMeta[st.page] : null;
     const _camName = st.page==='camera' ? ((((st.fleet||[]).find(f=>f.stream===st.camSel)||{}).name) || st.camSel || 'Camera') : '';
-    const pageTitle = st.page==='camera' ? _camName : (isDet ? dm.name : (titles[st.page]?titles[st.page][0]:'—'));
-    const pageSub = st.page==='camera' ? 'Live stream · VisionAI device configuration' : (isDet ? dm.desc : (titles[st.page]?titles[st.page][1]:''));
+    const pageTitle = st.page==='camera' ? _camName : (titles[st.page] ? titles[st.page][0] : (isDet ? dm.name : '—'));
+    const pageSub = st.page==='camera' ? 'Live stream · VisionAI device configuration' : (titles[st.page] ? titles[st.page][1] : (isDet ? dm.desc : ''));
 
     // ===== INCIDENTS =====
     const statusMeta={open:{label:'Open',col:'var(--crit)'},ack:{label:'Acknowledged',col:'var(--low)'},resolved:{label:'Resolved',col:'var(--ok)'}};
@@ -1665,7 +1762,7 @@ class Component extends DCLogic {
     const nStatus=(k)=> k==='all'?allInc.length:allInc.filter(x=>x.status===k).length;
     const incStatusSel=mkSel([['all','All ('+nStatus('all')+')'],['open','Open ('+nStatus('open')+')'],
       ['ack','Ack ('+nStatus('ack')+')'],['resolved','Resolved ('+nStatus('resolved')+')']], st.incFilter, v=>this.setIncFilter(v));
-    const incTypeSel=mkSel([['all','All types'],['fire','Fire & Smoke'],['ppe','PPE'],['intr','Intrusion'],['face','Face & Body']],
+    const incTypeSel=mkSel([['all','All types'],['fire','Fire & Smoke'],['ppe','PPE'],['intr','Intrusion'],['face','Face & Body'],['forklift','Forklift']],
       incMod, v=>this.setState({incMod:v, incPage:0}));
     const incSevSel=mkSel([['all','All'],['critical','Critical'],['high','High'],['medium','Medium'],['low','Low']], st.incSev, v=>this.setIncSev(v));
     const incElSel=mkSel([['all','Any'],['1h','< 1h'],['12h','1–12h'],['12h+','> 12h']], st.incEl, v=>this.setIncEl(v));
@@ -2409,7 +2506,7 @@ class Component extends DCLogic {
     ];
     const findGroups=findDefs.map(([k,label,opts])=>({label, opts:opts.map(([val,lab])=>{
       const active = k==='hours' ? String(st.find.hours)===val : String(st.find[k]||'')===val;
-      return {label:lab, onClick:()=>this.setFind(k, k==='hours'?parseInt(val,10):val),
+      return {label:lab, cls:active?'chip on':'chip', onClick:()=>this.setFind(k, k==='hours'?parseInt(val,10):val),
         bg:active?'var(--brand)':'var(--bg3)', color:active?'#fff':'var(--text2)', border:active?'var(--brand)':'var(--line)'};
     })}));
     const frs=st.find.results||[];
@@ -2557,7 +2654,7 @@ class Component extends DCLogic {
     // ===== OFFICIAL ATTENDANCE — register · employees · reports =====
     const reg=st.reg, regD=reg.data||{};
     const hm=(t)=>t?String(t).slice(11,16):'—';
-    const attViews=[['register','Daily register'],['employees','Employees'],['live','Live sightings'],['reports','Reports']]
+    const attViews=[['register','Daily register'],['live','Live sightings'],['reports','Reports']]
       .map(([k,label])=>({label, cls:st.attView===k?'chip on':'chip', onClick:()=>this.setAttView(k)}));
     const optList=(list,blank)=>[{v:'',label:blank}, ...(list||[]).map(x=>({v:x,label:x}))];
     const regPlantSel={value:reg.plant, options:optList(regD.plants,'All plants'),
@@ -2906,8 +3003,249 @@ class Component extends DCLogic {
         cur:cur.length?(cur.length+' item'+(cur.length===1?'':'s')+' required'):'Not monitored', curCol:cur.length?'var(--ok)':'var(--text3)',
         chips:Object.keys(PPE_ITEMS).map(i=>({label:PPE_ITEMS[i], cls:cur.indexOf(i)>=0?'chip on':'chip', onClick:()=>this.togglePpeRule(L,i)}))}; });
 
+    // ===== GLOBAL PLANT FILTER (topbar select + sidebar PLANTS) =====
+    const plantNames=(()=>{
+      const a=(st.plants||[]).map(p=>p&&p.name).filter(Boolean); if(a.length) return a;
+      const o=((st.ov&&st.ov.plants)||[]).map(p=>p&&p.name).filter(Boolean); if(o.length) return o;
+      const r=(st.reg.data&&st.reg.data.plants)||[]; if(r.length) return r;
+      const c=(st.appCfg&&st.appCfg.att_plants); return Array.isArray(c)?c:[]; })();
+    const plantSel={value:st.plant||'', onChange:(e)=>this.setPlant((e&&e.target)?e.target.value:''),
+      options:[{v:'',label:'All Plants'}, ...plantNames.map(n=>({v:n,label:n}))]};
+    const plantRows=((st.plants&&st.plants.length)?st.plants:plantNames.map(n=>({name:n}))).filter(p=>p&&p.name).map(p=>{
+      const has=p.total!=null, tot=Number(p.total)||0, on=Number(p.online)||0;
+      const dot=!has||!tot?'var(--side-text2)':(on>=tot?'var(--ok)':(on>0?'var(--gold)':'var(--crit)'));
+      return {name:p.name, cls:st.plant===p.name?'on':'', dot,
+        state:has?(on+'/'+tot):'', title:has?(on+' of '+tot+' cameras online'+(st.plant===p.name?' · click to show all plants':' · click to filter')):'Click to filter',
+        onClick:()=>this.setPlant(st.plant===p.name?'':p.name)}; });
+
+    // ===== SUB-TAB STRIP for grouped pages =====
+    const SUBTABS={
+      cameras:[['live','Live Feeds'],['cameras','Camera Fleet']],
+      reports:[['incidents','Incidents'],['analytics','Analytics'],['forecast','Forecast'],['fire','Fire & Smoke'],['face','Face & Body']],
+      settings:[['settings','Settings'],['rules','Alert Rules']].concat(this.PERMS.users?[['users','Users & Roles']]:[]),
+    };
+    const subTabs=(SUBTABS[navGroup]||[]).map(([k,label])=>({label, cls:st.page===k?'on':'', onClick:()=>this.setPage(k)}));
+
+    // ===== OVERVIEW (/api/overview) =====
+    const ov=st.ov||{};
+    const N=(v)=>Number(v)||0;
+    const fmtN=(v)=>N(v).toLocaleString('en-US');
+    const tint={crit:'var(--tint-red)', high:'var(--tint-orange)', gold:'var(--tint-amber)', ok:'var(--tint-green)', low:'var(--tint-blue)', muted:'var(--bg4)'};
+    const pill=(sev)=>({high:['High','var(--crit)',tint.crit], critical:['Critical','var(--crit)',tint.crit], medium:['Medium','#B45309',tint.gold],
+      low:['Low','var(--brand)',tint.low]}[sev]||['—','var(--text3)',tint.muted]);
+    const thumbOf=(img)=>img?`url('${img}') center/cover no-repeat`:grad;
+    const hms=(t)=>{ const s=String(t||''); return s.length>=19?s.slice(11,16):s.slice(0,5); };
+    const cntDelta=(today,yest,suffix)=>{ const d=N(today)-N(yest);
+      return {delta:(d>0?'▲ +'+d:(d<0?'▼ '+d:'0'))+' '+suffix, col:d>0?'var(--crit)':'var(--ok)'}; };
+    const pctDelta=(today,yest,suffix)=>{ const t=N(today), y=N(yest);
+      if(!y) return t?{delta:'▲ +'+t+' '+suffix, col:'var(--crit)'}:{delta:'0% '+suffix, col:'var(--ok)'};
+      const p=Math.round(100*(t-y)/y);
+      return {delta:(p>0?'▲ +'+p:(p<0?'▼ '+p:'0'))+'% '+suffix, col:p>0?'var(--crit)':'var(--ok)'}; };
+    // Employees today. The register's kpi.present counts late arrivals too;
+    // detect that from the totals so the donut never double-counts.
+    const oe=ov.employees||{};
+    const eTot=N(oe.total), eLate=N(oe.late), eAbs=N(oe.absent), ePend=N(oe.pending);
+    const presInclLate=Math.abs(N(oe.present)+eAbs+ePend-eTot) <= Math.abs(N(oe.present)+eLate+eAbs+ePend-eTot);
+    const eOnTime=oe.onTime!=null?Math.max(0,N(oe.onTime)):Math.max(0, presInclLate?N(oe.present)-eLate:N(oe.present));
+    const eIn=eOnTime+eLate;
+    const presentPct=oe.presentPct!=null?Number(oe.presentPct):(eTot?Math.round(1000*eIn/eTot)/10:0);
+    const ovPresentRing=`conic-gradient(var(--ok) 0 ${Math.max(0,Math.min(100,presentPct))}%, var(--line2) 0)`;
+    const opp=ov.ppe||{}, ora=ov.restricted||{}, ocl=ov.cleaning||{}, ofk=ov.forklift||{};
+    const clSess=N(ocl.sessionsToday), clDone=N(ocl.done);
+    const clPct=clSess?Math.round(100*clDone/clSess):null;
+    const ppeD=cntDelta(opp.today, opp.yesterday, 'vs. yesterday');
+    const raD2=pctDelta(ora.today, ora.yesterday, 'vs. yesterday');
+    const fkD2=cntDelta(ofk.violationsToday, ofk.violationsYesterday!=null?ofk.violationsYesterday:ofk.yesterday, 'vs. yesterday');
+    const ovLoading=st.ovBusy && !st.ov;
+    const ovKpi={
+      emp:{value:fmtN(eTot), delta:ovLoading?'Loading…':('+'+N(oe.newThisMonth)+' this month'), col:ovLoading?'var(--text3)':'var(--ok)', onClick:()=>this.setPage('employees')},
+      pres:{value:fmtN(eIn), delta:presentPct+'% attendance', col:'var(--text2)', onClick:()=>this.setPage('attendance')},
+      ppe:{value:fmtN(opp.today), delta:ppeD.delta, col:ppeD.col, onClick:()=>this.setPage('ppe')},
+      ra:{value:fmtN(ora.today), delta:raD2.delta, col:raD2.col, onClick:()=>this.setPage('intr')},
+      cl:{value:clPct==null?'—':(clPct+'%'), delta:clDone+' of '+clSess+' done today', col:clPct==null?'var(--text3)':(clPct>=90?'var(--ok)':(clPct>=60?'var(--gold)':'var(--crit)')), onClick:()=>this.setPage('cleaning')},
+      fk:{value:fmtN(ofk.violationsToday), delta:fkD2.delta, col:fkD2.col, onClick:()=>this.setPage('forklift')},
+    };
+    // Week bars (present excludes late on the server side)
+    const PEND_COL='#C9D1E0';
+    const week=Array.isArray(ov.week)?ov.week:[];
+    const wkMax=Math.max(1, ...week.map(w=>N(w.present)+N(w.late)+N(w.absent)+N(w.pending)));
+    const yMax=(()=>{ const p=Math.pow(10, Math.floor(Math.log10(wkMax))); for(const m of [1,2,2.5,5,10]) if(m*p>=wkMax) return m*p; return 10*p; })();
+    const ovYAxis=[1,0.75,0.5,0.25,0].map(f=>({label:fmtN(Math.round(yMax*f))}));
+    const hPct=(v)=>(Math.round(1000*N(v)/yMax)/10)+'%';
+    const ovWeek=week.map(w=>({label:w.label||'', day:w.day||String(w.date||'').slice(5),
+      pH:hPct(w.present), lH:hPct(w.late), aH:hPct(w.absent), nH:hPct(w.pending),
+      title:(w.day||w.date||'')+' · present '+N(w.present)+' · late '+N(w.late)+' · absent '+N(w.absent)+' · not clocked in '+N(w.pending)}));
+    // Donut — status today
+    const dParts=[['Present',eOnTime,'var(--ok)'],['Late',eLate,'var(--gold)'],['Absent',eAbs,'var(--crit)'],['Not Clocked In',ePend,PEND_COL]];
+    const dSum=dParts.reduce((a,p)=>a+p[1],0);
+    let acc=0;
+    const ovDonut=dSum?('conic-gradient('+dParts.map(p=>{ const a=acc; acc+=100*p[1]/dSum; return p[2]+' '+a.toFixed(2)+'% '+acc.toFixed(2)+'%'; }).join(', ')+')')
+      :'conic-gradient(var(--line2) 0 100%)';
+    const ovDonutLegend=dParts.map(([label,n,dot])=>({label, dot, val:fmtN(n), pct:'('+(dSum?(Math.round(1000*n/dSum)/10):0)+'%)'}));
+    // Multi-plant cards
+    const PLANT_IMG=['linear-gradient(135deg,#2F6BFF,#8B5CF6)','linear-gradient(135deg,#22C55E,#0EA5E9)','linear-gradient(135deg,#F97316,#F59E0B)','linear-gradient(135deg,#EF4444,#8B5CF6)'];
+    const ovPlants=(Array.isArray(ov.plants)?ov.plants:[]).map((p,i)=>({
+      name:p.name, sub:(p.camsTotal!=null?(N(p.camsOnline)+'/'+N(p.camsTotal)+' cameras online'):'')+(st.plant===p.name?' · filtered':''),
+      img:PLANT_IMG[i%PLANT_IMG.length],
+      rows:[
+        {k:'Employees', v:fmtN(p.employees), col:'var(--text)'},
+        {k:'Present', v:fmtN(p.present)+(p.presentPct!=null?(' ('+p.presentPct+'%)'):''), col:'var(--ok)'},
+        {k:'PPE Violations', v:fmtN(p.ppe), col:N(p.ppe)?'var(--crit)':'var(--text)'},
+        {k:'Restricted Alerts', v:fmtN(p.restricted), col:N(p.restricted)?'var(--crit)':'var(--text)'},
+        {k:'Forklift Alerts', v:fmtN(p.forklift), col:N(p.forklift)?'var(--high)':'var(--text)'},
+      ],
+      onClick:()=>this.setPlant(st.plant===p.name?'':p.name)}));
+    // Recently recognised employees
+    const FSTAT={present:['PRESENT','var(--ok)',tint.ok], late:['LATE','#B45309',tint.gold], pending:['SEEN','var(--brand)',tint.low],
+      absent:['ABSENT','var(--crit)',tint.crit], off:['OFF DAY','var(--text3)',tint.muted]};
+    const ovFaces=(Array.isArray(ov.recognized)?ov.recognized:[]).slice(0,6).map(r=>{ const s=FSTAT[r.status]||FSTAT.present;
+      return {bg:thumbOf(r.image), time:hms(r.time), name:r.name||('#'+r.personId),
+        loc:[r.plant, r.location].filter(Boolean).join(' · ')||'—', status:s[0], statusCol:s[1], statusBg:s[2],
+        onOpen:()=>{ if(r.image) this.openLightbox(r.image, (r.name||'')+' · '+(r.location||'')+' · '+hms(r.time)); }}; });
+    // PPE tiles (today's violations per missing item)
+    const pb=opp.byItem||{};
+    const pcol=(v)=>N(v)?'var(--crit)':'var(--ok)';
+    const ovPpe={helmet:fmtN(pb.helmet), vest:fmtN(pb.vest), goggles:fmtN(pb.goggles), gloves:fmtN(pb.gloves),
+      helmetCol:pcol(pb.helmet), vestCol:pcol(pb.vest), gogglesCol:pcol(pb.goggles), glovesCol:pcol(pb.gloves),
+      note:opp.compliance!=null?('7-day compliance '+opp.compliance+'% · '+N(opp.today)+' violations today'):(N(opp.today)+' violations today')};
+    // Restricted / forklift recent lists
+    const ovRa=(Array.isArray(ora.recent)?ora.recent:[]).slice(0,3).map(r=>{ const pl=pill(r.severity);
+      return {thumb:thumbOf(r.image), title:r.verdictLabel||(r.verdict==='review'?'Needs review':'Unauthorized entry'),
+        sub:[r.plant, r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
+        pill:pl[0], pillCol:pl[1], pillBg:pl[2], onOpen:()=>this.setPage('intr')}; });
+    const ovFk=(Array.isArray(ofk.recent)?ofk.recent:[]).slice(0,3).map(r=>{ const pl=pill(r.severity);
+      return {thumb:thumbOf(r.image), title:r.verdictLabel||({violation:'Zone violation', logged:'Forklift detected', cleared:'Cleared'}[r.verdict]||'Forklift event'),
+        sub:[r.plant, r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
+        pill:pl[0], pillCol:pl[1], pillBg:pl[2], onOpen:()=>this.setPage('forklift')}; });
+    const ovFkStats={today:fmtN(ofk.today), violations:fmtN(ofk.violationsToday), violCol:N(ofk.violationsToday)?'var(--crit)':'var(--text)'};
+    // Cleaning card
+    const cb=ocl.byItem||{};
+    const OV_CL_ITEMS=[['helmet','Helmet'],['vest','Safety Vest'],['goggles','Goggles'],['gloves','Gloves']];
+    const ovClean={
+      ring:`conic-gradient(var(--ok) 0 ${clPct||0}%, var(--line2) 0)`, pct:clPct==null?'—':(clPct+'%'),
+      total:fmtN(clSess), done:fmtN(clDone), pending:fmtN(ocl.pending),
+      ppeLine:ocl.compliance!=null?('· '+ocl.compliance+'% (7 d)'):'',
+      items:OV_CL_ITEMS.map(([k,label])=>{ const b=cb[k]||{}; const req=N(b.required), miss=N(b.missing);
+        const p=req?Math.round(100*(req-miss)/req):null;
+        return {label, val:p==null?'—':(p+'%'), col:p==null?'var(--text3)':(p>=95?'var(--ok)':(p>=80?'var(--gold)':'var(--crit)'))}; }),
+    };
+    // Live camera tiles — online first, one tile per physical feed
+    const ovPool=livePool.slice().sort((a,b)=>(b.online!==false)-(a.online!==false));
+    const ovSeen={};
+    const ovCams=ovPool.filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||ovSeen[k]) return !k; ovSeen[k]=1; return true; })
+      .slice(0,3).map(c=>{ const on=c.online!==false;
+        const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
+        return {name:c.name||c.stream||c.id, hasVideo:!!vsrc, videoUrl:vsrc, camKey:'ov-'+(c.stream||String(c.id).toLowerCase()),
+          bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
+          liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
+          onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
+    // Recent events table
+    const EVT={face:['var(--brand)',tint.low], ppe:['#B45309',tint.gold], intr:['var(--crit)',tint.crit], forklift:['var(--high)',tint.high],
+      fire:['var(--crit)',tint.crit], cleaning:['var(--ok)',tint.ok]};
+    const EST={open:['Open','var(--crit)',tint.crit], ack:['Acknowledged','#B45309',tint.gold], resolved:['Resolved','var(--ok)',tint.ok]};
+    const MODPAGE={face:'attendance', ppe:'ppe', intr:'intr', forklift:'forklift', cleaning:'cleaning', fire:'fire'};
+    const ovEvents=(Array.isArray(ov.events)?ov.events:[]).slice(0,8).map(e=>{ const t=EVT[e.mod]||['var(--text2)',tint.muted];
+      const s=(e.mod==='face'&&e.type==='Attendance')?['Present','var(--ok)',tint.ok]:(EST[e.status]||EST.open);
+      const ts=String(e.time||'');
+      return {type:e.type||e.mod, typeCol:t[0], typeBg:t[1], who:e.who||'—', location:e.location||'—',
+        time:ts.slice(0,10)===this.todayStr()?ts.slice(11,19):ts.slice(5,16),
+        status:s[0], statusCol:s[1], statusBg:s[2],
+        onOpen:()=>{ const ev=(st.events||[]).find(x=>String(x.id)===String(e.id));
+          if(ev) this.openModal('event', ev); else if(MODPAGE[e.mod]) this.setPage(MODPAGE[e.mod]); else if(e.image) this.openLightbox(e.image, e.type||''); }}; });
+    const ovUpdated=st.ovBusy?'Refreshing…':(ov.generated_at?('Updated '+String(ov.generated_at).slice(11,19)+(st.plant?(' · '+st.plant):' · all plants')):'');
+
+    // ===== FORKLIFT MONITORING (/api/forklift/summary) =====
+    const fkd=st.fkD||{}, fkf=st.fkF, fkk=fkd.kpi||{};
+    const FKV={violation:['ZONE VIOLATION','var(--crit)'], logged:['FORKLIFT DETECTED','var(--low)'], cleared:['CLEARED — FALSE ALARM','var(--ok)']};
+    const fkSel=(key,list,blank)=>({value:fkf[key]||'', options:[{v:'',label:blank}, ...list],
+      onChange:(e)=>this.setFkF({[key]:(e&&e.target)?e.target.value:''})});
+    const fkPlantSel=fkSel('plant', ((fkd.plants&&fkd.plants.length)?fkd.plants:plantNames).map(x=>({v:x,label:x})), 'All plants');
+    const fkCamSel=fkSel('camera', (fkd.zones||[]).map(z=>({v:z.key, label:(z.name||z.key)+' · '+z.key})), 'All zones / cameras');
+    const fkVerdictSel=fkSel('verdict', Object.keys(FKV).map(k=>({v:k, label:(fkd.verdicts||{})[k]||k})), 'All verdicts');
+    const fkStatusSel=fkSel('status', [{v:'open',label:'Open'},{v:'ack',label:'Acknowledged'},{v:'resolved',label:'Resolved'}], 'Any alert status');
+    const fkKpis=[
+      ['DETECTIONS', fkk.detections||0, 'var(--text)', 'forklift / vehicle events in range'],
+      ['ZONE VIOLATIONS', fkk.violations||0, (fkk.violations?'var(--crit)':'var(--ok)'), 'prohibited zone or restricted hours'],
+      ['LOGGED', fkk.logged||0, 'var(--low)', 'detected, no rule broken'],
+      ['CLEARED', fkk.cleared||0, 'var(--text3)', 'false alarms cleared by a reviewer'],
+      ['TODAY', fkk.today||0, (fkk.today?'var(--high)':'var(--ok)'), 'violations since midnight'],
+      ['OPEN ALERTS', fkk.open||0, (fkk.open?'var(--high)':'var(--ok)'), 'violations not yet handled'],
+    ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
+    const fkMax=Math.max(1, ...(fkd.daily||[]).map(x=>N(x.detections)));
+    const fkDaily=(fkd.daily||[]).map(x=>{ const v=N(x.violations), l=Math.max(0, N(x.detections)-v);
+      return {label:String(x.date).slice(5), title:x.date+' · '+N(x.detections)+' detections · '+v+' violations',
+        vH:Math.round(100*v/fkMax)+'%', lH:Math.round(100*l/fkMax)+'%', v:N(x.detections)?String(N(x.detections)):''}; });
+    const fkZMax=Math.max(1, ...(fkd.byZone||[]).map(z=>N(z.detections)));
+    const FKRULE={prohibited:'prohibited', restricted:'restricted hours'};
+    const fkByZone=(fkd.byZone||[]).map(z=>({zone:z.zone||z.camera, sub:[z.plant, z.camera, FKRULE[z.rule]].filter(Boolean).join(' · '),
+      line:N(z.violations)+' violations · '+N(z.detections)+' detections', w:Math.round(100*N(z.detections)/fkZMax)+'%',
+      col:N(z.violations)?'var(--crit)':'var(--low)',
+      onClick:()=>this.setFkF({camera:fkf.camera===z.camera?'':z.camera})}));
+    const fkInc=(fkd.incidents||[]).map(i=>{ const vv=FKV[i.verdict]||[String(i.verdict||'').toUpperCase(),'var(--text3)'];
+      return {
+        thumb:thumbOf(i.image), verdict:vv[0], vCol:vv[1], zone:i.zone||i.camera,
+        where:[i.plant, i.location].filter(Boolean).join(' · '), cam:(i.camera||'')+(i.policy?(' · '+i.policy):'')+(i.rule?(' · '+(FKRULE[i.rule]||i.rule)):''),
+        time:String(i.time||'').slice(0,16), reason:i.reason||'',
+        status:'Alert: '+(i.status||'open')+(i.reviewedBy?(' · reviewed by '+i.reviewedBy):'')+(i.note?(' — '+i.note):''),
+        canConfirm:i.verdict==='logged'||i.verdict==='cleared', canClear:i.verdict==='violation'||i.verdict==='logged',
+        onConfirm:()=>this.reviewFk(i,'violation'), onClear:()=>this.reviewFk(i,'cleared'),
+        onOpen:()=>{ if(i.image) this.openLightbox(i.image, (i.zone||i.camera)+' · '+String(i.time).slice(0,16)); },
+      }; });
+    const fkModelNote=fkd.modelNote||ofk.modelNote||'SenseStudio V2.13 has no dedicated forklift class — detections come from vehicle / non-motor-vehicle attributes on forklift-zone cameras, or a SenseStudio policy named "forklift". Pedestrian proximity and unsafe operation need a trained forklift model.';
+    // Settings → Forklift Zones (one row per camera)
+    const fkZonesCur=(ap&&ap.fk_zones)||{};
+    const fkCamPolicies=(key)=>[...new Set((st.policies||[]).filter(p=>String(p.stream).toLowerCase()===key && (p.mod==='forklift'||/forklift|vehicle/i.test(String(p.policy||'')))).map(p=>p.policy))];
+    const fkZoneRows=[...new Set([...pocStreams.map(c=>c.key), ...Object.keys(fkZonesCur)])].map(key=>{
+      const z={enabled:false, name:'', rule:'prohibited', hours:'always', note:'', ...(fkZonesCur[key]||{})};
+      const dr=(st.fkDraft||{})[key]||{};
+      const cam=pocStreams.find(c=>c.key===key);
+      const pols=fkCamPolicies(key);
+      return {
+        key:key.toUpperCase(), camName:cam?cam.name:key.toUpperCase(), loc:spCamLocCur[key]||'not mapped to a camera point',
+        pols:pols.length?('SenseStudio vehicle / forklift policies: '+pols.join(', ')):'No vehicle or forklift policy has fired on this camera yet — set one up in SenseStudio',
+        polsCol:pols.length?'var(--text3)':'var(--high)',
+        state:z.enabled?(z.rule==='restricted'?'FORKLIFT ZONE · RESTRICTED HOURS':'FORKLIFT ZONE · PROHIBITED'):'Not a forklift zone',
+        stateCol:z.enabled?'var(--high)':'var(--text3)',
+        enableChips:[[true,'Forklift zone'],[false,'Off']].map(([v,label])=>({label, cls:z.enabled===v?'chip on':'chip',
+          onClick:()=>this.saveFkZone(key,{enabled:v, name:z.name||((spCamLocCur[key]||key.toUpperCase())+' forklift zone')})})),
+        ruleChips:[['prohibited','Prohibited'],['restricted','Restricted hours']].map(([v,label])=>({label, cls:z.rule===v?'chip on':'chip',
+          onClick:()=>this.saveFkZone(key,{rule:v})})),
+        name:dr.name!=null?dr.name:z.name, onName:(e)=>this.fkDraftSet(key,'name',(e&&e.target)?e.target.value:''),
+        hours:dr.hours!=null?dr.hours:(z.hours==='always'?'':z.hours), onHours:(e)=>this.fkDraftSet(key,'hours',(e&&e.target)?e.target.value:''),
+        note:dr.note!=null?dr.note:(z.note||''), onNote:(e)=>this.fkDraftSet(key,'note',(e&&e.target)?e.target.value:''),
+        onSave:()=>this.saveFkZone(key,{
+          name:String(dr.name!=null?dr.name:z.name).trim(),
+          hours:dr.hours!=null?(String(dr.hours).trim()||'always'):z.hours,
+          note:String(dr.note!=null?dr.note:(z.note||'')).trim()}),
+      }; });
+
     return {
-      theme:st.theme, clock, dateStr, infLoad:st.infLoad,
+      theme:st.theme, clock, dateStr, dateLong, infLoad:st.infLoad,
+      // global plant filter + sidebar plants + grouped sub-tabs
+      plantSel, plantRows, hasPlants:plantRows.length>0, subTabs, hasSubTabs:subTabs.length>0,
+      // overview
+      isOverview:st.page==='overview', ovKpi, ovPresentRing, ovYAxis, ovWeek, ovDonut, ovDonutTotal:fmtN(eTot), ovDonutLegend,
+      ovPlants, ovPlantsEmpty:!!st.ov && ovPlants.length===0, ovFaces, ovFacesEmpty:ovFaces.length===0,
+      ovPpe, ovRa, ovRaEmpty:ovRa.length===0, ovClean, ovFk, ovFkEmpty:ovFk.length===0, ovFkStats,
+      ovCams, ovCamsEmpty:ovCams.length===0, ovCamsCount:String(livePool.length),
+      ovEvents, ovEventsHas:ovEvents.length>0, ovEventsEmpty:ovEvents.length===0, ovUpdated,
+      ovErr:st.ovErr||'', ovHasErr:!!st.ovErr, reloadOv:()=>this.loadOverview(),
+      goAttendance:()=>this.setPage('attendance'), goPpe:()=>this.setPage('ppe'), goIntr:()=>this.setPage('intr'),
+      goCleaning:()=>this.setPage('cleaning'), goForklift:()=>this.setPage('forklift'), goLive:()=>this.setPage('live'),
+      goIncidents:()=>this.setPage('incidents'), goEmployees:()=>this.setPage('employees'),
+      // employees + face registration pages
+      isEmployees:st.page==='employees', isFaces:st.page==='faces',
+      // forklift monitoring
+      isForklift:st.page==='forklift', fkKpis, fkDaily, fkByZone, fkNoZoneRows:!!fkd.from && fkByZone.length===0, fkInc,
+      fkNoInc:!!fkd.from && fkInc.length===0, fkNoZones:!!fkd.from && !(fkd.zones||[]).some(z=>z.enabled),
+      fkPlantSel, fkCamSel, fkVerdictSel, fkStatusSel, fkMsg:st.fkMsg||'', fkModelNote,
+      fkStatus:fkf.busy?'Loading…':(fkf.err||''),
+      fkFrom:fkf.from||fkd.from||'', fkTo:fkf.to||fkd.to||'',
+      onFkFrom:(e)=>this.setFkF({from:(e&&e.target)?e.target.value:''}),
+      onFkTo:(e)=>this.setFkF({to:(e&&e.target)?e.target.value:''}),
+      reloadFk:()=>this.loadFk(), exportFkInc:()=>this.exportFk('incidents'), exportFkSum:()=>this.exportFk('summary'),
+      goSettingsFk:()=>{ this.setState({spTab:'fk'}); this.setPage('settings'); },
+      spTabFk:st.spTab==='fk', fkZoneRows,
       camsOnline:(st.live.camsOnline!=null?st.live.camsOnline:this.camPool.length),
       camsTotal:(st.live.camsTotal!=null?st.live.camsTotal:this.camPool.length),
       ppePct:(st.live.ppePct!=null?st.live.ppePct:100),
@@ -3043,7 +3381,7 @@ class Component extends DCLogic {
       reloadAtt:()=>this.loadAttendance(true),
       goSettingsPoc:()=>{ this.setState({spTab:'poc'}); this.setPage('settings'); },
       isMJourney:mt==='journey', jn:jnV,
-      attViews, attViewRegister:st.attView==='register', attViewEmployees:st.attView==='employees',
+      attViews, attViewRegister:st.attView==='register',
       attViewLive:st.attView==='live', attViewReports:st.attView==='reports',
       regDate:reg.date||this.todayStr(), onRegDate:(e)=>this.setReg({date:(e&&e.target)?e.target.value:''}),
       regPrevDay:()=>{ const d=new Date((reg.date||this.todayStr())+'T12:00:00'); d.setDate(d.getDate()-1); this.setReg({date:d.toISOString().slice(0,10)}); },
@@ -3107,6 +3445,7 @@ class Component extends DCLogic {
       gotoCameras:()=>this.setPage('cameras'), openCamera:(s)=>this.openCamera(s),
       // logged-in user + user management
       meName:this.UNAME, meRole:(this.ME&&this.ME.role)||'operator',
+      meRoleLabel:(()=>{ const r=String((this.ME&&this.ME.role)||'operator').replace(/[_-]+/g,' '); return r.charAt(0).toUpperCase()+r.slice(1); })(),
       meInitials:String(this.UNAME).split(/\s+/).map(w=>w.charAt(0)).slice(0,2).join('').toUpperCase(),
       navUsersVisible:!!this.PERMS.users,
       umMsg:st.umMsg, umRows, umRoleChips, umRoleCards, umUserCount:String(umU.length),
@@ -3145,7 +3484,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',

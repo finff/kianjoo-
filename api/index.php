@@ -11,6 +11,9 @@
  *   GET  /events/{uuid}                  -> one event by uuid                       [read token]
  *   GET  /stats                          -> aggregate counts                        [read token]
  *   GET  /provision                      -> create DB / run migrations              [provision token]
+ *   GET  /overview?plant=                -> Overview page payload (30 s cache)      [read token]
+ *   GET  /forklift/summary|export        -> forklift zone KPIs, incidents / CSV     [read token]
+ *   POST /forklift/review                -> confirm / clear a forklift detection    [signed in]
  *
  * Auth token may be passed as ?token=, X-Ingest-Token / X-Read-Token header,
  * or Authorization: Bearer <token>.
@@ -875,6 +878,86 @@ try {
         exit;
     }
 
+    // ── Forklift monitoring ──────────────────────────────────
+    // GET  /forklift/summary?from=&to=&plant=&camera=&zone=&verdict=&status=  → KPIs, trend, zones, incidents
+    // GET  /forklift/export?report=incidents|summary&…                       → CSV
+    // POST /forklift/review {id, verdict: violation|cleared, note}           → reviewer decision (signed in)
+    if ($route === '/forklift/summary' || $route === '/forklift/export' || $route === '/forklift/review') {
+        require_once APP_ROOT . '/lib/Forklift.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $fk    = new Forklift($pdo, $config, $store);
+
+        if ($route === '/forklift/review') {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to review forklift detections.', 401);
+            }
+            if ($method !== 'POST') {
+                Response::error('POST {id, verdict, note}.', 405);
+            }
+            $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+            $ok = $fk->review((int) ($in['id'] ?? 0), (string) ($in['verdict'] ?? ''),
+                trim((string) ($in['note'] ?? '')), (string) ($me['name'] ?? $me['username'] ?? 'operator'));
+            $ok ? Response::ok(['reviewed' => (int) ($in['id'] ?? 0)]) : Response::error('Unknown detection or verdict.', 422);
+        }
+
+        $requireToken($config['auth']['read_token']);
+        $fk->catchUp();
+        $f = [];
+        foreach (['from', 'to', 'plant', 'camera', 'zone', 'verdict', 'status'] as $k) {
+            $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+        }
+        $f['camera'] = strtolower(preg_replace('/[^a-z0-9]+/i', '', $f['camera']));
+        if ($f['from'] === '') {
+            $f['from'] = date('Y-m-d', time() - 6 * 86400);
+        }
+        if ($f['status'] !== '' && !in_array($f['status'], ['open', 'ack', 'resolved'], true)) {
+            $f['status'] = '';
+        }
+        if ($f['verdict'] !== '' && !isset(Forklift::VERDICTS[$f['verdict']])) {
+            $f['verdict'] = '';
+        }
+
+        if ($route === '/forklift/summary') {
+            $zones = [];
+            foreach ($config['forklift']['zones'] as $key => $z) {
+                $zones[] = ['key' => strtoupper($key), 'name' => $z['name'], 'enabled' => $z['enabled'],
+                            'rule' => $z['rule'], 'hours' => $z['hours'], 'note' => $z['note']];
+            }
+            Response::ok($fk->summary($f) + [
+                'zones' => $zones, 'verdicts' => Forklift::VERDICTS, 'plants' => $config['attendance']['plants'],
+                'modelNote' => Forklift::MODEL_NOTE,
+            ]);
+        }
+
+        $report = (string) ($_GET['report'] ?? 'incidents') === 'summary' ? 'summary' : 'incidents';
+        $rows   = $report === 'summary' ? $fk->exportSummary($f) : $fk->exportIncidents($f);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="forklift-' . $report . '-' . Attendance::cleanDate($f['from'])
+            . '-to-' . Attendance::cleanDate($f['to'] ?: $f['from']) . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        foreach ($rows as $r) {
+            fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+        }
+        fclose($out);
+        exit;
+    }
+
+    // ── Overview dashboard ───────────────────────────────────
+    // GET /overview?plant=  → combined KPIs for the Overview page (30 s cache)
+    if ($route === '/overview') {
+        require_once APP_ROOT . '/lib/Overview.php';
+        $requireToken($config['auth']['read_token']);
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $plant = substr(trim((string) ($_GET['plant'] ?? '')), 0, 80);
+        Response::ok((new Overview($pdo, $config, $store))->build($plant));
+    }
+
     // ── Employee sync to the SenseStudio person library ─────
     // POST /employees/sync {person_id} | {all:true}  (settings permission)
     if ($route === '/employees/sync') {
@@ -1224,7 +1307,7 @@ try {
             if (isset($in['always_mods']) && is_array($in['always_mods'])) {
                 $out['always_mods'] = array_values(array_intersect(
                     array_map('strtolower', array_map('strval', $in['always_mods'])),
-                    ['fire', 'ppe', 'intr', 'face']
+                    ['fire', 'ppe', 'intr', 'face', 'forklift']
                 ));
             }
             if (isset($in['intr_armed'])) {
@@ -1236,7 +1319,7 @@ try {
             }
             if (isset($in['mods_enabled']) && is_array($in['mods_enabled'])) {
                 $me = [];
-                foreach (['fire', 'ppe', 'intr', 'face'] as $m) {
+                foreach (['fire', 'ppe', 'intr', 'face', 'forklift'] as $m) {
                     $me[$m] = array_key_exists($m, $in['mods_enabled']) ? !empty($in['mods_enabled'][$m]) : true;
                 }
                 $out['mods_enabled'] = $me;
@@ -1431,6 +1514,25 @@ try {
                 }
                 $out['ra_zones'] = (object) $zones;
             }
+            // Forklift zones: {stream key → {enabled, name, rule: prohibited|restricted, hours, note}}.
+            if (isset($in['fk_zones']) && is_array($in['fk_zones'])) {
+                $zones = [];
+                foreach (array_slice($in['fk_zones'], 0, 200, true) as $k => $z) {
+                    $k = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', substr(trim((string) $k), 0, 64)));
+                    if ($k === '' || !is_array($z)) {
+                        continue;
+                    }
+                    $hours = strtolower(trim((string) ($z['hours'] ?? 'always')));
+                    $zones[$k] = [
+                        'enabled' => !empty($z['enabled']),
+                        'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80),
+                        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted'], true) ? (string) $z['rule'] : 'prohibited',
+                        'hours'   => preg_match('/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/', $hours) ? $hours : 'always',
+                        'note'    => substr(trim((string) ($z['note'] ?? '')), 0, 200),
+                    ];
+                }
+                $out['fk_zones'] = (object) $zones;
+            }
             // Cleaning schedules: [{id, name, location, start, end, days[], dates[], items[], enabled}]
             if (isset($in['cleaning_schedules']) && is_array($in['cleaning_schedules'])) {
                 $out['cleaning_schedules'] = array_values(array_map(static fn ($c) => [
@@ -1523,6 +1625,7 @@ try {
             'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
             'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
             'ra_zones'           => (object) ($config['restricted']['zones'] ?? []),
+            'fk_zones'           => (object) ($config['forklift']['zones'] ?? []),
             'cleaning_schedules' => $config['cleaning']['schedules'] ?? [],
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —

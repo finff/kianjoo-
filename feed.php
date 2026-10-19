@@ -16,6 +16,8 @@ require_once APP_ROOT . '/lib/Database.php';
 require_once APP_ROOT . '/lib/EventStore.php';
 require_once APP_ROOT . '/lib/DashboardMapper.php';
 require_once APP_ROOT . '/lib/Insights.php';
+require_once APP_ROOT . '/lib/Attendance.php';
+require_once APP_ROOT . '/lib/Overview.php';
 
 Response::cors();
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
@@ -32,7 +34,7 @@ function gpuSeries(array $trend): array
 {
     $out = [];
     foreach ($trend as $b) {
-        $det = ($b['fire'] ?? 0) + ($b['ppe'] ?? 0) + ($b['intr'] ?? 0) + ($b['face'] ?? 0);
+        $det = ($b['fire'] ?? 0) + ($b['ppe'] ?? 0) + ($b['intr'] ?? 0) + ($b['face'] ?? 0) + ($b['forklift'] ?? 0);
         // baseline 34-46% idle + ~9% per detection in the bucket, capped 96%.
         $base = 34 + (($b['intr'] ?? 0) % 4) * 3;
         $out[] = min(96, $base + $det * 9);
@@ -164,7 +166,7 @@ function hourlyTrend(EventStore $store): array
     $rows = $store->query(['limit' => 500, 'from' => $from]);
     $bins = [];
     for ($i = 0; $i < 24; $i++) {
-        $bins[$i] = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0];
+        $bins[$i] = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0, 'forklift' => 0];
     }
     $now = time();
     foreach ($rows as $e) {
@@ -463,7 +465,7 @@ try {
     $ppePct = $total > 0 ? (int) round((1 - $ppeViolations / $total) * 100) : 100;
 
     // Real breakdowns for the Analytics page.
-    $byType = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0];
+    $byType = ['fire' => 0, 'ppe' => 0, 'intr' => 0, 'face' => 0, 'forklift' => 0];
     $byCam  = [];
     foreach ($incidents as $i) {
         $byType[$i['mod']] = ($byType[$i['mod']] ?? 0) + 1;
@@ -476,6 +478,13 @@ try {
     $face    = $store->faceReport();
     $fleet   = senseCameras($config, $incidents);
     $metrics = $store->responseMetrics();
+    // Sidebar plant list: cameras online / total per configured plant.
+    try {
+        $plants = array_map(static fn ($n, $p) => ['name' => $n, 'online' => $p['online'], 'total' => $p['total']],
+            array_keys($pc = Overview::plantCams($config, $store, $fleet)), $pc);
+    } catch (Throwable $e) {
+        $plants = [];
+    }
     $attrDict = senseAttrDict($config);
 
     // Per-module dashboard report (fire/ppe/intr) — only when the dashboard
@@ -514,6 +523,7 @@ try {
         'trend'      => $trend,
         'gpu'        => gpuSeries($trend),
         'byType'     => $byType,
+        'plants'     => $plants,
         'byCam'      => $byCam,
         'ppe'        => $ppe,
         'face'       => $face,

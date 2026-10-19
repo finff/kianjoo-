@@ -21,6 +21,7 @@ final class AiContext
         'ppe'  => 'PPE Compliance',
         'intr' => 'Intrusion',
         'face' => 'Face & Body',
+        'forklift' => 'Forklift',
     ];
 
     /** SLA targets in minutes: [time to acknowledge, time to resolve]. */
@@ -46,7 +47,7 @@ final class AiContext
                          . 'Call /summary first for the current picture, then narrow with the other endpoints.',
             'endpoints' => [
                 'GET /summary'    => 'Current state: open/acknowledged/resolved counts, per-module and per-camera breakdown, SLA breaches, busiest hour.',
-                'GET /detections' => 'Recent detections. Filters: hours (default 24), module (fire|ppe|intr|face), camera, person_id, status (open|ack|resolved), feed (face|body), limit (default 20, max 100).',
+                'GET /detections' => 'Recent detections. Filters: hours (default 24), module (fire|ppe|intr|face|forklift), camera, person_id, status (open|ack|resolved), feed (face|body), limit (default 20, max 100).',
                 'GET /incidents'  => 'Detections escalated into tickets, with SLA state. Filters: status, limit.',
                 'GET /incident'   => 'One detection in full, with its change log. Params: id (ticket number INC-… or event uuid).',
                 'GET /people'     => 'Unique people tracked by face recognition, enrolled profiles first. Params: days (default 7), limit.',

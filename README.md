@@ -53,6 +53,9 @@ header, or `Authorization: Bearer …`.
 | `GET`  | `/events/{uuid}` | **read** | One event by uuid |
 | `GET`  | `/stats` | **read** | Aggregate counts |
 | `GET`  | `/provision` | **provision** | Create DB / run migrations (idempotent) |
+| `GET`  | `/overview?plant=` | **read** | Overview page payload (30 s cache per plant) |
+| `GET`  | `/forklift/summary` · `/forklift/export` | **read** | Forklift zone KPIs, incidents, CSV |
+| `POST` | `/forklift/review` | session | Confirm / clear a forklift detection |
 
 `{stream}` is any label you choose (`camera1`, `camera2`, `lobby`, …). If
 omitted, it is derived from `deviceSerial`.
@@ -131,26 +134,50 @@ reprocess later.
 
 ---
 
-## Monitoring dashboard (Kian Joo VisionAI)
+## Monitoring dashboard (Kian Joo VisionAI — AI Factory Monitoring Dashboard)
 
-Visiting `/` serves the **Kian Joo VisionAI** monitoring dashboard — a rebranded
-(Kian Joo Group; palette inherited from the earlier TM ONE build, blue `#1800E0`
-/ orange `#F85800`) build of the CP Monitoring
-System (a dc-runtime single-file app). It shows **live SenseTime detections**,
-not mock data:
+Visiting `/` serves the **Kian Joo VisionAI** dashboard (a dc-runtime
+single-file app: `Kian Joo VisionAI.dc.html` + `app.js` + `app.css`). It is a
+light-theme factory-monitoring console (navy sidebar, white cards, Inter) with
+Employee Attendance as the main module; the dark theme is still available from
+the topbar toggle. The sidebar lists the plants (cameras online per plant) and
+the topbar has a global plant filter that applies to the Overview and every
+use-case page.
 
-- **Live feeds** — one tile per stream showing the real trigger frame with the
-  detection bounding box drawn from `detect`. **Click any frame to expand it.**
-- **Live events / Incidents** — real detections mapped to incidents (module,
-  severity, decoded attributes). Acknowledge / Assign persist across refreshes.
-- **AI Shift Review** — an LLM narrative from the Weststar AI middleware.
-- **Analytics** — real by-type, by-camera and severity breakdowns + 24h trend.
-- **Detection pages** (Fire / PPE / Intrusion / Face) — filtered live detections.
+Pages (sidebar order):
+
+- **Overview** — `/api/overview`: six KPI cards (employees, present today with
+  attendance ring, PPE violations, restricted-area alerts, cleaning compliance,
+  forklift alerts), 7-day attendance stacked bars, today's attendance donut,
+  multi-plant summary, recent recognised employees, PPE violations by item,
+  restricted-area and forklift alerts, cleaning schedule, live camera tiles and
+  the recent-events table. Refreshes every 30 s (server caches 30 s per plant).
+- **Attendance** — official daily register under shift rules, live sightings
+  and CSV reports (`/api/attendance/*`).
+- **Employees** — employee directory and registration, SenseStudio sync.
+- **Face Registration** — enrolment flow (check-in kiosk, profile form), the
+  roster of tracked people (registered / unidentified) and attribute search.
+- **PPE Compliance**, **Restricted Area**, **Cleaning Monitoring** — the
+  use-case pages backed by `/api/ppe/*`, `/api/restricted/*`, `/api/cleaning/*`.
+- **Forklift Monitoring** — `/api/forklift/*`: vehicle / forklift detections on
+  cameras configured as forklift zones (Settings → Forklift Zones; rule
+  *prohibited* or *restricted hours*), zone violations, review (confirm / clear
+  as false alarm) and CSV exports. SenseStudio V2.13 has no forklift class, so
+  detections come from its vehicle / non-motor-vehicle attributes or a policy
+  named "forklift" — see `lib/Forklift.php`.
+- **Cameras** — Live Feeds (one tile per stream with detection boxes and the
+  go2rtc live video) and the Camera Fleet.
+- **Reports** — Incidents (tickets, SLA), Analytics, Forecast, Fire & Smoke and
+  Face & Body reports.
+- **Settings** — SenseTime API, endpoints & tokens, POC camera points,
+  attendance rules, PPE area rules, restricted zones, forklift zones,
+  notifications, AI source, auto reports; plus Alert Rules and Users & Roles.
 
 Data flow: `index.php` serves the dashboard and injects the feed URL + read
-token → the app polls **`/feed.php`** every 5s → `feed.php` reads the DB via
-`EventStore`, maps events with `DashboardMapper`, and enriches with the Weststar
-AI analytics summary (`/sensetime/analytics`, file-cached ~2 min).
+token → the app polls **`/feed.php`** every 5s (events, camera tiles, fleet,
+plant camera counts, KPI meta) and the page-specific `/api/*` endpoints →
+`feed.php` reads the DB via `EventStore`, maps events with `DashboardMapper`,
+and enriches with the Weststar AI analytics summary (file-cached ~2 min).
 
 ### Weststar AI integration
 
@@ -178,6 +205,8 @@ lib/Attributes.php      SenseTime §5.2.4 attribute dictionary + decoder
 lib/Database.php        MySQL/SQLite connection + migrations
 lib/EventStore.php      Normalize, store, resolve images, forward, query
 lib/DashboardMapper.php SenseTime event → dashboard incident / camera tile
+lib/Forklift.php        Forklift zones: detection rule, verdicts, review, summary / CSV
+lib/Overview.php        Overview page aggregate (attendance, PPE, restricted, cleaning, forklift, plants)
 storage/                raw JSONL backup + AI cache (+ SQLite if used) — deny-all
 tests/                  sample_payload.json + local dev router
 deploy.sh               Local, FTP-based deploy tool (LFTP) for the FTP-hosted site
