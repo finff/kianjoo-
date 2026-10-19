@@ -12,8 +12,11 @@ class Component extends DCLogic {
     this.SEV = {critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--low)'};
     // Theme survives refresh via localStorage (falls back to prop/light).
     let savedTheme=null; try{ savedTheme=localStorage.getItem('tmns-theme'); }catch(e){}
+    // Sidebar collapse survives refresh too; first visit on a narrow window starts collapsed.
+    let savedSide=null; try{ savedSide=localStorage.getItem('tmns-side'); }catch(e){}
     this.state = {
       theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'light'),
+      sideCollapsed: savedSide==='1' || (savedSide===null && typeof window!=='undefined' && window.innerWidth<1100),
       now,
       filter: 'all',
       paused: false,
@@ -416,6 +419,10 @@ class Component extends DCLogic {
       .catch(()=>{});
   }
 
+  toggleSide(){
+    const v=!this.state.sideCollapsed;
+    try{ localStorage.setItem('tmns-side', v?'1':'0'); }catch(e){}
+    this.setState({sideCollapsed:v}); }
   toggleTheme(){
     const next=this.state.theme==='dark'?'light':'dark';
     try{ localStorage.setItem('tmns-theme', next); }catch(e){}
@@ -3221,6 +3228,8 @@ class Component extends DCLogic {
 
     return {
       theme:st.theme, clock, dateStr, dateLong, infLoad:st.infLoad,
+      sideMode:st.sideCollapsed?'collapsed':'open', toggleSide:()=>this.toggleSide(),
+      sideToggleTitle:st.sideCollapsed?'Expand navigation':'Collapse navigation',
       // global plant filter + sidebar plants + grouped sub-tabs
       plantSel, plantRows, hasPlants:plantRows.length>0, subTabs, hasSubTabs:subTabs.length>0,
       // overview
