@@ -1459,3 +1459,21 @@ body{font-variant-numeric:tabular-nums}
 .navbtn.nav-sub.nav-on .nav-dot{opacity:1}
 .c1[data-side="collapsed"] .nav-subs,.c1[data-side="collapsed"] .nav-caret{display:none}
 .c1[data-side="collapsed"] .navbtn.nav-grp-on{background:var(--brand);color:#fff}
+
+/* ── Sidebar: collapsible sections ──────────────────────────── */
+.nav-sec{display:flex;flex-direction:column;gap:3px}
+.nav-sec-head{display:flex;align-items:center;gap:7px;width:100%;padding:14px 10px 6px;border:none;background:transparent;color:var(--side-text2);font-family:inherit;font-size:10px;font-weight:700;letter-spacing:1.4px;cursor:pointer;text-align:left;border-radius:6px;transition:color .15s}
+.nav-sec-head:hover{color:#fff}
+.nav-sec-head .nav-caret{margin-left:auto;opacity:.6}
+.nav-sec-head:hover .nav-caret{opacity:1}
+.nav-sec-dot{width:6px;height:6px;border-radius:50%;background:var(--brand);box-shadow:0 0 6px var(--brand);display:none}
+.nav-sec-head.has-on .nav-sec-dot{display:inline-block}
+.nav-sec-items{display:flex;flex-direction:column;gap:3px}
+.nav-sec-items.closed{display:none}
+.side-plants.nav-sec{padding:0}
+.side-plants .nav-sec-items{padding:0 0 6px}
+/* icon rail: no section headers, items always visible, thin dividers between sections */
+.c1[data-side="collapsed"] .nav-sec-head{display:none}
+.c1[data-side="collapsed"] .nav-sec{border-top:1px solid var(--side-line);padding-top:6px;margin-top:4px}
+.c1[data-side="collapsed"] .nav-sec-items.closed{display:flex}
+.nav-sec-lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

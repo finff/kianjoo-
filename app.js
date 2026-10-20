@@ -18,6 +18,7 @@ class Component extends DCLogic {
       theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'light'),
       sideCollapsed: savedSide==='1' || (savedSide===null && typeof window!=='undefined' && window.innerWidth<1100),
       navOpen: {},             // sidebar groups the user expanded / collapsed (cameras | reports | settings)
+      navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
       now,
       filter: 'all',
       paused: false,
@@ -430,6 +431,13 @@ class Component extends DCLogic {
     const open = st.navOpen[g]!=null ? st.navOpen[g] : inGroup;
     if(inGroup){ this.setState({navOpen:{...st.navOpen, [g]:!open}}); }
     else { this.setState({navOpen:{...st.navOpen, [g]:true}}); this.setPage(def); } }
+  // Sidebar section a page lives in: att | safety | system | '' (Overview).
+  navSecOf(p){ const m={attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',forklift:'safety'};
+    if(m[p]) return m[p]; const g=this.navGroupOf(p); return (g==='cameras'||g==='reports'||g==='settings')?'system':''; }
+  setNavSec(next){ try{ localStorage.setItem('tmns-nav-sec', JSON.stringify(next)); }catch(e){} this.setState({navSec:next}); }
+  toggleNavSec(k){ const open=this.state.navSec[k]!==false; this.setNavSec({...this.state.navSec, [k]:!open}); }
+  // Navigating into a folded section unfolds it so the active item is visible.
+  openNavSecFor(p){ const k=this.navSecOf(p); if(k && this.state.navSec[k]===false) this.setNavSec({...this.state.navSec, [k]:true}); }
   toggleSide(){
     const v=!this.state.sideCollapsed;
     try{ localStorage.setItem('tmns-side', v?'1':'0'); }catch(e){}
@@ -441,7 +449,7 @@ class Component extends DCLogic {
   setFilter(f){ this.setState({filter:f}); }
   setGrid(n){ this.setState({gridCols:n}); }
   // Switch page + run its side effects (no history push — used by nav & Back/Forward).
-  applyPage(p){ this.setState({page:p});
+  applyPage(p){ this.setState({page:p}); this.openNavSecFor(p);
     if(this.state.demo && (p==='fire'||p==='ppe'||p==='intr')){ this.setState({report:this.demoReport(p)}); }
     else if(p==='fire'||p==='ppe'||p==='intr'){ this._reportJson=null; this.fetchFeed(); }  // pull that module's report now
     if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
@@ -1697,6 +1705,12 @@ class Component extends DCLogic {
       // per-page entries kept for any direct link
       live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
       fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users')};
+    // Sidebar sections (fold / unfold); a folded section holding the active page shows a dot.
+    const curSec=this.navSecOf(st.page);
+    const navSecEntry=(k,label)=>{ const open=st.navSec[k]!==false; const has=k==='plants'?!!st.plant:curSec===k;
+      return {toggle:()=>this.toggleNavSec(k), cls:open?'':'closed', caret:open?'open':'', hasOn:(!open&&has)?'has-on':'',
+        title:(open?'Collapse ':'Expand ')+label}; };
+    const sec={att:navSecEntry('att','Attendance'), safety:navSecEntry('safety','Safety monitoring'), system:navSecEntry('system','System'), plants:navSecEntry('plants','Plants')};
     const modMeta={
       fire:{name:'Fire & Smoke Detection', desc:'Thermal and visual smoke/flame recognition', tag:'FIRE', col:'var(--high)', model:'YOLOv8-fire · v2.4', classes:['Flame','Smoke — light','Smoke — dense','Thermal anomaly']},
       ppe:{name:'PPE Compliance', desc:'Hard hat, vest, gloves and face-shield checks', tag:'PPE', col:'var(--gold)', model:'PPE-Net · v3.1', classes:['Hard hat','Hi-vis vest','Safety gloves','Face shield']},
@@ -3394,7 +3408,7 @@ class Component extends DCLogic {
       addName:st.addCam.name, addRtsp:st.addCam.rtsp, addBusy:st.addCam.busy, addMsg:st.addCam.msg,
       onAddName:(e)=>this.updAddCam({name:e&&e.target?e.target.value:''}), onAddRtsp:(e)=>this.updAddCam({rtsp:e&&e.target?e.target.value:''}), submitCamera:()=>this.submitCamera(),
       // routing
-      page:st.page, nav, pageTitle, pageSub,
+      page:st.page, nav, sec, pageTitle, pageSub,
       isLive:st.page==='live', isIncidents:st.page==='incidents', isCameras:st.page==='cameras', isAnalytics:st.page==='analytics',
       isDet, det, isRules:st.page==='rules', isSettings:st.page==='settings', isForecast:st.page==='forecast',
       isUsers:st.page==='users', isCamera:st.page==='camera', camDetail,

@@ -42,6 +42,13 @@
         <span class="nav-lbl">Overview</span>
         <span class="c11"></span>
       </button>
+
+      <div class="nav-sec">
+        <button class="nav-sec-head {{ sec.att.hasOn }}" onClick="{{ sec.att.toggle }}" title="{{ sec.att.title }}">
+          <span class="nav-sec-lbl">ATTENDANCE</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.att.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.att.cls }}">
       <button class="c10 navbtn {{ nav.attendance.cls }}" onClick="{{ nav.attendance.go }}" title="Attendance">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
         <span class="nav-lbl">Attendance</span>
@@ -54,6 +61,15 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
         <span class="nav-lbl">Face Registration</span>
       </button>
+        </div>
+      </div>
+
+      <div class="nav-sec">
+        <button class="nav-sec-head {{ sec.safety.hasOn }}" onClick="{{ sec.safety.toggle }}" title="{{ sec.safety.title }}">
+          <span class="nav-sec-lbl">SAFETY MONITORING</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.safety.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.safety.cls }}">
       <button class="c10 navbtn {{ nav.ppe.cls }}" onClick="{{ nav.ppe.go }}" title="PPE Compliance">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>
         <span class="nav-lbl">PPE Compliance</span>
@@ -70,6 +86,15 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H5a2 2 0 0 0-2 2v5"/><circle cx="13" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><path d="M8 19h3"/><path d="M16 2v17h6"/><path d="M6 12V7a2 2 0 0 1 2-2h3l5 5"/></svg>
         <span class="nav-lbl">Forklift Monitoring</span>
       </button>
+        </div>
+      </div>
+
+      <div class="nav-sec">
+        <button class="nav-sec-head {{ sec.system.hasOn }}" onClick="{{ sec.system.toggle }}" title="{{ sec.system.title }}">
+          <span class="nav-sec-lbl">SYSTEM</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.system.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.system.cls }}">
       <button class="c10 navbtn {{ nav.cameras.cls }}" onClick="{{ nav.cameras.go }}" title="Cameras">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
         <span class="nav-lbl">Cameras</span>
@@ -107,10 +132,16 @@
         </sc-for>
       </div>
       </sc-if>
+        </div>
+      </div>
 
       <sc-if value="{{ hasPlants }}" hint-placeholder-val="{{ true }}">
-      <div class="side-plants">
-        <div class="c13">PLANTS</div>
+      <div class="nav-sec side-plants">
+        <button class="nav-sec-head {{ sec.plants.hasOn }}" onClick="{{ sec.plants.toggle }}" title="{{ sec.plants.title }}">
+          <span class="nav-sec-lbl">PLANTS</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.plants.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.plants.cls }}">
         <sc-for list="{{ plantRows }}" as="p" hint-placeholder-count="3">
           <div class="plant-row {{ p.cls }}" onClick="{{ p.onClick }}" title="{{ p.title }}">
             <span class="plant-caret">›</span>
@@ -119,6 +150,7 @@
             <span class="plant-state">{{ p.state }}</span>
           </div>
         </sc-for>
+        </div>
       </div>
       </sc-if>
     </nav>
