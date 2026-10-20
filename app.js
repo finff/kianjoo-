@@ -17,6 +17,7 @@ class Component extends DCLogic {
     this.state = {
       theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'light'),
       sideCollapsed: savedSide==='1' || (savedSide===null && typeof window!=='undefined' && window.innerWidth<1100),
+      navOpen: {},             // sidebar groups the user expanded / collapsed (cameras | reports | settings)
       now,
       filter: 'all',
       paused: false,
@@ -419,6 +420,16 @@ class Component extends DCLogic {
       .catch(()=>{});
   }
 
+  // Sidebar group a page belongs to (Cameras / Reports / Settings), else the page itself.
+  navGroupOf(p){ return {live:'cameras',cameras:'cameras',camera:'cameras',incidents:'reports',analytics:'reports',forecast:'reports',fire:'reports',face:'reports',
+      settings:'settings',rules:'settings',users:'settings'}[p]||p; }
+  // Parent item of a sidebar group: inside the group it folds / unfolds the children,
+  // elsewhere it opens the group and goes to its default page.
+  toggleNavGroup(g, def){
+    const st=this.state, inGroup=this.navGroupOf(st.page)===g;
+    const open = st.navOpen[g]!=null ? st.navOpen[g] : inGroup;
+    if(inGroup){ this.setState({navOpen:{...st.navOpen, [g]:!open}}); }
+    else { this.setState({navOpen:{...st.navOpen, [g]:true}}); this.setPage(def); } }
   toggleSide(){
     const v=!this.state.sideCollapsed;
     try{ localStorage.setItem('tmns-side', v?'1':'0'); }catch(e){}
@@ -1667,13 +1678,22 @@ class Component extends DCLogic {
     // ===== NAV =====
     // Sidebar items highlight by group: Cameras = live/cameras/camera, Reports =
     // incidents/analytics/forecast/fire/face, Settings = settings/rules/users.
-    const navGroup={live:'cameras',cameras:'cameras',camera:'cameras',incidents:'reports',analytics:'reports',forecast:'reports',fire:'reports',face:'reports',
-      settings:'settings',rules:'settings',users:'settings'}[st.page]||st.page;
+    const navGroup=this.navGroupOf(st.page);
     const navStyle=(key,target)=>({go:()=>this.setPage(target||key), cls:navGroup===key?'nav-on':''});
     const navExact=(p)=>({go:()=>this.setPage(p), cls:st.page===p?'nav-on':''});
+    // Sidebar groups: parent row + collapsible children (also drive the sub-tab strip).
+    const NAV_GROUPS={
+      cameras:[['live','Live Feeds'],['cameras','Camera Fleet']],
+      reports:[['incidents','Incidents'],['analytics','Analytics'],['forecast','Forecast'],['fire','Fire & Smoke'],['face','Face & Body']],
+      settings:[['settings','Settings'],['rules','Alert Rules']].concat(this.PERMS.users?[['users','Users & Roles']]:[]),
+    };
+    const navGroupEntry=(key,def)=>{ const active=navGroup===key;
+      const open = st.navOpen[key]!=null ? !!st.navOpen[key] : active;
+      return {go:()=>this.toggleNavGroup(key,def), cls:active?'nav-grp-on':'', open, caret:open?'open':'',
+        items:NAV_GROUPS[key].map(([pg,label])=>({label, go:()=>this.setPage(pg), cls:st.page===pg?'nav-on':''}))}; };
     const nav={overview:navStyle('overview'), attendance:navStyle('attendance'), employees:navStyle('employees'), faces:navStyle('faces'),
       ppe:navStyle('ppe'), intr:navStyle('intr'), cleaning:navStyle('cleaning'), forklift:navStyle('forklift'),
-      cameras:navStyle('cameras'), reports:navStyle('reports','incidents'), settings:navStyle('settings'),
+      cameras:navGroupEntry('cameras','cameras'), reports:navGroupEntry('reports','incidents'), settings:navGroupEntry('settings','settings'),
       // per-page entries kept for any direct link
       live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
       fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users')};
@@ -3026,11 +3046,7 @@ class Component extends DCLogic {
         onClick:()=>this.setPlant(st.plant===p.name?'':p.name)}; });
 
     // ===== SUB-TAB STRIP for grouped pages =====
-    const SUBTABS={
-      cameras:[['live','Live Feeds'],['cameras','Camera Fleet']],
-      reports:[['incidents','Incidents'],['analytics','Analytics'],['forecast','Forecast'],['fire','Fire & Smoke'],['face','Face & Body']],
-      settings:[['settings','Settings'],['rules','Alert Rules']].concat(this.PERMS.users?[['users','Users & Roles']]:[]),
-    };
+    const SUBTABS=NAV_GROUPS;
     const subTabs=(SUBTABS[navGroup]||[]).map(([k,label])=>({label, cls:st.page===k?'on':'', onClick:()=>this.setPage(k)}));
 
     // ===== OVERVIEW (/api/overview) =====

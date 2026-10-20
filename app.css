@@ -1431,7 +1431,8 @@ body{font-variant-numeric:tabular-nums}
 .c1[data-side="collapsed"]{grid-template-columns:68px 1fr}
 .c1[data-side="collapsed"] .tb-collapse svg{transform:rotate(180deg)}
 .c1[data-side="collapsed"] .c3{justify-content:center;padding:0 8px}
-.c1[data-side="collapsed"] .c4{width:44px;height:auto}
+.c1[data-side="collapsed"] .c4{display:none}
+.c1[data-side="collapsed"] .side-toggle{margin:0}
 .c1[data-side="collapsed"] .c5,.c1[data-side="collapsed"] .c9,.c1[data-side="collapsed"] .c13,.c1[data-side="collapsed"] .nav-lbl,
 .c1[data-side="collapsed"] .plant-name,.c1[data-side="collapsed"] .plant-state,.c1[data-side="collapsed"] .plant-caret,.c1[data-side="collapsed"] .c20{display:none}
 .c1[data-side="collapsed"] .c8{padding:14px 10px}
@@ -1441,3 +1442,20 @@ body{font-variant-numeric:tabular-nums}
 .c1[data-side="collapsed"] .side-plants{padding:10px 10px 6px}
 .c1[data-side="collapsed"] .plant-row{justify-content:center;padding:8px 0}
 .c1[data-side="collapsed"] .c18{flex-direction:column;gap:10px;padding:12px 8px}
+
+/* ── Sidebar: header toggle + collapsible groups ─────────────── */
+.side-toggle{margin-left:auto;width:28px;height:28px;border-radius:8px;border:1px solid var(--side-line);background:transparent;color:var(--side-text2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0;transition:background .15s,color .15s}
+.side-toggle:hover{background:var(--side-bg2);color:#fff}
+.nav-caret{margin-left:auto;flex-shrink:0;opacity:.7;transition:transform .15s}
+.nav-caret.open{transform:rotate(90deg)}
+.c12+.nav-caret{margin-left:6px}
+.navbtn.nav-grp-on{color:#fff;font-weight:600}
+.navbtn.nav-grp-on svg{opacity:1}
+.nav-subs{display:flex;flex-direction:column;gap:2px;margin-bottom:2px;position:relative}
+.nav-subs::before{content:"";position:absolute;left:20px;top:4px;bottom:4px;width:1px;background:var(--side-line)}
+.navbtn.nav-sub{padding:8px 10px 8px 34px;font-size:12.5px;font-weight:500;gap:10px}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.55;flex-shrink:0}
+.navbtn.nav-sub.nav-on{box-shadow:none}
+.navbtn.nav-sub.nav-on .nav-dot{opacity:1}
+.c1[data-side="collapsed"] .nav-subs,.c1[data-side="collapsed"] .nav-caret{display:none}
+.c1[data-side="collapsed"] .navbtn.nav-grp-on{background:var(--brand);color:#fff}
