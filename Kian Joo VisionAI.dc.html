@@ -89,6 +89,25 @@
         </div>
       </div>
 
+      <sc-if value="{{ hasPlants }}" hint-placeholder-val="{{ true }}">
+      <div class="nav-sec side-plants">
+        <button class="nav-sec-head {{ sec.plants.hasOn }}" onClick="{{ sec.plants.toggle }}" title="{{ sec.plants.title }}">
+          <span class="nav-sec-lbl">PLANTS</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.plants.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.plants.cls }}">
+        <sc-for list="{{ plantRows }}" as="p" hint-placeholder-count="3">
+          <div class="plant-row {{ p.cls }}" onClick="{{ p.onClick }}" title="{{ p.title }}">
+            <span class="plant-caret">›</span>
+            <span class="plant-name">{{ p.name }}</span>
+            <span class="plant-dot" style="background:{{ p.dot }}"></span>
+            <span class="plant-state">{{ p.state }}</span>
+          </div>
+        </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
       <div class="nav-sec">
         <button class="nav-sec-head {{ sec.system.hasOn }}" onClick="{{ sec.system.toggle }}" title="{{ sec.system.title }}">
           <span class="nav-sec-lbl">SYSTEM</span><span class="nav-sec-dot"></span>
@@ -135,24 +154,6 @@
         </div>
       </div>
 
-      <sc-if value="{{ hasPlants }}" hint-placeholder-val="{{ true }}">
-      <div class="nav-sec side-plants">
-        <button class="nav-sec-head {{ sec.plants.hasOn }}" onClick="{{ sec.plants.toggle }}" title="{{ sec.plants.title }}">
-          <span class="nav-sec-lbl">PLANTS</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.plants.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.plants.cls }}">
-        <sc-for list="{{ plantRows }}" as="p" hint-placeholder-count="3">
-          <div class="plant-row {{ p.cls }}" onClick="{{ p.onClick }}" title="{{ p.title }}">
-            <span class="plant-caret">›</span>
-            <span class="plant-name">{{ p.name }}</span>
-            <span class="plant-dot" style="background:{{ p.dot }}"></span>
-            <span class="plant-state">{{ p.state }}</span>
-          </div>
-        </sc-for>
-        </div>
-      </div>
-      </sc-if>
     </nav>
 
     <div class="c18">
