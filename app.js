@@ -433,7 +433,7 @@ class Component extends DCLogic {
     else { this.setState({navOpen:{...st.navOpen, [g]:true}}); this.setPage(def); } }
   // Sidebar section a page lives in: att | safety | system | '' (Overview).
   navSecOf(p){ const m={attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',forklift:'safety'};
-    if(m[p]) return m[p]; const g=this.navGroupOf(p); return (g==='cameras'||g==='reports'||g==='settings')?'system':''; }
+    if(m[p]) return m[p]; const g=this.navGroupOf(p); return g==='cameras'?'safety':((g==='reports'||g==='settings')?'system':''); }
   setNavSec(next){ try{ localStorage.setItem('tmns-nav-sec', JSON.stringify(next)); }catch(e){} this.setState({navSec:next}); }
   toggleNavSec(k){ const open=this.state.navSec[k]!==false; this.setNavSec({...this.state.navSec, [k]:!open}); }
   // Navigating into a folded section unfolds it so the active item is visible.
