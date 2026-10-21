@@ -15,6 +15,8 @@ final class EventStore
     private PDO $pdo;
     private array $cfg;
     private string $imageBase;
+    /** True while the detection simulator stores events: no raw-log append, forwarding or e-mail alerts. */
+    public bool $silent = false;
 
     public function __construct(PDO $pdo, array $cfg)
     {
@@ -160,7 +162,9 @@ final class EventStore
         ];
 
         // Durable append-only backup first — survives even if the DB write fails.
-        $this->appendRawLog($row['raw_json']);
+        if (!$this->silent) {
+            $this->appendRawLog($row['raw_json']);
+        }
 
         $cols = array_keys($row);
         $ph   = array_map(static fn ($c) => ':' . $c, $cols);
@@ -212,9 +216,11 @@ final class EventStore
         }
 
         $this->pruneIfNeeded();
-        $this->forwardFirebase($stream, $payload);
-        $this->forwardWestarAI($payload);
-        $this->notifyIfSevere($row, $decoded['map']);
+        if (!$this->silent) {
+            $this->forwardFirebase($stream, $payload);
+            $this->forwardWestarAI($payload);
+            $this->notifyIfSevere($row, $decoded['map']);
+        }
 
         $row['id']              = $eventId;
         $row['decoded']         = $decoded['map'];

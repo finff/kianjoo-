@@ -56,6 +56,7 @@ header, or `Authorization: Bearer …`.
 | `GET`  | `/overview?plant=` | **read** | Overview page payload (30 s cache per plant) |
 | `GET`  | `/forklift/summary` · `/forklift/export` | **read** | Forklift zone KPIs, incidents, CSV |
 | `POST` | `/forklift/review` | session | Confirm / clear a forklift detection |
+| `POST` | `/simulate` | session + settings | Generate (`action:run`) or remove (`action:reset`) simulated detections |
 
 `{stream}` is any label you choose (`camera1`, `camera2`, `lobby`, …). If
 omitted, it is derived from `deviceSerial`.
@@ -169,6 +170,10 @@ Pages (sidebar order):
   go2rtc live video) and the Camera Fleet.
 - **Reports** — Incidents (tickets, SLA), Analytics, Forecast, Fire & Smoke and
   Face & Body reports.
+- **Settings → Detection simulator** — one click generates a week of realistic
+  detections (demo employees, PPE, restricted zone, forklift, cleaning window,
+  smoking, strangers) via `POST /api/simulate`, on `DEMO-*` cameras that
+  "Remove demo data" deletes again. Simulated events never e-mail or forward.
 - **Settings** — SenseTime API, endpoints & tokens, POC camera points,
   attendance rules, PPE area rules, restricted zones, forklift zones,
   notifications, AI source, auto reports; plus Alert Rules and Users & Roles.
@@ -207,6 +212,7 @@ lib/EventStore.php      Normalize, store, resolve images, forward, query
 lib/DashboardMapper.php SenseTime event → dashboard incident / camera tile
 lib/Forklift.php        Forklift zones: detection rule, verdicts, review, summary / CSV
 lib/Overview.php        Overview page aggregate (attendance, PPE, restricted, cleaning, forklift, plants)
+lib/Simulator.php       Detection simulator: a week of SenseStudio-shaped pushes through the real ingest path
 storage/                raw JSONL backup + AI cache (+ SQLite if used) — deny-all
 tests/                  sample_payload.json + local dev router
 deploy.sh               Local, FTP-based deploy tool (LFTP) for the FTP-hosted site

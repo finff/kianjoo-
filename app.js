@@ -18,6 +18,7 @@ class Component extends DCLogic {
       theme: (savedTheme==='light'||savedTheme==='dark') ? savedTheme : (props.defaultTheme || 'light'),
       sideCollapsed: savedSide==='1' || (savedSide===null && typeof window!=='undefined' && window.innerWidth<1100),
       navOpen: {},             // sidebar groups the user expanded / collapsed (cameras | reports | settings)
+      simBusy: false, simMsg: '',   // Settings → Detection simulator
       navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
       now,
       filter: 'all',
@@ -120,6 +121,23 @@ class Component extends DCLogic {
     // Demo mode (localStorage): show dummy sample data instead of live feed.
     try { this.state.demo = localStorage.getItem('tmns_demo')==='1'; } catch(e){ this.state.demo=false; }
     this.camPool = this.buildCamPool();  // placeholder tiles until live cams arrive
+  }
+
+  // ── Detection simulator (Settings) — POST /api/simulate, signed in + settings permission ──
+  simPost(action){
+    if(this.state.simBusy) return;
+    if(action==='reset' && !window.confirm('Remove every simulated detection (DEMO… cameras), the demo employees and the demo zones?')) return;
+    this.setState({simBusy:true, simMsg:action==='reset'?'Removing demo data…':'Generating a week of detections through the ingest pipeline… this takes a few seconds'});
+    fetch(`${this.API}/simulate`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify({action, days:7})})
+      .then(r=>r.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Simulation failed');
+        const c=d.counts||{};
+        this.setState({simBusy:false, ov:null, simMsg: action==='reset'
+          ? ('Removed '+(c.events||0)+' simulated events and '+(c.employees||0)+' demo employees ✓')
+          : ('Generated '+(c.events||0)+' detections over '+(d.days||7)+' days — '+(c.face||0)+' face, '+(c.ppe||0)+' PPE, '+(c.restricted||0)+' restricted-zone, '+(c.forklift||0)+' forklift ✓ Open the Overview.')});
+        this.fetchFeed(); this.loadPeople(); this.loadApp(); if(this.state.reg.data) this.loadRegister(); })
+      .catch(e=>this.setState({simBusy:false, simMsg:'✗ '+((e&&e.message)||'Simulation failed')}));
   }
 
   // ── Demo mode ────────────────────────────────────────────
@@ -3603,6 +3621,10 @@ class Component extends DCLogic {
       fcOutlook, fcOutlookCol: fcOutlook==='rising'?'var(--high)':(fcOutlook==='falling'?'var(--ok)':'var(--low)'),
       // demo mode
       demoOn:!!st.demo, toggleDemo:()=>this.toggleDemo(),
+      // detection simulator (Settings)
+      simRun:()=>this.simPost('run'), simReset:()=>this.simPost('reset'), simBusy:!!st.simBusy, simMsg:st.simMsg||'',
+      simRunLabel:st.simBusy?'Working…':'Generate demo detections',
+      simStatus:this.PERMS.settings?'runs on the server through the real ingest path':'needs the settings permission',
       demoLabel: st.demo?'Demo data (dummy)':'Live data',
       demoBtnLabel: st.demo?'Switch to live data':'Switch to demo data',
       demoTrackBg: st.demo?'var(--gold)':'var(--line2)', demoKnobX: st.demo?'20px':'2px',

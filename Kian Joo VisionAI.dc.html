@@ -2592,6 +2592,20 @@
           </button>
         </div>
 
+        <!-- Detection simulator: server-side, same ingest path as a SenseStudio push -->
+        <div class="c418 sim-card">
+          <div class="c419">⚡</div>
+          <div class="c64">
+            <div class="c129">Detection simulator <span class="c100">· {{ simStatus }}</span></div>
+            <div class="c420">Generates a week of realistic SenseStudio push events through the real ingest pipeline: eight demo employees clocking in and out at the guard posts, PPE checks at Line 5 and Spot 9 with some violations, restricted-zone entries (authorised, unauthorised and unverifiable), forklift traffic on a prohibited loading dock, a cleaning window running now, smoking and stranger alerts. Cameras are named DEMOGATE1, DEMOLINE5, DEMOWASTE9, DEMODOCK… and employees KJ-0101…0108, so everything can be removed again. Simulated events send no e-mail and are not forwarded.</div>
+            <div class="c100 sim-msg">{{ simMsg }}</div>
+          </div>
+          <div class="poc-chips sim-btns">
+            <button class="c429" onClick="{{ simRun }}" disabled="{{ simBusy }}">{{ simRunLabel }}</button>
+            <button class="c185 chip" onClick="{{ simReset }}" disabled="{{ simBusy }}">Remove demo data</button>
+          </div>
+        </div>
+
         <!-- settings tabs -->
         <div class="c423">
           <sc-for list="{{ spTabs }}" as="t" hint-placeholder-count="6">

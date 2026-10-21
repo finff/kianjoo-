@@ -1477,3 +1477,10 @@ body{font-variant-numeric:tabular-nums}
 .c1[data-side="collapsed"] .nav-sec{border-top:1px solid var(--side-line);padding-top:6px;margin-top:4px}
 .c1[data-side="collapsed"] .nav-sec-items.closed{display:flex}
 .nav-sec-lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── Settings: detection simulator card ─────────────────────── */
+.sim-card{align-items:flex-start}
+.sim-card .c419{flex-shrink:0}
+.sim-msg{margin-top:6px;min-height:14px}
+.sim-btns{flex-direction:column;align-items:stretch;flex-shrink:0;min-width:200px}
+.sim-btns .c429:disabled,.sim-btns .chip:disabled{opacity:.55;cursor:default}

@@ -14,6 +14,7 @@
  *   GET  /overview?plant=                -> Overview page payload (30 s cache)      [read token]
  *   GET  /forklift/summary|export        -> forklift zone KPIs, incidents / CSV     [read token]
  *   POST /forklift/review                -> confirm / clear a forklift detection    [signed in]
+ *   POST /simulate                       -> generate / remove simulated detections  [signed in, settings]
  *
  * Auth token may be passed as ?token=, X-Ingest-Token / X-Read-Token header,
  * or Authorization: Bearer <token>.
@@ -956,6 +957,33 @@ try {
         $store = new EventStore($pdo, $config);
         $plant = substr(trim((string) ($_GET['plant'] ?? '')), 0, 80);
         Response::ok((new Overview($pdo, $config, $store))->build($plant));
+    }
+
+    // ── Detection simulator (Settings → Detection simulator) ─
+    // POST /simulate {action: run|reset, days?}  (signed in, settings permission)
+    // run   → a week of realistic SenseStudio pushes through the real ingest path
+    //         (demo-* cameras, demo employees, zones, cleaning window)
+    // reset → removes every simulated event, employee and config entry
+    if ($route === '/simulate') {
+        require_once APP_ROOT . '/lib/Auth.php';
+        require_once APP_ROOT . '/lib/Simulator.php';
+        $me = Auth::user();
+        if ($me === null) {
+            Response::error('Sign in to run the detection simulator.', 401);
+        }
+        if (!Auth::can('settings')) {
+            Response::error('Forbidden: the simulator needs the settings permission.', 403);
+        }
+        if ($method !== 'POST') {
+            Response::error('POST {action: run|reset, days}.', 405);
+        }
+        $in  = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+        @set_time_limit(240);
+        $sim = new Simulator(Database::connect($config['storage']), $config, APP_ROOT . '/storage/app_settings.json');
+        if ((string) ($in['action'] ?? 'run') === 'reset') {
+            Response::ok($sim->reset() + ['action' => 'reset']);
+        }
+        Response::ok($sim->run(max(1, min(14, (int) ($in['days'] ?? 7))), (string) ($me['name'] ?? $me['username'] ?? 'operator')) + ['action' => 'run']);
     }
 
     // ── Employee sync to the SenseStudio person library ─────
