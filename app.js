@@ -440,7 +440,7 @@ class Component extends DCLogic {
   }
 
   // Sidebar group a page belongs to (Cameras / Reports / Settings), else the page itself.
-  navGroupOf(p){ return {live:'cameras',cameras:'cameras',camera:'cameras',incidents:'reports',analytics:'reports',forecast:'reports',fire:'reports',face:'reports',
+  navGroupOf(p){ return {camdash:'cameras',live:'cameras',cameras:'cameras',camera:'cameras',incidents:'reports',analytics:'reports',forecast:'reports',fire:'reports',face:'reports',
       settings:'settings',rules:'settings',users:'settings'}[p]||p; }
   // Parent item of a sidebar group: inside the group it folds / unfolds the children,
   // elsewhere it opens the group and goes to its default page.
@@ -468,6 +468,7 @@ class Component extends DCLogic {
   setGrid(n){ this.setState({gridCols:n}); }
   // Switch page + run its side effects (no history push — used by nav & Back/Forward).
   applyPage(p){ this.setState({page:p}); this.openNavSecFor(p);
+    if(p==='camdash') this.loadApp();                // camera-point / plant mappings for the camera dashboard
     if(this.state.demo && (p==='fire'||p==='ppe'||p==='intr')){ this.setState({report:this.demoReport(p)}); }
     else if(p==='fire'||p==='ppe'||p==='intr'){ this._reportJson=null; this.fetchFeed(); }  // pull that module's report now
     if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
@@ -486,7 +487,7 @@ class Component extends DCLogic {
     if(p==='users'){ this.loadUsers(); this.loadRoles(); } }
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
   setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  pageFromHash(){ const P=['overview','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
+  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
@@ -1709,7 +1710,7 @@ class Component extends DCLogic {
     const navExact=(p)=>({go:()=>this.setPage(p), cls:st.page===p?'nav-on':''});
     // Sidebar groups: parent row + collapsible children (also drive the sub-tab strip).
     const NAV_GROUPS={
-      cameras:[['live','Live Feeds'],['cameras','Camera Fleet']],
+      cameras:[['camdash','Dashboard'],['live','Live Feeds'],['cameras','Camera Fleet']],
       reports:[['incidents','Incidents'],['analytics','Analytics'],['forecast','Forecast'],['fire','Fire & Smoke'],['face','Face & Body']],
       settings:[['settings','Settings'],['rules','Alert Rules']].concat(this.PERMS.users?[['users','Users & Roles']]:[]),
     };
@@ -1719,7 +1720,7 @@ class Component extends DCLogic {
         items:NAV_GROUPS[key].map(([pg,label])=>({label, go:()=>this.setPage(pg), cls:st.page===pg?'nav-on':''}))}; };
     const nav={overview:navStyle('overview'), attendance:navStyle('attendance'), employees:navStyle('employees'), faces:navStyle('faces'),
       ppe:navStyle('ppe'), intr:navStyle('intr'), cleaning:navStyle('cleaning'), forklift:navStyle('forklift'),
-      cameras:navGroupEntry('cameras','cameras'), reports:navGroupEntry('reports','incidents'), settings:navGroupEntry('settings','settings'),
+      cameras:navGroupEntry('cameras','camdash'), reports:navGroupEntry('reports','incidents'), settings:navGroupEntry('settings','settings'),
       // per-page entries kept for any direct link
       live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
       fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users')};
@@ -1737,6 +1738,7 @@ class Component extends DCLogic {
     };
     const titles={
       overview:['AI Factory Monitoring Dashboard','Real-time monitoring of people, safety and operations across all plants'],
+      camdash:['Camera Dashboard','Fleet health, detections and coverage across all plants'],
       live:['Live Feeds','Live camera wall with real-time detections'],
       employees:['Employees','Employee directory, registration and SenseStudio sync'],
       faces:['Face Registration','Enrol faces so CCTV can recognise employees'],
@@ -3209,6 +3211,82 @@ class Component extends DCLogic {
           if(ev) this.openModal('event', ev); else if(MODPAGE[e.mod]) this.setPage(MODPAGE[e.mod]); else if(e.image) this.openLightbox(e.image, e.type||''); }}; });
     const ovUpdated=st.ovBusy?'Refreshing…':(ov.generated_at?('Updated '+String(ov.generated_at).slice(11,19)+(st.plant?(' · '+st.plant):' · all plants')):'');
 
+    // ===== CAMERA DASHBOARD (Cameras group landing) =====
+    // Built from data the feed already delivers: the VisionAI device registry
+    // (camAll), 24 h detection counts per camera / module, open incidents, the
+    // policy matrix and the camera-point → plant mappings from Settings.
+    const cxLocOf=(key)=>spCamLocCur[String(key||'').toLowerCase()]||'';
+    const cxPlantOf=(loc)=>{ if(!loc) return ''; if(locPlantsCur[loc]) return locPlantsCur[loc];
+      const m=/\bplant\s*([a-z0-9]+)/i.exec(loc); return m?('Plant '+m[1].toUpperCase()):''; };
+    const cxByCamRaw=st.byCam||{};
+    const cxOpenBy={}, cxLastBy={};
+    st.events.forEach(e=>{ const k=String(e.camera||'').toUpperCase();
+      if(e.status==='open') cxOpenBy[k]=(cxOpenBy[k]||0)+1;
+      if(!cxLastBy[k]||e.ts>cxLastBy[k]) cxLastBy[k]=e.ts; });
+    const cxCams=camAll.map(c=>{ const key=String(c.id).toUpperCase(); const loc=cxLocOf(c.stream||c.id);
+      const mods=[...new Set((st.policies||[]).filter(p=>String(p.stream).toUpperCase()===key||String(p.serial).toUpperCase()===key).map(p=>p.mod))];
+      return {...c, key, loc, plant:cxPlantOf(loc), det:N(cxByCamRaw[key]), open:cxOpenBy[key]||0, last:cxLastBy[key]||0, mods}; });
+    const cxTotal=cxCams.length, cxOn=cxCams.filter(c=>c.online).length, cxOff=cxTotal-cxOn;
+    const cxDet=Object.values(cxByCamRaw).reduce((a,b)=>a+N(b),0);
+    const cxOpen=st.events.filter(e=>e.status==='open').length;
+    const cxSevere=st.events.filter(e=>e.status==='open'&&(e.sev==='high'||e.sev==='critical')).length;
+    const cxMapped=cxCams.filter(c=>c.loc).length;
+    const cxStreams=(st.liveBase&&!st.demo)?cxOn:0;
+    const goPoc=()=>{ this.setState({spTab:'poc'}); this.setPage('settings'); };
+    const cxKpi={
+      total:{value:fmtN(cxTotal), delta:cxStreams?(cxStreams+' live video streams'):'VisionAI device registry', col:'var(--text2)', onClick:()=>this.setPage('cameras')},
+      online:{value:fmtN(cxOn), delta:(cxTotal?Math.round(100*cxOn/cxTotal):0)+'% of the fleet online', col:'var(--ok)', onClick:()=>{ this.setCamFilter('online'); this.setPage('cameras'); }},
+      offline:{value:fmtN(cxOff), delta:cxOff?'need attention':'all cameras reachable', col:cxOff?'var(--crit)':'var(--ok)', onClick:()=>{ this.setCamFilter('offline'); this.setPage('cameras'); }},
+      det:{value:fmtN(cxDet), delta:Object.keys(cxByCamRaw).length+' cameras reporting', col:'var(--text2)', onClick:()=>this.setPage('analytics')},
+      open:{value:fmtN(cxOpen), delta:cxSevere+' high / critical', col:cxSevere?'var(--crit)':'var(--ok)', onClick:()=>this.setPage('incidents')},
+      mapped:{value:fmtN(cxMapped)+' / '+fmtN(cxTotal), delta:(cxTotal-cxMapped)?((cxTotal-cxMapped)+' not mapped to a camera point'):'all cameras mapped', col:(cxTotal-cxMapped)?'#B45309':'var(--ok)', onClick:goPoc},
+    };
+    // Health per plant — feed plant counts when present, else derived from the mappings.
+    const cxPlantRows=(()=>{ let rows=(st.plants&&st.plants.length)?st.plants.map(p=>({name:p.name, on:N(p.online), tot:N(p.total)})):[];
+      if(!rows.length){ const agg={}; cxCams.forEach(c=>{ const k=c.plant||'Unassigned'; agg[k]=agg[k]||{name:k,on:0,tot:0}; agg[k].tot++; if(c.online) agg[k].on++; }); rows=Object.values(agg); }
+      else { const un=cxCams.filter(c=>!c.plant); if(un.length) rows.push({name:'Unassigned', on:un.filter(c=>c.online).length, tot:un.length}); }
+      return rows.map(r=>{ const pct=r.tot?Math.round(100*r.on/r.tot):0;
+        return {name:r.name, value:r.on+' / '+r.tot+' online', w:pct+'%', col:!r.tot?'var(--text3)':(pct>=90?'var(--ok)':(pct>=60?'var(--gold)':'var(--crit)')),
+          title:r.name==='Unassigned'?'Cameras without a camera point → plant mapping':(st.plant===r.name?'Click to show all plants':'Click to filter to '+r.name),
+          onClick:()=>{ if(r.name==='Unassigned') goPoc(); else this.setPlant(st.plant===r.name?'':r.name); }}; }); })();
+    const cxTop=Object.entries(cxByCamRaw).map(([k,v])=>[k,N(v)]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const cxTopMax=Math.max(1,...cxTop.map(x=>x[1]));
+    const cxByCam=cxTop.map(([k,v])=>{ const c=cxCams.find(x=>x.key===k||String(x.stream).toUpperCase()===k);
+      return {label:c?c.name:k, sub:c?[k, c.loc].filter(Boolean).join(' · '):'', value:fmtN(v), w:Math.round(100*v/cxTopMax)+'%', col:'var(--brand)',
+        onClick:()=>this.openCamera(c?(c.stream||String(c.id).toLowerCase()):k.toLowerCase())}; });
+    const bt2=st.byType||{};
+    const cxModParts=[['Face & Body',N(bt2.face),'var(--brand)'],['PPE',N(bt2.ppe),'var(--gold)'],['Intrusion / Restricted',N(bt2.intr),'var(--crit)'],['Forklift',N(bt2.forklift),'var(--high)'],['Fire & Smoke',N(bt2.fire),'var(--purple)']];
+    const cxModSum=cxModParts.reduce((a,p)=>a+p[1],0); let cxAcc=0;
+    const cxDonut=cxModSum?('conic-gradient('+cxModParts.filter(p=>p[1]>0).map(p=>{ const a=cxAcc; cxAcc+=100*p[1]/cxModSum; return p[2]+' '+a.toFixed(2)+'% '+cxAcc.toFixed(2)+'%'; }).join(', ')+')'):'conic-gradient(var(--line2) 0 100%)';
+    const cxDonutLegend=cxModParts.map(([label,n,dot])=>({label, dot, val:fmtN(n), pct:'('+(cxModSum?Math.round(1000*n/cxModSum)/10:0)+'%)'}));
+    // Live wall — online first, one tile per physical feed, up to 8.
+    const cxSeen={};
+    const cxWall=livePool.slice().sort((a,b)=>(b.online!==false)-(a.online!==false))
+      .filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||cxSeen[k]) return !k; cxSeen[k]=1; return true; })
+      .slice(0,8).map(c=>{ const on=c.online!==false; const key=String(c.stream||c.id||'').toUpperCase();
+        const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
+        return {name:c.name||c.stream||c.id, sub:[cxLocOf(c.stream||c.id)||c.zone, N(cxByCamRaw[key])+' det / 24 h'].filter(Boolean).join(' · '),
+          hasVideo:!!vsrc, videoUrl:vsrc, camKey:'cx-'+(c.stream||String(c.id).toLowerCase()),
+          bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
+          liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
+          onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
+    const cxAttention=[
+      ...cxCams.filter(c=>!c.online).map(c=>({name:c.name, sub:[c.plant, c.loc||c.zone||c.id].filter(Boolean).join(' · ')+' · not reachable', pill:'Offline', pillCol:'var(--crit)', pillBg:tint.crit, onClick:c.onOpen})),
+      ...cxCams.filter(c=>c.online&&!c.det).map(c=>({name:c.name, sub:(c.loc||c.id)+' · no detections in 24 h', pill:'Silent', pillCol:'#B45309', pillBg:tint.gold, onClick:c.onOpen})),
+      ...cxCams.filter(c=>!c.loc).map(c=>({name:c.name, sub:c.id+' · not mapped to a camera point', pill:'Unmapped', pillCol:'var(--text3)', pillBg:tint.muted, onClick:goPoc})),
+    ].slice(0,10);
+    const MODLBL={fire:'Fire',ppe:'PPE',intr:'Intrusion',face:'Face',forklift:'Forklift'};
+    const cxRows=cxCams.slice().sort((a,b)=>(a.online-b.online)||(b.det-a.det)).map(c=>({
+      name:c.name, id:c.id, where:[c.plant, c.loc].filter(Boolean).join(' · ')||(c.zone||'—'),
+      mods:c.mods.map(m=>({label:MODLBL[m]||m, bg:(this.MODS[m]||{}).tagBg||'var(--text3)'})), modsEmpty:!c.mods.length,
+      status:c.statusLabel, statusCol:c.online?'var(--ok)':'var(--crit)', statusBg:c.online?tint.ok:tint.crit,
+      det:fmtN(c.det), open:fmtN(c.open), openCol:c.open?'var(--crit)':'var(--text2)', last:c.last?this.ago(c.last):'—',
+      liveViewLabel:c.liveViewLabel, liveColor:c.liveColor, liveBg:c.liveBg, liveBorder:c.liveBorder, liveHint:c.liveHint, onToggleLive:c.onToggleLive,
+      onOpen:c.onOpen}));
+    const cxEvents=st.events.slice(0,8).map(e=>{ const m=this.MODS[e.mod]||{}; const s=EST[e.status]||EST.open;
+      return {camera:e.camera, zone:e.zone||'', tag:m.tag||'EVT', tagBg:m.tagBg||'var(--low)', title:e.title, ago:this.ago(e.ts),
+        status:s[0], statusCol:s[1], statusBg:s[2], onOpen:()=>this.openModal('event', e)}; });
+
     // ===== FORKLIFT MONITORING (/api/forklift/summary) =====
     const fkd=st.fkD||{}, fkf=st.fkF, fkk=fkd.kpi||{};
     const FKV={violation:['ZONE VIOLATION','var(--crit)'], logged:['FORKLIFT DETECTED','var(--low)'], cleared:['CLEARED — FALSE ALARM','var(--ok)']};
@@ -3427,6 +3505,10 @@ class Component extends DCLogic {
       onAddName:(e)=>this.updAddCam({name:e&&e.target?e.target.value:''}), onAddRtsp:(e)=>this.updAddCam({rtsp:e&&e.target?e.target.value:''}), submitCamera:()=>this.submitCamera(),
       // routing
       page:st.page, nav, sec, pageTitle, pageSub,
+      // camera dashboard
+      isCamDash:st.page==='camdash', cxKpi, cxPlantRows, cxPlantsEmpty:cxPlantRows.length===0, cxByCam, cxByCamEmpty:cxByCam.length===0,
+      cxDonut, cxDonutLegend, cxDonutTotal:fmtN(cxModSum), cxWall, cxWallEmpty:cxWall.length===0, cxAttention, cxAttentionEmpty:cxAttention.length===0,
+      cxRows, cxRowsEmpty:cxRows.length===0, cxEvents, cxEventsEmpty:cxEvents.length===0, goCamFleet:()=>this.setPage('cameras'),
       isLive:st.page==='live', isIncidents:st.page==='incidents', isCameras:st.page==='cameras', isAnalytics:st.page==='analytics',
       isDet, det, isRules:st.page==='rules', isSettings:st.page==='settings', isForecast:st.page==='forecast',
       isUsers:st.page==='users', isCamera:st.page==='camera', camDetail,

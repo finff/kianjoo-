@@ -1022,6 +1022,237 @@
       </div>
       </sc-if>
 
+      <!-- ===== CAMERA DASHBOARD (Cameras group landing) ===== -->
+      <sc-if value="{{ isCamDash }}" hint-placeholder-val="{{ false }}">
+      <div class="c207">
+        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
+        <div class="subtabs">
+          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
+            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <div class="ov-kpis">
+          <div class="ov-kpi" onClick="{{ cxKpi.total.onClick }}" title="VisionAI device registry">
+            <div class="ov-kpi-ico" style="background:var(--tint-blue); color:var(--brand)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Total Cameras</div>
+              <div class="ov-kpi-value">{{ cxKpi.total.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.total.col }}">{{ cxKpi.total.delta }}</div>
+            </div>
+          </div>
+          <div class="ov-kpi" onClick="{{ cxKpi.online.onClick }}" title="Cameras reachable now">
+            <div class="ov-kpi-ico" style="background:var(--tint-green); color:var(--ok)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Online</div>
+              <div class="ov-kpi-value">{{ cxKpi.online.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.online.col }}">{{ cxKpi.online.delta }}</div>
+            </div>
+          </div>
+          <div class="ov-kpi" onClick="{{ cxKpi.offline.onClick }}" title="Cameras not reachable">
+            <div class="ov-kpi-ico" style="background:var(--tint-red); color:var(--crit)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Offline</div>
+              <div class="ov-kpi-value">{{ cxKpi.offline.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.offline.col }}">{{ cxKpi.offline.delta }}</div>
+            </div>
+          </div>
+          <div class="ov-kpi" onClick="{{ cxKpi.det.onClick }}" title="Detections across all cameras in the last 24 hours">
+            <div class="ov-kpi-ico" style="background:var(--tint-purple); color:var(--purple)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Detections (24h)</div>
+              <div class="ov-kpi-value">{{ cxKpi.det.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.det.col }}">{{ cxKpi.det.delta }}</div>
+            </div>
+          </div>
+          <div class="ov-kpi" onClick="{{ cxKpi.open.onClick }}" title="Detections still open">
+            <div class="ov-kpi-ico" style="background:var(--tint-red); color:var(--crit)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Open Alerts</div>
+              <div class="ov-kpi-value">{{ cxKpi.open.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.open.col }}">{{ cxKpi.open.delta }}</div>
+            </div>
+          </div>
+          <div class="ov-kpi" onClick="{{ cxKpi.mapped.onClick }}" title="Cameras assigned to a camera point (Settings → POC Camera Points)">
+            <div class="ov-kpi-ico" style="background:var(--tint-amber); color:var(--gold)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div class="ov-kpi-body">
+              <div class="ov-kpi-label">Mapped Cameras</div>
+              <div class="ov-kpi-value">{{ cxKpi.mapped.value }}</div>
+              <div class="ov-kpi-delta" style="color:{{ cxKpi.mapped.col }}">{{ cxKpi.mapped.delta }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ov-grid">
+          <div class="ov-card ov-span-4">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-purple); color:var(--purple)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></div>
+              <div class="ov-title">Camera Health by Plant</div>
+            </div>
+            <sc-if value="{{ cxPlantsEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">No cameras registered yet.</div></sc-if>
+            <div class="cx-meters">
+              <sc-for list="{{ cxPlantRows }}" as="p" hint-placeholder-count="3">
+                <div class="ppe-meter ppe-click" onClick="{{ p.onClick }}" title="{{ p.title }}">
+                  <div class="c247"><span>{{ p.name }}</span><span class="c243">{{ p.value }}</span></div>
+                  <div class="c313"><div class="c245" style="width:{{ p.w }}; background:{{ p.col }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+            <div class="c100">Click a plant to filter the dashboard to it.</div>
+          </div>
+
+          <div class="ov-card ov-span-4">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-blue); color:var(--brand)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12.5" y="7" width="3" height="10"/><rect x="18" y="13" width="3" height="4"/></svg></div>
+              <div class="ov-title">Detections by Camera</div>
+              <span class="c100">last 24 h</span>
+            </div>
+            <sc-if value="{{ cxByCamEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">No detections in the last 24 hours.</div></sc-if>
+            <div class="cx-meters">
+              <sc-for list="{{ cxByCam }}" as="b" hint-placeholder-count="6">
+                <div class="ppe-meter ppe-click" onClick="{{ b.onClick }}" title="Open camera">
+                  <div class="c247"><span>{{ b.label }} <span class="cx-sub">{{ b.sub }}</span></span><span class="c243">{{ b.value }}</span></div>
+                  <div class="c313"><div class="c245" style="width:{{ b.w }}; background:{{ b.col }}"></div></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="ov-card ov-span-4">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-amber); color:var(--gold)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
+              <div class="ov-title">Detections by Module</div>
+            </div>
+            <div class="ov-donut-wrap">
+              <div class="ov-donut" style="background:{{ cxDonut }}">
+                <div class="ov-donut-center">
+                  <div class="ov-donut-val">{{ cxDonutTotal }}</div>
+                  <div class="ov-donut-cap">Detections · 24 h</div>
+                </div>
+              </div>
+              <div class="ov-donut-legend">
+                <sc-for list="{{ cxDonutLegend }}" as="l" hint-placeholder-count="5">
+                  <div class="ov-leg-row">
+                    <span class="ov-leg-dot" style="background:{{ l.dot }}"></span>
+                    <span>{{ l.label }}</span>
+                    <span class="ov-leg-val">{{ l.val }} <span class="c100">{{ l.pct }}</span></span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div class="ov-card ov-span-8">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-blue); color:var(--brand)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg></div>
+              <div class="ov-title">Live Camera Wall</div>
+              <span class="ov-live">● Live</span>
+              <button class="ov-link" onClick="{{ goLive }}">Open Live Feeds</button>
+            </div>
+            <sc-if value="{{ cxWallEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">No cameras registered yet — add them in SenseStudio or on the Camera Fleet page.</div></sc-if>
+            <div class="ov-cams cx-wall">
+              <sc-for list="{{ cxWall }}" as="c" hint-placeholder-count="8">
+                <div>
+                  <div class="ov-cam" onClick="{{ c.onOpen }}" title="Open camera" style="background:{{ c.bg }}">
+                    <sc-if value="{{ c.hasVideo }}" hint-placeholder-val="{{ false }}">
+                      <video class="ov-cam-video" data-src="{{ c.videoUrl }}" data-cam="{{ c.camKey }}" autoplay muted playsinline></video>
+                    </sc-if>
+                    <span class="ov-cam-live" style="background:{{ c.liveBg }}">{{ c.liveLabel }}</span>
+                  </div>
+                  <div class="ov-cam-name"><b>{{ c.name }}</b><br><span class="cx-sub">{{ c.sub }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="ov-card ov-span-4">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-orange); color:var(--high)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a1.8 1.8 0 0 0 1.6 2.7h17.2a1.8 1.8 0 0 0 1.6-2.7L13.7 3.6a1.8 1.8 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+              <div class="ov-title">Needs Attention</div>
+            </div>
+            <sc-if value="{{ cxAttentionEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">All cameras are online, reporting and mapped to a camera point.</div></sc-if>
+            <div class="ov-list">
+              <sc-for list="{{ cxAttention }}" as="a" hint-placeholder-count="4">
+                <div class="ov-row" onClick="{{ a.onClick }}">
+                  <div class="ov-row-body">
+                    <div class="ov-row-title">{{ a.name }}</div>
+                    <div class="ov-row-sub">{{ a.sub }}</div>
+                  </div>
+                  <span class="ov-pill" style="color:{{ a.pillCol }}; background:{{ a.pillBg }}">{{ a.pill }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div class="ov-card ov-span-12">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-green); color:var(--ok)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></div>
+              <div class="ov-title">Camera Status</div>
+              <button class="ov-link" onClick="{{ goCamFleet }}">Manage fleet</button>
+            </div>
+            <sc-if value="{{ cxRowsEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">No cameras registered yet.</div></sc-if>
+            <div style="overflow-x:auto">
+              <table class="ov-table">
+                <thead><tr><th>CAMERA</th><th>PLANT · POINT</th><th>MODULES</th><th>STATUS</th><th>DETECTIONS 24H</th><th>OPEN ALERTS</th><th>LAST DETECTION</th><th>LIVE FEEDS</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ cxRows }}" as="r" hint-placeholder-count="6">
+                    <tr>
+                      <td><button class="cx-link" onClick="{{ r.onOpen }}" title="Open camera">{{ r.name }}</button><div class="cx-id">{{ r.id }}</div></td>
+                      <td>{{ r.where }}</td>
+                      <td><div class="cx-tags"><sc-for list="{{ r.mods }}" as="m" hint-placeholder-count="2"><span class="cx-tag" style="background:{{ m.bg }}">{{ m.label }}</span></sc-for><sc-if value="{{ r.modsEmpty }}" hint-placeholder-val="{{ false }}"><span class="c100">no detections yet</span></sc-if></div></td>
+                      <td><span class="ov-pill" style="color:{{ r.statusCol }}; background:{{ r.statusBg }}">{{ r.status }}</span></td>
+                      <td>{{ r.det }}</td>
+                      <td style="color:{{ r.openCol }}; font-weight:700">{{ r.open }}</td>
+                      <td>{{ r.last }}</td>
+                      <td><button class="c225" onClick="{{ r.onToggleLive }}" title="{{ r.liveHint }}" style="border:1px solid {{ r.liveBorder }}; background:{{ r.liveBg }}; color:{{ r.liveColor }}"><span class="c119" style="background:{{ r.liveColor }}"></span>{{ r.liveViewLabel }}</button></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="ov-card ov-span-12">
+            <div class="ov-head">
+              <div class="ov-head-ico" style="background:var(--tint-purple); color:var(--purple)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <div class="ov-title">Recent Camera Events</div>
+              <button class="ov-link" onClick="{{ goIncidents }}">View All</button>
+            </div>
+            <sc-if value="{{ cxEventsEmpty }}" hint-placeholder-val="{{ false }}"><div class="ov-empty">No detections recorded yet.</div></sc-if>
+            <div style="overflow-x:auto">
+              <table class="ov-table">
+                <thead><tr><th>CAMERA</th><th>MODULE</th><th>EVENT</th><th>WHEN</th><th>STATUS</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ cxEvents }}" as="e" hint-placeholder-count="6">
+                    <tr onClick="{{ e.onOpen }}" style="cursor:pointer">
+                      <td><b>{{ e.camera }}</b><div class="cx-id">{{ e.zone }}</div></td>
+                      <td><span class="cx-tag" style="background:{{ e.tagBg }}">{{ e.tag }}</span></td>
+                      <td>{{ e.title }}</td>
+                      <td>{{ e.ago }}</td>
+                      <td><span class="ov-pill" style="color:{{ e.statusCol }}; background:{{ e.statusBg }}">{{ e.status }}</span></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
       <!-- ===== CAMERAS ===== -->
       <sc-if value="{{ isCameras }}" hint-placeholder-val="{{ false }}">
       <div class="c207">
