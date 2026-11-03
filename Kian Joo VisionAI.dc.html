@@ -2940,7 +2940,7 @@
                       <td><span class="ov-pill" style="color:{{ r.pillCol }}; background:{{ r.pillBg }}">{{ r.pill }}</span></td>
                       <td>
                         <div class="lb-probe">
-                          <button class="c185 chip" onClick="{{ r.onProbe }}" disabled="{{ r.probeBusy }}">{{ r.probeLabel }}</button>
+                          <sc-if value="{{ r.canProbe }}" hint-placeholder-val="{{ true }}"><button class="c185 chip" onClick="{{ r.onProbe }}" disabled="{{ r.probeBusy }}">{{ r.probeLabel }}</button></sc-if>
                           <span style="color:{{ r.probeCol }}">{{ r.probeText }}</span>
                           <sc-if value="{{ r.hasSnap }}" hint-placeholder-val="{{ false }}"><div class="lb-thumb" onClick="{{ r.onSnap }}" title="Bridge snapshot" style="background:{{ r.snapBg }}"></div></sc-if>
                         </div>
@@ -2959,7 +2959,7 @@
                 <button class="c429" onClick="{{ addLiveSource }}" disabled="{{ lbBusy }}">Add</button>
               </div>
             </div>
-            <div class="c428 lb-help">Hikvision: rtsp://user:pass@IP:554/Streaming/Channels/101 (main) · …/102 (sub-stream, lighter for walls). Dahua: rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;subtype=0 (main) · subtype=1 (sub). Browsers need H.264 — for H.265 cameras use an ffmpeg: source. The label must match the camera's stream label (serial, lower-case, letters and digits only). Bridge setup: live-bridge/README.md in the repository.</div>
+            <div class="c428 lb-help">Hikvision: rtsp://user:pass@IP:554/Streaming/Channels/101 (main) · …/102 (sub-stream, lighter for walls). Dahua: rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;subtype=0 (main) · subtype=1 (sub). Browsers need H.264 — for H.265 cameras use an ffmpeg: source. An https://…/index.m3u8 HLS link (e.g. an ngrok URL) is played directly in the browser, without the bridge. The label must match the camera's stream label (serial, lower-case, letters and digits only). Bridge setup: live-bridge/README.md in the repository.</div>
           </div>
           </sc-if>
 

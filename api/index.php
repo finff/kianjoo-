@@ -2023,7 +2023,10 @@ try {
             file_put_contents($file, json_encode($cur, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
 
             $bridge = ['ok' => false, 'error' => 'Live bridge not configured'];
-            if ($lb->configured()) {
+            if (!$remove && LiveBridge::isDirect($url)) {
+                // HLS playlist: the browser plays it directly, nothing to register.
+                $bridge = ['ok' => true, 'error' => '', 'direct' => true];
+            } elseif ($lb->configured()) {
                 if ($remove) {
                     // A fleet camera with the same label falls back to its own RTSP url.
                     $cfg = $config;
@@ -2034,7 +2037,7 @@ try {
                     $bridge = $lb->register($name, $url);
                 }
             }
-            Response::ok(['saved' => true, 'stream' => $name, 'bridge' => ['ok' => $bridge['ok'], 'error' => $bridge['error']]]);
+            Response::ok(['saved' => true, 'stream' => $name, 'bridge' => ['ok' => $bridge['ok'], 'error' => $bridge['error'], 'direct' => !empty($bridge['direct'])]]);
         }
 
         Response::error('Not found: ' . $route, 404);

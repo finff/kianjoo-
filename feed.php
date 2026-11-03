@@ -493,6 +493,8 @@ try {
         'liveHidden' => array_values($config['live']['hidden'] ?? []),
         // Last known go2rtc bridge state (no network): reachable + registered stream names.
         'liveBridge' => LiveBridge::cached($config),
+        // Manual HLS (.m3u8) sources the browser plays directly, label → url.
+        'liveDirect' => (object) LiveBridge::directSources($config),
         // Policies observed per camera → Settings shows how many are enabled
         // on the cameras currently displayed on Live Monitoring.
         'policies'   => $store->policyMatrix(30),

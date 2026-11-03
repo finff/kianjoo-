@@ -130,6 +130,25 @@ final class LiveBridge
 
     // ── Helpers ──────────────────────────────────────────────
 
+    /** An HTTP(S) HLS playlist (.m3u8) — played straight in the browser, never put on the bridge. */
+    public static function isDirect(string $url): bool
+    {
+        return (bool) preg_match('~^https?://[^\s]+\.m3u8(?:[?#]|$)~i', trim($url));
+    }
+
+    /** Manual direct-play (HLS) sources as [label => url] for the feed. */
+    public static function directSources(array $config): array
+    {
+        $out = [];
+        foreach (($config['live']['rtsp'] ?? []) as $name => $src) {
+            $src = trim((string) (is_scalar($src) ? $src : ''));
+            if ((string) $name !== '' && self::isDirect($src) && self::validSource($src)) {
+                $out[(string) $name] = $src;
+            }
+        }
+        return $out;
+    }
+
     public static function label(string $s): string
     {
         return strtolower((string) preg_replace('/[^a-z0-9]+/i', '', $s));
@@ -253,6 +272,7 @@ final class LiveBridge
             $out[$name] = [
                 'src'       => $src,
                 'origin'    => 'fleet',
+                'direct'    => self::isDirect($src),
                 'online'    => isset($r['online']) ? (bool) $r['online'] : null,
                 'fleetName' => (string) ($r['name'] ?? ''),
             ];
@@ -266,6 +286,7 @@ final class LiveBridge
             $out[$name] = [
                 'src'       => $src,
                 'origin'    => 'manual',
+                'direct'    => self::isDirect($src),
                 'online'    => $out[$name]['online'] ?? null,
                 'fleetName' => $out[$name]['fleetName'] ?? '',
             ];
@@ -407,11 +428,13 @@ final class LiveBridge
         }
 
         $streams = [];
-        $counts  = ['desired' => count($desired), 'registered' => 0, 'missing' => 0, 'mismatch' => 0, 'orphan' => 0, 'unknown' => 0];
+        $counts  = ['desired' => count($desired), 'registered' => 0, 'missing' => 0, 'mismatch' => 0, 'orphan' => 0, 'unknown' => 0, 'direct' => 0];
         foreach ($desired as $name => $d) {
             $name = (string) $name;
             $r    = $remote[$name] ?? null;
-            if ($remote === null) {
+            if (!empty($d['direct'])) {
+                $st = 'direct';          // browser plays it directly
+            } elseif ($remote === null) {
                 $st = 'unknown';
             } elseif ($r === null) {
                 $st = 'missing';

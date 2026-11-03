@@ -21,6 +21,7 @@ class Component extends DCLogic {
       simBusy: false, simMsg: '',   // Settings → Detection simulator
       lb: null, lbBusy: false, lbMsg: '', lbProbe: {},   // Settings → Live Video: /api/live/status payload · busy · message · per-stream probe results
       lbNewName: '', lbNewUrl: '',                     // Live Video → add-manual-source row
+      liveDirect: {},                                  // feed.liveDirect — HLS sources played directly {label: url}
       liveBridge: null,                                // feed.liveBridge — cached bridge summary {reachable, version, streams[], …}
       vTick: 0,                                        // bumped (throttled) when a <video> tile changes state
       navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
@@ -222,7 +223,7 @@ class Component extends DCLogic {
       .then(r=>r.json())
       .then(d=>{ if(!d || !d.ok) throw new Error((d&&(d.error||d.msg))||'Save failed');
         const b=d.bridge;
-        const note = b ? (b.ok ? (body.remove?' · removed from the bridge':' · registered on the bridge') : (' · bridge: '+(b.error||'failed'))) : ' · saved (bridge not configured)';
+        const note = b ? (b.ok ? (body.remove?' · removed from the bridge':(b.direct?' · plays directly in the browser (HLS)':' · registered on the bridge')) : (' · bridge: '+(b.error||'failed'))) : ' · saved (bridge not configured)';
         this.setState({lbBusy:false, lbMsg:'✓ '+okMsg+' ('+(d.stream||body.stream)+')'+note, ...(clear?{lbNewName:'', lbNewUrl:''}:{})});
         this.loadLive(true, true); this.loadApp(); })
       .catch(e=>this.setState({lbBusy:false, lbMsg:'✗ '+((e&&e.message)||'Network error')}));
@@ -242,7 +243,7 @@ class Component extends DCLogic {
   bridgeNote(d){ const b=d&&d.bridge; return b ? (b.ok?' · live bridge updated':(' · bridge: '+(b.error||'failed'))) : ''; }
   // True when the bridge is known to be up but does not carry this stream.
   notOnBridge(stream){ const st=this.state, lb=st.liveBridge;
-    return !!(lb && lb.reachable && Array.isArray(lb.streams) && stream && st.liveBase && lb.streams.indexOf(stream)<0); }
+    return !!(lb && lb.reachable && Array.isArray(lb.streams) && stream && st.liveBase && !this.isDirectStream(stream) && lb.streams.indexOf(stream)<0); }
   // Tile chip from the <video> element state (mountVideos); hidden when live / not a video tile.
   vChip(key, show){
     const s=show?this._vstate[key]:'live';
@@ -255,6 +256,25 @@ class Component extends DCLogic {
   wallTag(key, stream, hasVideo, on){
     if(on && this.notOnBridge(stream)) return {has:true, text:'NOT ON LIVE BRIDGE', col:'#FCD34D'};
     return this.vChip(key, hasVideo && on && !this.state.demo);
+  }
+  // Video URL for a stream: a direct HLS source when one is configured,
+  // else the go2rtc bridge's MP4 endpoint, else '' (tile shows frames).
+  isDirectStream(stream){ return !!(stream && (this.state.liveDirect||{})[stream]); }
+  videoSrc(stream){ const st=this.state;
+    if(!stream || st.demo) return '';
+    const d=(st.liveDirect||{})[stream]; if(d) return d;
+    if(!st.liveBase) return '';
+    return st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(stream)+(st.liveToken?('&token='+encodeURIComponent(st.liveToken)):''); }
+  // hls.js (Chrome/Firefox/Edge have no native HLS); loaded once, on demand.
+  loadHlsJs(cb){
+    if(window.Hls){ cb(); return; }
+    (this._hlsCbs=this._hlsCbs||[]).push(cb);
+    if(this._hlsLoading) return; this._hlsLoading=true;
+    const sc=document.createElement('script');
+    sc.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js'; sc.async=true;
+    sc.onload=()=>{ const q=this._hlsCbs||[]; this._hlsCbs=[]; q.forEach(f=>{ try{ f(); }catch(e){} }); };
+    sc.onerror=()=>{ this._hlsLoading=false; this._hlsCbs=[]; };
+    document.head.appendChild(sc);
   }
   bumpVTick(){
     if(this._vtT) return;
@@ -309,6 +329,25 @@ class Component extends DCLogic {
   mountVideos(){
     try{
       const play=(v)=>{ const p=v.play&&v.play(); if(p&&p.catch)p.catch(()=>{}); };
+      const isHls=(u)=>/\.m3u8(?:[?#]|$)/i.test(u);
+      const kill=(v)=>{ if(v._hls){ try{ v._hls.destroy(); }catch(e){} v._hls=null; } };
+      // Point a <video> at a URL: native for MP4 / Safari HLS, hls.js otherwise.
+      // ngrok-free hosts may answer browsers with a warning page; on a fatal
+      // load error the playlist is retried once with ngrok's skip header.
+      const load=(v,u)=>{ kill(v);
+        if(!isHls(u) || (v.canPlayType && v.canPlayType('application/vnd.apple.mpegurl'))){ v.src=u; play(v); return; }
+        const want=v._src;
+        const go=(skip)=>{ const H=window.Hls;
+          if(v._src!==want) return;                     // tile moved on meanwhile
+          if(!H || !H.isSupported()){ v.src=u; play(v); return; }
+          kill(v);
+          const h=new H({liveSyncDurationCount:3, xhrSetup:(x)=>{ if(skip) x.setRequestHeader('ngrok-skip-browser-warning','1'); }});
+          v._hls=h;
+          h.on(H.Events.ERROR,(ev,d)=>{ if(!d || !d.fatal) return;
+            if(!skip && /ngrok/i.test(u) && d.type===H.ErrorTypes.NETWORK_ERROR){ go(true); return; }
+            v._lbErr=true; setVs(v,'error'); });
+          h.loadSource(u); h.attachMedia(v); play(v); };
+        this.loadHlsJs(()=>go(false)); };
       // Element state per tile (data-state + this._vstate[camKey]) → tile chips.
       const setVs=(v,state)=>{ const k=v.getAttribute('data-cam')||''; v.dataset.state=state;
         if(!k || k.indexOf('{{')>=0) return;
@@ -345,7 +384,7 @@ class Component extends DCLogic {
             const live = v.srcObject && v.srcObject.active!==false && v._mirror===mid;
             if(!live && src.readyState>=2){
               try{
-                if(v.src){ v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
+                kill(v); if(v.src){ v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
                 v.srcObject=src.captureStream(); v._mirror=mid; v._lbErr=false; setVs(v,'connecting'); play(v);
               }catch(e){ v._mirror=''; }
             }
@@ -355,7 +394,7 @@ class Component extends DCLogic {
           v.srcObject=null; v._mirror='';
         }
         if(visible){
-          if(v._src!==s){ v._src=s; v._stall=0; v._lastCt=-1; v._lbErr=false; setVs(v,'connecting'); v.src=s; play(v); return; }
+          if(v._src!==s){ v._src=s; v._stall=0; v._lastCt=-1; v._lbErr=false; setVs(v,'connecting'); load(v,s); return; }
           if(document.hidden) return;
           // Stall watchdog: mp4-over-http streams die silently — the element
           // keeps showing the last frame while currentTime stops advancing.
@@ -363,9 +402,9 @@ class Component extends DCLogic {
           const ct=v.currentTime||0;
           if(ct===v._lastCt){ v._stall=(v._stall||0)+1; } else { v._stall=0; v._lastCt=ct; }
           if(v._stall>=6){ v._stall=0; v._lastCt=-1; v._lbErr=true; setVs(v,'error');   // until the next 'playing'
-            v.src=s+(s.indexOf('?')>=0?'&':'?')+'_r='+Date.now(); play(v); }
+            load(v, isHls(s) ? s : (s+(s.indexOf('?')>=0?'&':'?')+'_r='+Date.now())); }
         }
-        else if(v.src){ v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
+        else if(v.src || v._hls){ kill(v); v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
       });
     }catch(e){}
   }
@@ -416,7 +455,7 @@ class Component extends DCLogic {
     const st=this.state;
     const pool=Array.isArray(this.camPool)?this.camPool:[];
     const fleet=Array.isArray(st.fleet)?st.fleet:[];
-    if(!fleet.length) return pool;              // demo mode / registry unavailable
+    if(!fleet.length) return this.withDirectTiles(pool.slice());   // demo mode / registry unavailable
     const up=v=>String(v||'').toUpperCase();
     const byKey={};
     pool.forEach(c=>{ if(c.stream) byKey[up(c.stream)]=c; if(c.serial) byKey[up(c.serial)]=c; if(c.id) byKey[up(c.id)]=c; });
@@ -449,8 +488,20 @@ class Component extends DCLogic {
         name:c.name, zone:c.zone, mod:c.mod, res:c.res, fps:c.fps, online:true,
         scene:c.scene, img:c.img, boxes:c.boxes||[]});
     });
+    this.withDirectTiles(tiles);
     tiles.sort((a,b)=>(b.online-a.online)||((b.img?1:0)-(a.img?1:0)));
     return tiles.filter(t=>!this.isLiveHidden(t));
+  }
+  // Direct HLS sources (Settings › Live Video) that no camera covers → their own tiles.
+  withDirectTiles(tiles){
+    if(this.state.demo) return tiles;
+    const have={}; tiles.forEach(t=>{ if(t.stream) have[String(t.stream).toLowerCase()]=1; });
+    Object.keys(this.state.liveDirect||{}).forEach(name=>{
+      if(have[name.toLowerCase()]) return;
+      tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name, zone:'Direct HLS stream',
+        mod:'intr', res:'HLS', fps:25, online:true, direct:true,
+        scene:'linear-gradient(160deg,#0e1119,#151824 55%,#0a0d14)', img:null, boxes:[]}); });
+    return tiles;
   }
 
   // ── Per-camera "show on Live Monitoring" toggle (server-persisted) ──
@@ -547,7 +598,7 @@ class Component extends DCLogic {
           trend: Array.isArray(d.trend)?d.trend:[],
           byType: d.byType || {}, byCam: d.byCam || {}, ai: d.ai || null,
           ppe: d.ppe || null, gpu: Array.isArray(d.gpu)?d.gpu:[],
-          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null,
+          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null, liveDirect: (d.liveDirect && typeof d.liveDirect==='object') ? d.liveDirect : {},
           // Don't clobber an in-flight local toggle with a stale poll response.
           liveHidden: this._hidePending ? this.state.liveHidden : (Array.isArray(d.liveHidden)?d.liveHidden:[]),
           policies: Array.isArray(d.policies)?d.policies:[],
@@ -1752,8 +1803,7 @@ class Component extends DCLogic {
     const cameras=livePool.slice(0, cols*cols).map(c=>{
       const m=this.MODS[c.mod]||this.MODS.intr;
       const on=c.online!==false;
-      const vsrc = (st.liveBase && c.stream && on && !st.demo)
-        ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
+      const vsrc = (c.stream && on) ? this.videoSrc(c.stream) : '';   // direct HLS or bridge MP4
       const rkey=String(c.rtsp||'').trim().toLowerCase();
       let mirrorOf='';
       if(rkey && vsrc){
@@ -2310,7 +2360,7 @@ class Component extends DCLogic {
     const lb=st.lb, lbB=(lb&&lb.bridge)||{}, lbC=(lb&&lb.counts)||{};
     const lbN=(x)=>Number(x)||0;
     const lbCfg = (lb&&lb.ok) ? !!lb.configured : !!((ap&&ap.live_stream_base)||st.liveBase);
-    const lbRegLine = lbN(lbC.registered)+' of '+lbN(lbC.desired)+' sources registered';
+    const lbRegLine = lbN(lbC.registered)+' of '+Math.max(0, lbN(lbC.desired)-lbN(lbC.direct))+' sources registered'+(lbN(lbC.direct)?(' · '+lbN(lbC.direct)+' direct HLS'):'');
     const lbCountsLine = (lb&&lb.ok&&lb.configured)
       ? (lbRegLine+' · '+lbN(lbC.missing)+' missing · '+lbN(lbC.mismatch)+' mismatch'+(lbN(lbC.orphan)?(' · '+lbN(lbC.orphan)+' orphan'):'')) : '';
     let lbStatusText, lbStatusCol;
@@ -2322,7 +2372,7 @@ class Component extends DCLogic {
     else if(lbB.reachable===false){ lbStatusText='Bridge unreachable: '+(lbB.error||'no response'); lbStatusCol='var(--crit)'; }
     else { lbStatusText='Bridge not checked yet — press Test bridge'; lbStatusCol='var(--text3)'; }
     const lbMask=(u)=>String(u||'').replace(/\/\/([^:]+):[^@]+@/, '//$1:••••@');
-    const LB_PILL={registered:['Registered','var(--ok)','var(--tint-green)'], missing:['Missing','var(--high)','var(--tint-orange)'],
+    const LB_PILL={direct:['Direct HLS','var(--brand)','var(--tint-blue)'], registered:['Registered','var(--ok)','var(--tint-green)'], missing:['Missing','var(--high)','var(--tint-orange)'],
       mismatch:['Mismatch','#B45309','var(--tint-amber)'], orphan:['Orphan','var(--text3)','var(--bg4)']};
     const lbSrc = (lb&&lb.ok&&Array.isArray(lb.streams)) ? lb.streams
       : Object.entries((ap&&ap.live_rtsp&&typeof ap.live_rtsp==='object')?ap.live_rtsp:{}).map(([name,source])=>({name, source, origin:'manual', state:''}));
@@ -2335,7 +2385,7 @@ class Component extends DCLogic {
         probeLabel:pv.busy?'Probing…':'Probe', probeBusy:pv.busy, probeText:pv.text, probeCol:pv.col,
         hasSnap:!!pv.snap, snapBg:pv.snap?`url('${pv.snap}') center/cover no-repeat`:'',
         onSnap:()=>{ if(pv.snap) this.openLightbox(pv.snap, name+' · bridge snapshot'); },
-        onProbe:()=>this.probeLive(name),
+        onProbe:()=>this.probeLive(name), canProbe:r.state!=='direct',
         canRemove:r.origin==='manual', onRemove:()=>this.removeLiveSource(name)}; });
     const lbAutoV = ad.live_auto_sync!=null ? !!ad.live_auto_sync
       : ((ap&&ap.live_auto_sync!=null) ? !!ap.live_auto_sync : ((lb&&lb.ok&&lb.autoSync!=null) ? !!lb.autoSync : true));
@@ -2423,20 +2473,23 @@ class Component extends DCLogic {
       const cam=this.camPool.find(c=>c.stream===key) || null;
       const stream = f?f.stream : (cam?cam.stream:key);
       const _tokq = st.liveToken ? ('&token='+encodeURIComponent(st.liveToken)) : '';
-      const live = !!st.liveBase && !!stream && !st.demo;
+      const camDirect = this.isDirectStream(stream);
+      const live = !!this.videoSrc(stream);
       const ed=st.camEdit||{};
       // Live-bridge readiness for this camera (st.lb from /api/live/status)
       const lbRow=(st.lb&&Array.isArray(st.lb.streams))?(st.lb.streams.find(r=>r&&r.name===stream)||null):null;
       const lbBr=(st.lb&&st.lb.bridge)||{};
       const fRtsp=f?String(f.rtsp||'').trim():'';
       let lbSt;
-      if(!st.liveBase) lbSt='nocfg';
+      if(camDirect) lbSt='direct';
+      else if(!st.liveBase) lbSt='nocfg';
       else if(!st.lb) lbSt='loading';
       else if(!st.lb.ok || !lbBr.reachable) lbSt='unreach';
       else if(lbRow && (lbRow.state==='registered'||lbRow.state==='orphan')) lbSt='reg';
       else lbSt='missing';                               // missing / mismatch / not a desired source yet
       const lbErr=st.lb ? (st.lb.ok ? (lbBr.error||'') : (st.lb.error||'')) : '';
       const lbLineV={
+        direct:['Direct HLS stream · played in the browser, no bridge needed','var(--ok)'],
         nocfg:['Live bridge not configured','var(--text3)'],
         loading:['Live bridge: checking…','var(--text3)'],
         unreach:['Live bridge: Bridge unreachable'+(lbErr?(' ('+lbErr+')'):''),'var(--crit)'],
@@ -2452,9 +2505,9 @@ class Component extends DCLogic {
         statusCol: (f&&f.online)||cam ? 'var(--ok)':'var(--text3)',
         rtspMask: maskRtsp(f?f.rtsp:'') || 'not set',
         hasLive: live, noLive: !live,
-        mp4Url: live ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(stream)+_tokq) : '',
+        mp4Url: live ? this.videoSrc(stream) : '',
         streamUrl: (st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : '',
-        popUrl: (st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : '',
+        popUrl: camDirect ? this.videoSrc(stream) : ((st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : ''),
         frameBg: bgOf(cam?cam.img:null), noFrame: !(cam&&cam.img),
         canEdit: !!(f&&f.did),
         editName: ed.name!=null?ed.name:(f?f.name:''), editRtsp: ed.rtsp!=null?ed.rtsp:(f?f.rtsp:''),
@@ -2673,11 +2726,11 @@ class Component extends DCLogic {
     // Video modal — go2rtc embed when a bridge is configured, else latest frame
     const vc=(mt==='video' && modal.data)?modal.data:null;
     const _tokq = st.liveToken ? ('&token='+encodeURIComponent(st.liveToken)) : '';
-    const _live = (vc && liveOn && vc.stream);
+    const _live = !!(vc && vc.stream && this.videoSrc(vc.stream));
     // Inline player uses go2rtc's fragmented-MP4 endpoint: token rides in the URL
     // (no cross-site cookie), so <video> plays natively on Chrome/Safari/Firefox.
-    const _mp4  = _live ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(vc.stream)+_tokq) : '';
-    const _vurl = _live ? (st.liveBase+'/stream.html?src='+encodeURIComponent(vc.stream)+_tokq) : '';
+    const _mp4  = _live ? this.videoSrc(vc.stream) : '';
+    const _vurl = !_live ? '' : (this.isDirectStream(vc.stream) ? this.videoSrc(vc.stream) : (st.liveBase+'/stream.html?src='+encodeURIComponent(vc.stream)+_tokq));
     const mVideo = vc ? { name:vc.name, stream:vc.stream||'', rtsp:vc.rtsp||'', rtspMask:maskRtsp(vc.rtsp)||'no RTSP', online:vc.online,
       hasLive: !!_live, noLive: !_live, frameBg:bgOf(vc.image),
       noFrame: !vc.image, frameLabel: vc.image?'Latest detection frame':'No recent detection frame',
@@ -3398,7 +3451,7 @@ class Component extends DCLogic {
     const ovSeen={};
     const ovCams=ovPool.filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||ovSeen[k]) return !k; ovSeen[k]=1; return true; })
       .slice(0,3).map(c=>{ const on=c.online!==false;
-        const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
+        const vsrc=(c.stream && on) ? this.videoSrc(c.stream) : '';
         const tg=this.wallTag('ov-'+(c.stream||String(c.id).toLowerCase()), c.stream, !!vsrc, on);
         return {hasLbTag:tg.has, lbTag:tg.text, lbTagCol:tg.col, name:c.name||c.stream||c.id, hasVideo:!!vsrc, videoUrl:vsrc, camKey:'ov-'+(c.stream||String(c.id).toLowerCase()),
           bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
@@ -3439,7 +3492,7 @@ class Component extends DCLogic {
     const cxOpen=st.events.filter(e=>e.status==='open').length;
     const cxSevere=st.events.filter(e=>e.status==='open'&&(e.sev==='high'||e.sev==='critical')).length;
     const cxMapped=cxCams.filter(c=>c.loc).length;
-    const cxStreams=(st.liveBase&&!st.demo)?cxOn:0;
+    const cxStreams=((st.liveBase||Object.keys(st.liveDirect||{}).length)&&!st.demo)?cxOn:0;
     const goPoc=()=>{ this.setState({spTab:'poc'}); this.setPage('settings'); };
     const cxKpi={
       total:{value:fmtN(cxTotal), delta:cxStreams?(cxStreams+' live video streams'):'VisionAI device registry', col:'var(--text2)', onClick:()=>this.setPage('cameras')},
@@ -3472,7 +3525,7 @@ class Component extends DCLogic {
     const cxWall=livePool.slice().sort((a,b)=>(b.online!==false)-(a.online!==false))
       .filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||cxSeen[k]) return !k; cxSeen[k]=1; return true; })
       .slice(0,8).map(c=>{ const on=c.online!==false; const key=String(c.stream||c.id||'').toUpperCase();
-        const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
+        const vsrc=(c.stream && on) ? this.videoSrc(c.stream) : '';
         const tg=this.wallTag('cx-'+(c.stream||String(c.id).toLowerCase()), c.stream, !!vsrc, on);
         return {hasLbTag:tg.has, lbTag:tg.text, lbTagCol:tg.col, name:c.name||c.stream||c.id, sub:[cxLocOf(c.stream||c.id)||c.zone, N(cxByCamRaw[key])+' det / 24 h'].filter(Boolean).join(' · '),
           hasVideo:!!vsrc, videoUrl:vsrc, camKey:'cx-'+(c.stream||String(c.id).toLowerCase()),
