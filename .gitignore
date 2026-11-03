@@ -41,3 +41,14 @@ cp_src/
 *.png
 !uploads/*.png
 .DS_Store
+# Scoring-matrix modules: runtime state, secrets and logs
+storage/notify_settings.json
+storage/notify_log.json
+storage/escalation*.json
+storage/*.lock
+storage/wsd_settings.json
+storage/webhook_log.json
+storage/ai_missed.json
+storage/nettest_last.json
+storage/retention_state.json
+storage/poc_scorecard.json

@@ -354,10 +354,34 @@ try {
             $to = array_values(array_unique($to ?: ($config['mail']['to'] ?? [])));
             $mailer = new Mailer($config['mail']);
             $sent   = $mailer->ready() && $mailer->send('[Kian Joo VisionAI] ' . $tag . ' — ' . $ticket, $html, $to);
+            // Workstream A: the same escalation also goes to Telegram — default
+            // chats plus the escalation-level chats (ERT → L3, email → L1 + L2).
+            require_once APP_ROOT . '/lib/Alerting.php';
+            require_once APP_ROOT . '/lib/Telegram.php';
+            $lvls  = $config['escalation']['levels'] ?? [];
+            $chats = array_merge($config['telegram']['chat_ids'] ?? [], $ch === 'tmforce'
+                ? ($lvls[2]['chats'] ?? []) : array_merge($lvls[0]['chats'] ?? [], $lvls[1]['chats'] ?? []));
+            $chats = array_values(array_unique($chats));
+            $tgSent = null;
+            if (Telegram::ready($config['telegram'] ?? [], $chats)) {
+                $tr = Telegram::send($config['telegram'], Alerting::eventText([
+                    'banner' => ($ch === 'tmforce' ? '🚨 ' : '⏫ ') . $tag, 'title' => $inc['title'], 'lead' => $lead,
+                    'sev' => $inc['sev'], 'mod' => $inc['mod'], 'camera' => $inc['camera'], 'zone' => $inc['zone'],
+                    'ticket' => $ticket, 'time' => $inc['received'] ?? '', 'note' => $note, 'url' => EmailTemplate::host() . '/',
+                ]), $inc['image'] ?? null, $chats);
+                $tgSent = $tr['ok'];
+                Alerting::logSend('telegram', $tr['ok'], 'manual', $uuid, $tr['errors'] ? implode('; ', $tr['errors']) : $tag);
+            }
+            if ($mailer->ready()) {
+                Alerting::logSend('email', $sent, 'manual', $uuid, $tag);
+            }
             $store->addLog($uuid, $ch === 'tmforce' ? 'tmforce' : 'notify', $in['actor'] ?? null, null, null,
                 ($ch === 'tmforce' ? 'Informed Emergency Response Team' : 'Escalation email sent')
-                . ($sent ? '' : ' (email FAILED)') . ($note !== '' ? ' — ' . mb_substr($note, 0, 500) : ''));
-            Response::json(['ok' => $sent, 'channel' => $ch], $sent ? 200 : 502);
+                . ($sent ? '' : ' (email FAILED)')
+                . ($tgSent === null ? '' : ($tgSent ? ' · Telegram ✓' : ' · Telegram FAILED'))
+                . ($note !== '' ? ' — ' . mb_substr($note, 0, 500) : ''));
+            $okAny = $sent || $tgSent === true;
+            Response::json(['ok' => $okAny, 'channel' => $ch, 'email' => $sent, 'telegram' => $tgSent], $okAny ? 200 : 502);
         }
         // POST /events/{uuid}/attach — multipart file upload; GET …/attachments — list
         if ($uuid !== '' && $act === 'attach' && $method === 'POST') {
@@ -735,6 +759,8 @@ try {
             Response::ok($ppe->summary($f) + [
                 'rules'     => (object) ($config['ppe']['rules'] ?? []),
                 'items'     => Ppe::ITEMS,
+                'feasibility' => Ppe::FEASIBILITY,
+                'hairHats'  => $config['ppe']['hair_hats'] ?? ['Bonnet'],
                 'plants'    => $config['attendance']['plants'],
                 'locations' => array_values(array_unique(array_merge(
                     $config['poc']['locations'] ?? [], array_values($config['poc']['cam_locations'] ?? [])))),
@@ -926,16 +952,19 @@ try {
         if ($f['verdict'] !== '' && !isset(Forklift::VERDICTS[$f['verdict']])) {
             $f['verdict'] = '';
         }
+        $f['kind'] = isset(Forklift::KINDS[(string) ($_GET['kind'] ?? '')]) ? (string) $_GET['kind'] : '';
 
         if ($route === '/forklift/summary') {
             $zones = [];
             foreach ($config['forklift']['zones'] as $key => $z) {
                 $zones[] = ['key' => strtoupper($key), 'name' => $z['name'], 'enabled' => $z['enabled'],
-                            'rule' => $z['rule'], 'hours' => $z['hours'], 'note' => $z['note']];
+                            'rule' => $z['rule'], 'hours' => $z['hours'], 'note' => $z['note'],
+                            'opPpe' => Forklift::operatorPpe($z)];
             }
             Response::ok($fk->summary($f) + [
                 'zones' => $zones, 'verdicts' => Forklift::VERDICTS, 'plants' => $config['attendance']['plants'],
-                'modelNote' => Forklift::MODEL_NOTE,
+                'modelNote' => Forklift::MODEL_NOTE, 'kinds' => Forklift::KINDS, 'safetyNote' => Forklift::SAFETY_NOTE,
+                'operatorWindow' => $fk->operatorWindow(),
             ]);
         }
 
@@ -1544,7 +1573,7 @@ try {
                 $rules = [];
                 foreach (array_slice($in['ppe_rules'], 0, 100, true) as $loc => $items) {
                     $loc   = substr(trim((string) $loc), 0, 64);
-                    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) $items));
+                    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'], (array) $items));
                     if ($loc !== '' && $items) {
                         $rules[$loc] = $items;
                     }
@@ -1583,12 +1612,22 @@ try {
                     $zones[$k] = [
                         'enabled' => !empty($z['enabled']),
                         'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80),
-                        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted'], true) ? (string) $z['rule'] : 'prohibited',
+                        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted', 'forklift_only'], true) ? (string) $z['rule'] : 'prohibited',
                         'hours'   => preg_match('/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/', $hours) ? $hours : 'always',
                         'note'    => substr(trim((string) ($z['note'] ?? '')), 0, 200),
+                        'op_ppe'  => array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'],
+                            (array) ($z['op_ppe'] ?? ['helmet', 'vest']))),
                     ];
                 }
                 $out['fk_zones'] = (object) $zones;
+            }
+            // Workstream B: forklift operator correlation window (s) and hair-net proxy hats.
+            if (isset($in['fk_operator_window'])) {
+                $out['fk_operator_window'] = max(2, min(120, (int) $in['fk_operator_window']));
+            }
+            if (isset($in['ppe_hair_hats']) && is_array($in['ppe_hair_hats'])) {
+                $out['ppe_hair_hats'] = array_values(array_filter(array_map(static fn ($v) => substr(trim((string) $v), 0, 40),
+                    array_slice($in['ppe_hair_hats'], 0, 10))));
             }
             // Cleaning schedules: [{id, name, location, start, end, days[], dates[], items[], enabled}]
             if (isset($in['cleaning_schedules']) && is_array($in['cleaning_schedules'])) {
@@ -1600,7 +1639,7 @@ try {
                     'end'      => substr((string) ($c['end'] ?? ''), 0, 5),
                     'days'     => array_map('intval', (array) ($c['days'] ?? [])),
                     'dates'    => array_values(array_filter(array_map('trim', is_array($c['dates'] ?? null) ? $c['dates'] : explode(',', (string) ($c['dates'] ?? ''))))),
-                    'items'    => array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) ($c['items'] ?? []))),
+                    'items'    => array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'], (array) ($c['items'] ?? []))),
                     'enabled'  => ($c['enabled'] ?? true) !== false,
                 ], array_slice(array_filter($in['cleaning_schedules'], 'is_array'), 0, 100)));
             }
@@ -1632,6 +1671,8 @@ try {
                 $out['read_token'] = bin2hex(random_bytes(24));
                 $rotated['read_token'] = $out['read_token'];
             }
+            // Workstream C: Settings → Behaviour Rules (beh_* keys).
+            $out = array_merge($out, Behaviour::sanitize($in));
 
             $merged = array_merge($cur, $out);
             if (!is_dir(dirname($file))) {
@@ -1688,7 +1729,10 @@ try {
             'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
             'ra_zones'           => (object) ($config['restricted']['zones'] ?? []),
             'fk_zones'           => (object) ($config['forklift']['zones'] ?? []),
+            'fk_operator_window' => (int) ($config['forklift']['operator_window'] ?? 10),
+            'ppe_hair_hats'      => $config['ppe']['hair_hats'] ?? ['Bonnet'],
             'cleaning_schedules' => $config['cleaning']['schedules'] ?? [],
+            'behaviour'          => $config['behaviour'] ?? Behaviour::DEFAULTS,   // Workstream C
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken
@@ -1733,6 +1777,516 @@ try {
         Response::json(['ok' => $sent, 'period' => $period,
                         'error' => $sent ? null : 'Send failed — check SMTP / recipients'], $sent ? 200 : 502);
     }
+    // ── Workstream A: Telegram channel, escalation workflow, condition rules ──
+    //   GET|POST /notify/settings          channel + escalation + condition config  [read token; POST signed in + settings]
+    //   POST     /alerts/telegram-test     send a Telegram test message             [signed in + settings]
+    //   POST     /alerts/email-test        send a test email (base or given list)   [signed in + settings]
+    //   POST     /escalation/run {dry_run} run the unattended-alert check now       [signed in + settings]
+    //   /report/cron                       also runs the escalation check (then falls through)
+    if (in_array($route, ['/notify/settings', '/alerts/telegram-test', '/alerts/email-test', '/escalation/run', '/report/cron'], true)) {
+        require_once APP_ROOT . '/lib/NotifySettings.php';
+        require_once APP_ROOT . '/lib/Alerting.php';
+        require_once APP_ROOT . '/lib/Telegram.php';
+        require_once APP_ROOT . '/lib/Escalation.php';
+        $wsaIn = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: []) : [];
+        $wsaNeedSettings = static function (string $what): array {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to ' . $what . '.', 401);
+            }
+            if (!Auth::can('settings')) {
+                Response::error('Forbidden: ' . $what . ' needs the settings permission.', 403);
+            }
+            return $me;
+        };
+
+        if ($route === '/report/cron') {
+            $requireToken($config['auth']['provision_token']);
+            try {
+                Escalation::run(Database::connect($config['storage']), $config, false);
+            } catch (Throwable $e) {
+                error_log('[escalation] cron: ' . $e->getMessage());
+            }
+            // falls through to the report cron block below
+        }
+
+        if ($route === '/notify/settings') {
+            $requireToken($config['auth']['read_token']);
+            if ($method === 'POST') {
+                $wsaNeedSettings('change notification settings');
+                try {
+                    NotifySettings::save($wsaIn);
+                } catch (InvalidArgumentException $e) {
+                    Response::error($e->getMessage(), 422);
+                } catch (Throwable $e) {
+                    Response::error($e->getMessage(), 500);
+                }
+            }
+            $eff  = NotifySettings::load();
+            $mail = $config['mail'] ?? [];
+            $pdo  = Database::connect($config['storage']);
+            Response::ok([
+                'saved'    => $method === 'POST',
+                'settings' => NotifySettings::publicView($eff),
+                'channels' => [
+                    'email' => [
+                        'configured' => (string) ($mail['host'] ?? '') !== '' && (string) ($mail['username'] ?? '') !== '',
+                        'enabled'    => ($config['alerts']['email_enabled'] ?? true) !== false,
+                        'recipients' => count($mail['to'] ?? []),
+                        'ready'      => (string) ($mail['host'] ?? '') !== '' && !empty($mail['to']) && ($config['alerts']['email_enabled'] ?? true) !== false,
+                    ],
+                    'telegram' => [
+                        'configured' => $eff['telegram']['bot_token'] !== '',
+                        'enabled'    => (bool) $eff['telegram']['enabled'],
+                        'chats'      => count($eff['telegram']['chat_ids']),
+                        'ready'      => Telegram::ready($eff['telegram']),
+                    ],
+                ],
+                'stats'      => Alerting::sendStats(),
+                'recent'     => Alerting::recent(15),
+                'escalation' => ['last' => Escalation::lastRun($config), 'open_by_level' => Escalation::openByLevel($pdo)],
+                'cameras'    => array_keys($config['poc']['cam_locations'] ?? []),
+            ]);
+        }
+
+        if ($route === '/alerts/telegram-test') {
+            $requireToken($config['auth']['read_token']);
+            if ($method !== 'POST') {
+                Response::error('POST {chat_id?}.', 405);
+            }
+            $wsaNeedSettings('send a Telegram test');
+            $tg = NotifySettings::load()['telegram'];
+            if ($tg['bot_token'] === '') {
+                Response::error('No bot token saved — create a bot with @BotFather and paste its token first.', 422);
+            }
+            $chats = NotifySettings::chatList($wsaIn['chat_id'] ?? '') ?: $tg['chat_ids'];
+            if (!$chats) {
+                Response::error('No chat ID — add the bot to your group, then enter the group chat ID (e.g. -1001234567890).', 422);
+            }
+            $who = Telegram::whoami($tg);
+            if (empty($who['ok'])) {
+                Alerting::logSend('telegram', false, 'test', null, 'getMe: ' . ($who['error'] ?? ''));
+                Response::error('Telegram rejected the bot token: ' . ($who['error'] ?? 'unknown error'), 502);
+            }
+            require_once APP_ROOT . '/lib/EmailTemplate.php';
+            $esc = $config['escalation'] ?? [];
+            $r = Telegram::send(['send_photo' => false] + $tg, Alerting::eventText([
+                'banner' => '✅ TEST MESSAGE', 'title' => 'Kian Joo VisionAI — Telegram channel is working',
+                'lead' => 'Detection alerts (severity ≥ ' . ($config['alerts']['min_severity'] ?? 'high') . ') and unattended-alert escalations'
+                    . (!empty($esc['enabled']) ? ' (every ' . (int) ($esc['unattended_min'] ?? 5) . ' min, L1–L3)' : '') . ' will arrive here.',
+                'time' => date('Y-m-d H:i:s'), 'url' => EmailTemplate::host() . '/',
+            ]), null, $chats);
+            Alerting::logSend('telegram', $r['ok'], 'test', null, $r['errors'] ? implode('; ', $r['errors']) : 'test message');
+            Response::json(['ok' => $r['ok'], 'bot' => $who['username'] ?? '', 'sent' => $r['sent'], 'failed' => $r['failed'],
+                            'errors' => $r['errors']], $r['ok'] ? 200 : 502);
+        }
+
+        if ($route === '/alerts/email-test') {
+            $requireToken($config['auth']['read_token']);
+            if ($method !== 'POST') {
+                Response::error('POST {to?}.', 405);
+            }
+            $wsaNeedSettings('send a test email');
+            require_once APP_ROOT . '/lib/Mailer.php';
+            require_once APP_ROOT . '/lib/EmailTemplate.php';
+            $to = NotifySettings::emailList($wsaIn['to'] ?? '') ?: ($config['mail']['to'] ?? []);
+            $mc = $config['mail'];
+            $mc['to'] = $to;
+            $mailer = new Mailer($mc);
+            if (!$mailer->ready()) {
+                Response::error('Email not configured — set MAIL_HOST / MAIL_USERNAME in .env and at least one recipient.', 422);
+            }
+            $content = EmailTemplate::heading('Email channel is working')
+                . EmailTemplate::sub('Test notification from Kian Joo VisionAI (Settings → Notifications) — no action is required.')
+                . EmailTemplate::rows([
+                    ['Minimum severity', (string) ($config['alerts']['min_severity'] ?? 'high')],
+                    ['Escalation workflow', !empty($config['escalation']['enabled'])
+                        ? ('on · every ' . (int) ($config['escalation']['unattended_min'] ?? 5) . ' min unattended') : 'off'],
+                    ['Recipients', implode(', ', $to)],
+                ])
+                . EmailTemplate::buttons([['Open dashboard', EmailTemplate::host() . '/', true]]);
+            $ok = $mailer->send('[Kian Joo VisionAI] Test alert — email channel OK',
+                EmailTemplate::shell('Email channel test', 'EMAIL CHANNEL TEST', EmailTemplate::COLORS['ok'], $content), $to);
+            Alerting::logSend('email', $ok, 'test', null, implode(',', $to));
+            Response::json(['ok' => $ok, 'to' => $to, 'error' => $ok ? null : 'SMTP send failed — check error_log'], $ok ? 200 : 502);
+        }
+
+        if ($route === '/escalation/run') {
+            $requireToken($config['auth']['read_token']);
+            if ($method !== 'POST') {
+                Response::error('POST {dry_run}.', 405);
+            }
+            $wsaNeedSettings('run the escalation check');
+            $dry = filter_var($wsaIn['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            @set_time_limit(120);
+            $res = Escalation::run(Database::connect($config['storage']), $config, $dry);
+            Response::ok($res);
+        }
+    }
+
+    // ── Workstream C: Line 5 behavioural analytics + detection heatmap ──
+    //   GET  /behaviour/summary?from=&to=&day=&camera=&kind=&verdict=  KPIs, trend, hourly timeline, exceptions [read token]
+    //   GET  /behaviour/export?report=exceptions|trend&…               CSV                                      [read token]
+    //   POST /behaviour/review {id, verdict: confirmed|false_alarm, note}                                       [signed in]
+    //   POST /behaviour/rescan {days}   re-derive dwell / group / cleaning-proxy events                         [signed in + settings]
+    //   GET  /behaviour/heatmap?days=7|30|90&module=&sev=&pick=cam|dow&row=&hour=  incident heatmap             [read token]
+    //   /report/cron                     also runs the behaviour scan (then falls through)
+    if (in_array($route, ['/behaviour/summary', '/behaviour/export', '/behaviour/review', '/behaviour/rescan', '/behaviour/heatmap', '/report/cron'], true)) {
+        require_once APP_ROOT . '/lib/Behaviour.php';
+        $pdo   = Database::connect($config['storage']);
+        $store = new EventStore($pdo, $config);
+        $beh   = new Behaviour($pdo, $config, $store);
+
+        if ($route === '/report/cron') {
+            $requireToken($config['auth']['provision_token']);
+            $beh->maybeScan(0);   // falls through to the report sender below
+        } elseif ($route === '/behaviour/review' || $route === '/behaviour/rescan') {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to review behaviour events.', 401);
+            }
+            if ($method !== 'POST') {
+                Response::error('POST only.', 405);
+            }
+            $in = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+            if ($route === '/behaviour/rescan') {
+                if (!Auth::can('settings')) {
+                    Response::error('Forbidden: re-scanning needs the settings permission.', 403);
+                }
+                @set_time_limit(120);
+                Response::ok(['created' => $beh->rescan((int) ($in['days'] ?? 7))]);
+            }
+            $ok = $beh->review((int) ($in['id'] ?? 0), (string) ($in['verdict'] ?? ''),
+                trim((string) ($in['note'] ?? '')), (string) ($me['name'] ?? $me['username'] ?? 'operator'));
+            $ok ? Response::ok(['reviewed' => (int) ($in['id'] ?? 0)]) : Response::error('Unknown event or verdict.', 422);
+        } else {
+            $requireToken($config['auth']['read_token']);
+            if ($route === '/behaviour/heatmap') {
+                $pick = null;
+                if (in_array($_GET['pick'] ?? '', ['cam', 'dow'], true) && isset($_GET['hour'])) {
+                    $pick = ['type' => (string) $_GET['pick'], 'row' => strtolower(substr(preg_replace('/[^a-z0-9_.-]+/i', '', (string) ($_GET['row'] ?? '')), 0, 64)),
+                             'hour' => max(0, min(23, (int) $_GET['hour']))];
+                }
+                $mod = preg_replace('/[^a-z]+/', '', (string) ($_GET['module'] ?? ''));
+                $sev = in_array($_GET['sev'] ?? '', ['low', 'medium', 'high', 'critical'], true) ? (string) $_GET['sev'] : '';
+                Response::ok($beh->heatmap((int) ($_GET['days'] ?? 7), $mod, $sev, $pick));
+            }
+            $beh->maybeScan(30);
+            $f = [];
+            foreach (['from', 'to', 'day', 'camera', 'kind', 'verdict', 'plant'] as $k) {
+                $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
+            }
+            $f['camera'] = strtolower(preg_replace('/[^a-z0-9_.-]+/i', '', $f['camera']));
+            $f['kind']    = isset(Behaviour::KINDS[$f['kind']]) ? $f['kind'] : '';
+            $f['verdict'] = isset(Behaviour::VERDICTS[$f['verdict']]) ? $f['verdict'] : '';
+            if ($f['from'] === '') {
+                $f['from'] = date('Y-m-d', time() - 6 * 86400);
+            }
+            if ($f['to'] === '') {
+                $f['to'] = date('Y-m-d');
+            }
+            if ($route === '/behaviour/summary') {
+                Response::ok($beh->summary($f) + ['cleaningPpeNote' => 'PPE during cleaning (criterion 28) is on the Cleaning Monitoring page.']);
+            }
+            $report = (string) ($_GET['report'] ?? 'exceptions') === 'trend' ? 'trend' : 'exceptions';
+            $rows   = $beh->export($f, $report);
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="behaviour-' . $report . '-' . Attendance::cleanDate($f['from'])
+                . '-to-' . Attendance::cleanDate($f['to']) . '.csv"');
+            header('Cache-Control: no-store');
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            foreach ($rows as $r) {
+                fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+            }
+            fclose($out);
+            exit;
+        }
+    }
+
+    // ── Workstream D: AI performance, POC scorecard, integration API, infrastructure ──
+    //   GET  /aiperf/summary?from=&to=&module=&camera=&plant=   precision / recall / F1 per module, camera, day/night [read token]
+    //   GET  /aiperf/export | /aiperf/training                   metrics CSV | FP / FN retraining dataset CSV       [read token]
+    //   POST /aiperf/missed {module, camera, time, note}         log a missed detection (FN)                        [signed in]
+    //   POST /aiperf/missed {delete: id}                         remove one                                          [signed in, settings]
+    //   POST /aiperf/verify {uuid, verdict: correct|wrong}       sampling review → incident_log review entry        [signed in]
+    //   GET|POST /aiperf/thresholds                              face similarity / PPE confidence cut-offs          [read token | settings]
+    //   GET|POST /poc/scorecard, GET /poc/export?sheet=, GET /poc/doc?name=                                        [read token | settings]
+    //   GET  /integration[/attendance|events|persons|movement|ppe]   enterprise read API                            [integration API key]
+    //   GET|POST /integration/config, POST /integration/test     key rotation, webhooks, delivery log              [settings]
+    //   GET|POST /retention                                      retention days, storage estimate, purge now        [read token | settings]
+    //   POST /live/nettest {stream?}                             network / stream load test                         [signed in, settings]
+    //   /report/cron                                             also runs the daily retention purge (falls through)
+    if ($route === '/report/cron' || in_array($seg[0] ?? '', ['aiperf', 'poc', 'integration', 'retention'], true) || $route === '/live/nettest') {
+        require_once APP_ROOT . '/lib/WsdSettings.php';
+        $wsdIn  = static fn (): array => json_decode(file_get_contents('php://input') ?: '', true) ?: [];
+        $wsdCsv = static function (string $name, array $rows): void {
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $name . '.csv"');
+            header('Cache-Control: no-store');
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            foreach ($rows as $r) {
+                fputcsv($out, array_map(static fn ($c) => is_string($c) && preg_match('/^[=+\-@]/', $c) ? "'" . $c : $c, $r));
+            }
+            fclose($out);
+            exit;
+        };
+        // Signed-in user (optionally with the settings permission).
+        $wsdUser = static function (bool $settings, string $what): array {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to ' . $what . '.', 401);
+            }
+            if ($settings && !Auth::can('settings')) {
+                Response::error('Forbidden: ' . $what . ' needs the settings permission.', 403);
+            }
+            return $me;
+        };
+        $wsdActor = static fn (array $me): string => (string) ($me['name'] ?? $me['username'] ?? 'operator');
+        $wsdDir = WsdSettings::dirOf($config);
+
+        // Cron: daily retention purge, then fall through to the report sender.
+        if ($route === '/report/cron') {
+            $requireToken($config['auth']['provision_token']);
+            require_once APP_ROOT . '/lib/Retention.php';
+            Retention::maybeRun(Database::connect($config['storage']), $config, 6 * 3600);
+        }
+
+        // ── AI performance ──
+        if (($seg[0] ?? '') === 'aiperf') {
+            require_once APP_ROOT . '/lib/AiMetrics.php';
+            $pdo   = Database::connect($config['storage']);
+            $store = new EventStore($pdo, $config);
+            $ai    = new AiMetrics($pdo, $config, $store);
+            $f = [];
+            foreach (['from' => 10, 'to' => 10, 'module' => 20, 'camera' => 64, 'plant' => 80] as $k => $n) {
+                $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, $n);
+            }
+            $act = $seg[1] ?? '';
+            if ($act === 'summary' && $method === 'GET') {
+                $requireToken($config['auth']['read_token']);
+                Response::ok($ai->summary($f));
+            }
+            if (($act === 'export' || $act === 'training') && $method === 'GET') {
+                $requireToken($config['auth']['read_token']);
+                $f['include_tp'] = !empty($_GET['include_tp']);
+                $wsdCsv(($act === 'export' ? 'ai-performance-' : 'training-samples-') . date('Ymd'),
+                    $act === 'export' ? $ai->exportRows($f) : $ai->trainingRows($f));
+            }
+            if ($act === 'missed' && $method === 'POST') {
+                $in = $wsdIn();
+                if (!empty($in['delete'])) {
+                    $wsdUser(true, 'remove missed detections');
+                    $ai->deleteMissed((string) $in['delete']) ? Response::ok(['deleted' => true]) : Response::error('Not found.', 404);
+                }
+                $me = $wsdUser(false, 'log missed detections');
+                try {
+                    Response::ok(['missed' => $ai->addMissed($in, $wsdActor($me))]);
+                } catch (InvalidArgumentException $e) {
+                    Response::error($e->getMessage(), 422);
+                }
+            }
+            if ($act === 'verify' && $method === 'POST') {
+                $me = $wsdUser(false, 'verify detections');
+                $in = $wsdIn();
+                $ai->verify((string) ($in['uuid'] ?? ''), (string) ($in['verdict'] ?? ''), $wsdActor($me), substr(trim((string) ($in['note'] ?? '')), 0, 300))
+                    ? Response::ok(['uuid' => $in['uuid'], 'verdict' => $in['verdict']])
+                    : Response::error('Unknown event or verdict (correct | wrong).', 422);
+            }
+            if ($act === 'thresholds') {
+                if ($method === 'POST') {
+                    $wsdUser(true, 'change model thresholds');
+                    $in = $wsdIn();
+                    $patch = array_intersect_key($in, array_flip(['face_min_similarity', 'ppe_min_conf']));
+                    $s = WsdSettings::save($patch, $wsdDir);
+                    Response::ok(['face_min_similarity' => $s['face_min_similarity'], 'ppe_min_conf' => $s['ppe_min_conf']]);
+                }
+                $requireToken($config['auth']['read_token']);
+                $s = WsdSettings::of($config);
+                Response::ok(['face_min_similarity' => $s['face_min_similarity'], 'ppe_min_conf' => $s['ppe_min_conf']]);
+            }
+            Response::error('Unknown AI performance endpoint.', 404);
+        }
+
+        // ── POC scorecard ──
+        if (($seg[0] ?? '') === 'poc') {
+            require_once APP_ROOT . '/lib/PocScorecard.php';
+            $sc  = new PocScorecard($wsdDir);
+            $act = $seg[1] ?? '';
+            if ($act === 'scorecard' && $method === 'POST') {
+                $me = $wsdUser(true, 'edit the POC scorecard');
+                $saved = $sc->save($wsdIn(), $wsdActor($me));
+                Response::ok(['saved' => true, 'computed' => $sc->compute($saved), 'updated_at' => $saved['updated_at']]);
+            }
+            if ($act === 'scorecard' || $act === 'export') {
+                $requireToken($config['auth']['read_token']);
+                $pdo   = Database::connect($config['storage']);
+                $store = new EventStore($pdo, $config);
+                $saved = $sc->load();
+                $live  = PocScorecard::live($pdo, $config, $store, max(1, min(30, (int) ($_GET['days'] ?? 7))));
+                if ($act === 'export') {
+                    $sheet = in_array($_GET['sheet'] ?? '', ['criteria', 'tests'], true) ? (string) $_GET['sheet'] : 'all';
+                    $wsdCsv('poc-scorecard-' . $sheet . '-' . date('Ymd'), $sc->csvRows($saved, $live, $sheet));
+                }
+                Response::ok([
+                    'saved' => $saved, 'computed' => $sc->compute($saved), 'live' => $live,
+                    'tests' => array_map(static fn ($t) => ['id' => $t[0], 'area' => $t[1], 'case' => $t[2], 'expected' => $t[3], 'criteria' => $t[4]], PocScorecard::TESTS),
+                    'statuses' => PocScorecard::STATUSES, 'results' => PocScorecard::RESULTS,
+                    'groups' => array_map(static fn ($k, $g) => ['key' => $k, 'label' => $g[0], 'ranges' => array_slice($g, 1)], array_keys(PocScorecard::GROUPS), PocScorecard::GROUPS),
+                    'bands' => PocScorecard::BANDS,
+                    'docs' => [['name' => 'testplan', 'file' => 'docs/POC_TEST_PLAN.md'], ['name' => 'architecture', 'file' => 'docs/ARCHITECTURE_AND_INFRASTRUCTURE.md'],
+                               ['name' => 'integration', 'file' => 'docs/INTEGRATION_API.md']],
+                ]);
+            }
+            if ($act === 'doc') {
+                $requireToken($config['auth']['read_token']);
+                $files = ['testplan' => 'POC_TEST_PLAN.md', 'architecture' => 'ARCHITECTURE_AND_INFRASTRUCTURE.md', 'integration' => 'INTEGRATION_API.md'];
+                $name = (string) ($_GET['name'] ?? '');
+                $path = isset($files[$name]) ? APP_ROOT . '/docs/' . $files[$name] : '';
+                if ($path === '' || !is_file($path)) {
+                    Response::error('Unknown document.', 404);
+                }
+                Response::ok(['name' => $name, 'file' => 'docs/' . $files[$name], 'markdown' => (string) file_get_contents($path)]);
+            }
+            Response::error('Unknown POC endpoint.', 404);
+        }
+
+        // ── Integration API ──
+        if (($seg[0] ?? '') === 'integration') {
+            require_once APP_ROOT . '/lib/Integration.php';
+            $act  = $seg[1] ?? '';
+            $host = $config['app']['url'] ?: ('https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+            if ($act === 'config' || $act === 'test') {
+                if ($method === 'GET') {
+                    $requireToken($config['auth']['read_token']);
+                    Response::ok(['settings' => WsdSettings::forUi(WsdSettings::of($config)), 'events' => WsdSettings::WEBHOOK_EVENTS,
+                                  'catalogue' => Integration::catalogue($host), 'log' => Integration::readLog($config, 50)]);
+                }
+                $wsdUser(true, 'manage integrations');
+                $in  = $wsdIn();
+                $cur = WsdSettings::of($config);
+                if ($act === 'test') {
+                    $hook = null;
+                    foreach ($cur['webhooks'] as $h) {
+                        if ($h['id'] === (string) ($in['id'] ?? '')) {
+                            $hook = $h;
+                        }
+                    }
+                    if ($hook === null) {
+                        Response::error('Save the webhook first, then send a test.', 404);
+                    }
+                    $r = Integration::send($config, $hook, 'test', ['type' => 'test', 'message' => 'Test delivery from Kian Joo VisionAI', 'event' => null], 5.0);
+                    Response::json(['ok' => $r['ok'], 'code' => $r['code'], 'error' => $r['error'], 'ms' => $r['ms']], 200);
+                }
+                $patch = [];
+                $newKey = null;
+                if (!empty($in['regen_key'])) {
+                    $newKey = 'kjv_' . bin2hex(random_bytes(24));
+                    $patch['integration_key'] = $newKey;
+                }
+                if (!empty($in['revoke_key'])) {
+                    $patch['integration_key'] = '';
+                }
+                if (isset($in['webhooks']) && is_array($in['webhooks'])) {
+                    $old = [];
+                    foreach ($cur['webhooks'] as $h) {
+                        $old[$h['id']] = $h;
+                    }
+                    $list = [];
+                    foreach (array_slice($in['webhooks'], 0, 10) as $h) {
+                        if (!is_array($h)) {
+                            continue;
+                        }
+                        $id  = preg_replace('/[^a-z0-9]/i', '', (string) ($h['id'] ?? '')) ?: bin2hex(random_bytes(5));
+                        $prev = $old[$id] ?? null;
+                        $url = trim((string) ($h['url'] ?? ''));
+                        if (str_contains($url, '•') && $prev) {
+                            $url = $prev['url'];
+                        }
+                        if ($url !== '' && !filter_var($url, FILTER_VALIDATE_URL) || ($url !== '' && !preg_match('~^https?://~i', $url))) {
+                            Response::error('Webhook URL must be an http(s) URL.', 422);
+                        }
+                        $secret = (string) ($h['secret'] ?? '');
+                        if ($secret === '' || str_contains($secret, '•')) {
+                            $secret = $prev['secret'] ?? bin2hex(random_bytes(16));
+                        }
+                        $list[] = ['id' => $id, 'url' => $url, 'secret' => $secret, 'events' => (array) ($h['events'] ?? []), 'enabled' => ($h['enabled'] ?? true) !== false];
+                    }
+                    $patch['webhooks'] = $list;
+                }
+                $s = WsdSettings::save($patch, $wsdDir);
+                // The full key is returned exactly once, on rotation.
+                Response::ok(['settings' => WsdSettings::forUi($s), 'new_key' => $newKey]);
+            }
+            if ($method !== 'GET') {
+                Response::error('The integration API is read-only (GET).', 405);
+            }
+            if ($err = Integration::authError($config)) {
+                Response::error($err[0], $err[1]);
+            }
+            $pdo = Database::connect($config['storage']);
+            $int = new Integration($pdo, $config, new EventStore($pdo, $config));
+            try {
+                $out = match ($act) {
+                    ''           => ['version' => Integration::VERSION, 'endpoints' => array_map(static fn ($c) => ['method' => $c[0], 'url' => $c[1], 'params' => $c[2], 'purpose' => $c[3]], Integration::catalogue($host)),
+                                     'plants' => array_values($config['attendance']['plants'] ?? [])],
+                    'attendance' => $int->attendance($_GET),
+                    'events'     => $int->events($_GET),
+                    'persons'    => $int->persons($_GET),
+                    'movement'   => $int->movement($_GET),
+                    'ppe'        => $int->ppe($_GET),
+                    default      => null,
+                };
+            } catch (InvalidArgumentException $e) {
+                Response::error($e->getMessage(), 422);
+            }
+            if ($out === null) {
+                Response::error('Unknown endpoint. GET /api/integration lists them.', 404);
+            }
+            Response::ok($out);
+        }
+
+        // ── Data retention ──
+        if (($seg[0] ?? '') === 'retention') {
+            require_once APP_ROOT . '/lib/Retention.php';
+            $pdo = Database::connect($config['storage']);
+            if ($method === 'POST') {
+                $me = $wsdUser(true, 'change data retention');
+                $in = $wsdIn();
+                if (isset($in['retention_days'])) {
+                    $config['wsd'] = WsdSettings::save(['retention_days' => (int) $in['retention_days']], $wsdDir);
+                }
+                $ret = new Retention($pdo, $config);
+                $purge = !empty($in['purge_now']) ? $ret->purge(!empty($in['dry_run']), $wsdActor($me)) : null;
+                Response::ok(['storage' => $ret->storage(), 'purge' => $purge]);
+            }
+            $requireToken($config['auth']['read_token']);
+            $ret = new Retention($pdo, $config);
+            Response::ok(['storage' => $ret->storage(), 'due' => $ret->purge(true)]);
+        }
+
+        // ── Network / stream load test ──
+        if ($route === '/live/nettest') {
+            if ($method !== 'POST') {
+                Response::error('POST {stream?}.', 405);
+            }
+            $wsdUser(true, 'run the network test');
+            require_once APP_ROOT . '/lib/NetTest.php';
+            @set_time_limit(90);
+            $in = $wsdIn();
+            $only = isset($in['stream']) && $in['stream'] !== '' ? substr((string) $in['stream'], 0, 64) : null;
+            $res = (new NetTest($config, $only !== null ? 20 : 50))->run($only);
+            if ($only === null) {
+                @file_put_contents($wsdDir . '/nettest_last.json', json_encode(array_diff_key($res, ['thresholds' => 1]), JSON_UNESCAPED_SLASHES), LOCK_EX);
+            }
+            Response::ok($res);
+        }
+    }
+
     if ($route === '/report/cron') {
         $requireToken($config['auth']['provision_token']);
         require_once APP_ROOT . '/lib/Insights.php';

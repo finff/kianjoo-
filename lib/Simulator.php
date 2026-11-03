@@ -33,6 +33,7 @@ final class Simulator
     private const LOC_DOCK   = 'Loading Dock';
     private const LOC_LINE5  = 'Line 5';
     private const LOC_WASTE  = 'Waste Area — Spot 9';
+    private const WASTE_FK_HOURS = '13:00-15:30';   // Workstream B: forklift-only window at DEMOWASTE9
 
     /** stream key → [camera point, plant index, attendance role] */
     private const CAMS = [
@@ -78,7 +79,8 @@ final class Simulator
     {
         $days = max(1, min(14, $days));
         $this->counts = ['events' => 0, 'employees' => 0, 'face' => 0, 'ppe' => 0, 'restricted' => 0,
-                         'forklift' => 0, 'fire' => 0, 'stranger' => 0, 'cleaning' => 0];
+                         'forklift' => 0, 'fire' => 0, 'stranger' => 0, 'cleaning' => 0,
+                         'fk_operator' => 0, 'fk_pedestrian' => 0, 'ppe_custom' => 0];
         mt_srand(20261020 + (int) date('z'));
 
         $this->purgeEvents();
@@ -87,6 +89,7 @@ final class Simulator
         $store->silent = true;
         $this->setupEmployees($store, $actor);
         $this->generate($store, $days);
+        $this->generateBehaviour($store, $days);   // Workstream C: Line 5 chit-chat, fights, cleaning policy
 
         // The cleaning schedule is applied last: PPE checks are matched against
         // schedules at ingest time (wall clock), so adding it earlier would tag
@@ -95,8 +98,17 @@ final class Simulator
         $store = new EventStore($this->pdo, $this->config);
         $store->silent = true;
         $this->generateCleaning($store);
+        $this->generateUnattended($store);   // Workstream A: open alerts for the escalation demo
 
         $this->triage();
+        // Workstream D: reviewer verdicts + logged misses on a sample of demo detections (AI Performance).
+        try {
+            require_once __DIR__ . '/AiMetrics.php';
+            $this->counts['ai_reviews'] = AiMetrics::simulateReviews($this->pdo, $this->config, array_keys(self::CAMS))['reviews'];
+        } catch (Throwable $e) {
+            error_log('[simulator] ai reviews: ' . $e->getMessage());
+        }
+        $this->scanBehaviour($store, $days);        // Workstream C: derive dwell / cleaning-proxy events
         $this->clearCaches();
         return ['days' => $days, 'counts' => $this->counts];
     }
@@ -131,6 +143,11 @@ final class Simulator
                 static fn ($s) => !is_array($s) || ($s['id'] ?? '') !== self::CLEAN_ID));
         }
         $this->saveSettings($app);
+        try {   // Workstream D: simulated missed-detection log rows
+            require_once __DIR__ . '/AiMetrics.php';
+            (new AiMetrics($this->pdo, $this->config, new EventStore($this->pdo, $this->config)))->removeSimulated(array_keys(self::CAMS));
+        } catch (Throwable $e) {
+        }
         $this->clearCaches();
         return ['counts' => ['events' => $events, 'employees' => $employees]];
     }
@@ -192,7 +209,15 @@ final class Simulator
         $ra['demowaste9'] = ['enabled' => true, 'name' => self::LOC_WASTE, 'hours' => 'always', 'staff' => [],
                               'depts' => array_values(array_filter([$maint]))];
         $fk['demodock']   = ['enabled' => true, 'name' => self::LOC_DOCK, 'rule' => 'prohibited', 'hours' => 'always',
-                              'note' => 'Demo zone — simulated forklift traffic'];
+                              'note' => 'Demo zone — simulated forklift traffic', 'op_ppe' => ['helmet', 'vest']];
+        // Workstream B: boots at Spot 9, hair net at Line 5; Spot 9 is forklift-only
+        // during the afternoon waste-collection window (pedestrians not allowed).
+        $pr[self::LOC_WASTE] = array_values(array_unique(array_merge((array) $pr[self::LOC_WASTE], ['boots'])));
+        $pr[self::LOC_LINE5] = array_values(array_unique(array_merge((array) $pr[self::LOC_LINE5], ['hairnet'])));
+        $fk['demowaste9'] = ['enabled' => true, 'name' => self::LOC_WASTE . ' (waste collection)', 'rule' => 'forklift_only',
+                              'hours' => self::WASTE_FK_HOURS, 'note' => 'Demo — forklift-only during waste collection, pedestrians not allowed',
+                              'op_ppe' => ['helmet', 'vest']];
+        $app['fk_operator_window'] = $app['fk_operator_window'] ?? 10;
         $now = time();
         $cleaning = ['id' => self::CLEAN_ID, 'name' => 'Line 5 shift-change clean', 'location' => self::LOC_LINE5,
                      'start' => date('H:i', $now - 80 * 60), 'end' => date('H:i', $now + 40 * 60),
@@ -219,6 +244,8 @@ final class Simulator
         $c['ppe']['rules'] = $pr;
         $c['restricted']['zones']['demowaste9'] = $ra['demowaste9'];
         $c['forklift']['zones']['demodock']     = $fk['demodock'];
+        $c['forklift']['zones']['demowaste9']   = $fk['demowaste9'];
+        $c['forklift']['operator_window']       = max(2, min(120, (int) $app['fk_operator_window']));
         $c['cleaning']['schedules'] = array_values(array_filter($c['cleaning']['schedules'] ?? [],
             static fn ($s) => ($s['id'] ?? '') !== self::CLEAN_ID));
         unset($c);
@@ -296,7 +323,16 @@ final class Simulator
                 $this->body($store, 'demoline5', 'Body Attributes — Line 5', $t, [
                     'gloves'  => !($viol && mt_rand(0, 1) === 0),
                     'goggles' => !($viol && mt_rand(0, 1) === 0) || !$viol,
+                    'hairnet' => !($viol && mt_rand(0, 2) === 0),          // Workstream B: HatsType Bonnet / NoHat
                 ]);
+            }
+            // Workstream B: custom SenseStudio algorithms at Line 5 — ear protection
+            // (no native attribute) and the hair-net model, a few alarms a day.
+            if (mt_rand(1, 100) <= 70) {
+                $t = $base + 9 * 3600 + mt_rand(0, 7 * 3600);
+                if ($t <= $now) {
+                    $this->customPpe($store, 'demoline5', mt_rand(0, 2) ? 'No Ear Protection — Line 5 (custom algorithm)' : 'No Hairnet — Line 5 (custom algorithm)', $t);
+                }
             }
 
             // ── PPE checks at Spot 9 (helmet + vest) ──
@@ -310,6 +346,7 @@ final class Simulator
                 $this->body($store, 'demowaste9', 'Body Attributes — Spot 9', $t, [
                     'helmet' => !($viol && mt_rand(0, 1) === 0),
                     'vest'   => !$viol || mt_rand(0, 1) === 0,
+                    'boots'  => !($viol && mt_rand(0, 1) === 0),          // Workstream B: ShoesType Boots
                 ]);
             }
 
@@ -331,6 +368,39 @@ final class Simulator
                 $t = $base + 8 * 3600 + mt_rand(0, 9 * 3600);
                 if ($t <= $now) {
                     $this->vehicle($store, $t);
+                    // Workstream B: the operator is seen 2–6 s later; ~25 % without helmet or vest.
+                    if (mt_rand(1, 100) <= 80) {
+                        $bad = mt_rand(1, 100) <= 25;
+                        $this->body($store, 'demodock', 'Body Attributes — Loading Dock', $t + mt_rand(2, 6), [
+                            'helmet' => !($bad && mt_rand(0, 1) === 0), 'vest' => !$bad || mt_rand(0, 1) === 0,
+                        ]);
+                        $this->counts['fk_operator']++;
+                    }
+                }
+            }
+
+            // ── Workstream B: waste collection at Spot 9 (forklift-only 13:00–15:30) ──
+            // Forklift passes with their operator, plus pedestrians walking in.
+            $wb = $base + 13 * 3600;
+            $n = mt_rand(1, 3);
+            for ($i = 0; $i < $n; $i++) {
+                $t = $wb + mt_rand(0, 140) * 60;
+                if ($t > $now) {
+                    continue;
+                }
+                $this->vehicle($store, $t, 'demowaste9');
+                $bad = mt_rand(1, 100) <= 30;
+                $this->body($store, 'demowaste9', 'Body Attributes — Spot 9', $t + mt_rand(1, 5), [
+                    'helmet' => !$bad, 'vest' => true, 'boots' => true,
+                ]);
+                $this->counts['fk_operator']++;
+            }
+            $n = mt_rand(0, 2);
+            for ($i = 0; $i < $n; $i++) {
+                $t = $wb + mt_rand(0, 145) * 60;
+                if ($t <= $now) {
+                    $this->body($store, 'demowaste9', 'Body Attributes — Spot 9', $t, ['helmet' => true, 'vest' => mt_rand(0, 1) === 1]);
+                    $this->counts['fk_pedestrian']++;
                 }
             }
 
@@ -350,6 +420,86 @@ final class Simulator
         }
     }
 
+    /**
+     * Workstream C — Line 5 behaviour: normal sparse presence already comes
+     * from generate(); here 1–2 chit-chat groups a day (2–3 employees seen
+     * together every ~50 s for 4–8 min), a SenseStudio loitering-policy event
+     * every other day, a cleaning-algorithm event each day, two fights and one
+     * fall over the week (custom-algorithm policy names). All in the past and
+     * outside today's cleaning window.
+     */
+    private function generateBehaviour(EventStore $store, int $days): void
+    {
+        $now   = time();
+        $line  = array_values(array_filter(self::PEOPLE, static fn ($p) => $p[5] === 0));
+        $fight = [max(0, $days - 2), min($days - 1, 1)];   // day offsets with a fight
+        for ($d = $days - 1; $d >= 0; $d--) {
+            $base = strtotime(date('Y-m-d', $now - $d * 86400) . ' 00:00:00');
+            $groups = mt_rand(1, 2);
+            for ($g = 0; $g < $groups; $g++) {
+                $t0 = $base + 9 * 3600 + mt_rand(0, 7 * 3600);
+                if ($t0 > $now - 3 * 3600) {
+                    continue;
+                }
+                $keys = (array) array_rand($line, mt_rand(2, 3));
+                $dur  = mt_rand(4, 8) * 60;
+                foreach ($keys as $k) {
+                    [$pid, $name, , $gender] = $line[$k];
+                    for ($t = $t0 + mt_rand(0, 40); $t < $t0 + $dur; $t += mt_rand(40, 65)) {
+                        $this->face($store, 'demoline5', $pid, $name, $gender, $t);
+                    }
+                }
+                $this->counts['beh_chitchat'] = ($this->counts['beh_chitchat'] ?? 0) + 1;
+            }
+            if ($d % 2 === 1) {
+                $t = $base + 13 * 3600 + mt_rand(0, 3 * 3600);
+                if ($t < $now - 3 * 3600) {
+                    $this->behaviourEvent($store, 'Loitering Detection — Line 5', 'Stay / loitering over threshold', 'roiStay', $t, '1');
+                    $this->counts['beh_loiter_policy'] = ($this->counts['beh_loiter_policy'] ?? 0) + 1;
+                }
+            }
+            $t = $base + 15 * 3600 + mt_rand(0, 3600);
+            if ($t < $now - 3 * 3600) {
+                $this->behaviourEvent($store, 'Floor Cleaning (custom) — Line 5', 'Custom algorithm: mopping / sweeping', 'customAlgorithm', $t, '0');
+                $this->counts['beh_cleaning'] = ($this->counts['beh_cleaning'] ?? 0) + 1;
+            }
+            if (in_array($d, $fight, true)) {
+                $t = $base + 11 * 3600 + mt_rand(0, 4 * 3600);
+                if ($t < $now - 3 * 3600) {
+                    $this->behaviourEvent($store, 'Fighting Detection (custom) — Line 5', 'Custom algorithm: fighting / altercation', 'customAlgorithm', $t, '3');
+                    $this->counts['beh_fight'] = ($this->counts['beh_fight'] ?? 0) + 1;
+                }
+            }
+            if ($d === intdiv($days, 2)) {
+                $t = $base + 10 * 3600 + mt_rand(0, 3600);
+                if ($t < $now - 3 * 3600) {
+                    $this->behaviourEvent($store, 'Person Fall Detection (custom) — Line 5', 'Custom algorithm: person fall', 'customAlgorithm', $t, '2');
+                    $this->counts['beh_fall'] = ($this->counts['beh_fall'] ?? 0) + 1;
+                }
+            }
+        }
+    }
+
+    /** One push from a SenseStudio behaviour / custom algorithm at Line 5. */
+    private function behaviourEvent(EventStore $store, string $policy, string $desc, string $trigger, int $ts, string $alert): void
+    {
+        $p = $this->common('demoline5', $policy, $desc, $trigger, $ts, $alert);
+        $p['attributes'] = $this->personAttrs(mt_rand(0, 1) ? 'male' : 'female');
+        $this->emit($store, $p, 'demoline5', 'body', $ts);
+    }
+
+    /** Derive the dwell / group / cleaning-proxy behaviour events over the simulated days. */
+    private function scanBehaviour(EventStore $store, int $days): void
+    {
+        try {
+            require_once __DIR__ . '/Behaviour.php';
+            $beh = new Behaviour($this->pdo, $this->config, $store);
+            $this->counts['beh_derived'] = $beh->rescan($days + 1);
+        } catch (Throwable $e) {
+            error_log('[simulator] behaviour: ' . $e->getMessage());
+        }
+    }
+
     /** PPE checks inside today's cleaning window (last ~80 min), one missing gloves. */
     private function generateCleaning(EventStore $store): void
     {
@@ -358,6 +508,26 @@ final class Simulator
             $t = $now - mt_rand(5, 75) * 60;
             $this->body($store, 'demoline5', 'Body Attributes — Line 5', $t, ['gloves' => $i !== 1, 'goggles' => true]);
             $this->counts['cleaning']++;
+        }
+    }
+
+    /**
+     * Workstream A: a few fresh, unacknowledged high-severity alerts (3–18 min
+     * old) so Settings → Notifications → "Run escalation check" shows alerts
+     * crossing L1 / L2 / L3. Simulated rows escalate in dry-run mode (no
+     * email / Telegram is sent — see lib/Escalation.php).
+     */
+    private function generateUnattended(EventStore $store): void
+    {
+        $now = time();
+        foreach ([3, 7, 12, 18] as $i => $ago) {
+            $t = $now - $ago * 60 - mt_rand(0, 50);
+            if ($i % 2 === 0) {
+                $this->intrusion($store, $t, null);           // unknown person in the restricted zone
+            } else {
+                $this->body($store, 'demoline5', 'Smoking Detection — Line 5', $t, ['smoking' => true]);
+            }
+            $this->counts['escalation'] = ($this->counts['escalation'] ?? 0) + 1;
         }
     }
 
@@ -443,6 +613,12 @@ final class Simulator
         if (array_key_exists('gloves', $wear)) {
             $a[] = self::attr('60', $wear['gloves'] ? '0' : '1');          // WithGlove
         }
+        if (array_key_exists('boots', $wear)) {
+            $a[] = self::attr('15', $wear['boots'] ? '7' : (string) [2, 5, 6][mt_rand(0, 2)]);   // ShoesType: Boots / other
+        }
+        if (array_key_exists('hairnet', $wear) && !array_key_exists('helmet', $wear)) {
+            $a[] = self::attr('16', $wear['hairnet'] ? '6' : '0');         // HatsType: Bonnet (hair covered) / NoHat
+        }
         if (array_key_exists('goggles', $wear)) {
             $a[] = self::attr('56', $wear['goggles'] ? '2' : '10');        // ExpressionType: glasses estimate
         }
@@ -470,16 +646,25 @@ final class Simulator
     }
 
     /** Vehicle detection on the (prohibited) loading-dock forklift zone. */
-    private function vehicle(EventStore $store, int $ts): void
+    private function vehicle(EventStore $store, int $ts, string $stream = 'demodock'): void
     {
-        $p = $this->common('demodock', 'Vehicle Detection — Loading Dock', 'Detect vehicle attributes', 'vehicleCapture', $ts, '1');
+        $p = $this->common($stream, 'Vehicle Detection — ' . self::CAMS[$stream][0], 'Detect vehicle attributes', 'vehicleCapture', $ts, '1');
         $p['attributes'] = [
             self::attr('-3', '1'),                                 // All(Vehicle): Yes
             self::attr('2', (string) mt_rand(1, 3)),               // VehicleType: Van / SmallTruck / BigTruck
             self::attr('1', (string) mt_rand(0, 7)),               // VehicleColor
         ];
-        $this->emit($store, $p, 'demodock', 'body', $ts);
+        $this->emit($store, $p, $stream, 'body', $ts);
         $this->counts['forklift']++;
+    }
+
+    /** Workstream B: an alarm from a custom SenseStudio PPE algorithm (matched by policy name, no attributes needed). */
+    private function customPpe(EventStore $store, string $stream, string $policy, int $ts): void
+    {
+        $p = $this->common($stream, $policy, 'Custom algorithm (SenseStudio) — PPE', 'customAlgorithm', $ts, '1');
+        $p['attributes'] = $this->personAttrs(mt_rand(0, 1) ? 'male' : 'female');
+        $this->emit($store, $p, $stream, 'body', $ts);
+        $this->counts['ppe_custom']++;
     }
 
     // ── Storage helpers ──────────────────────────────────────
@@ -496,7 +681,8 @@ final class Simulator
     {
         $t = date('Y-m-d H:i:s', $ts);
         $this->pdo->prepare('UPDATE events SET received_at = :t WHERE id = :id')->execute(['t' => $t, 'id' => $id]);
-        foreach (['ppe_checks' => 'checked_at', 'restricted_events' => 'detected_at', 'forklift_events' => 'detected_at'] as $table => $col) {
+        foreach (['ppe_checks' => 'checked_at', 'restricted_events' => 'detected_at', 'forklift_events' => 'detected_at',
+                  'behaviour_events' => 'started_at'] as $table => $col) {
             try {
                 $this->pdo->prepare("UPDATE {$table} SET {$col} = :t WHERE event_id = :id")->execute(['t' => $t, 'id' => $id]);
             } catch (Throwable $e) {
@@ -550,6 +736,12 @@ final class Simulator
                 }
             }
             $this->pdo->prepare("DELETE FROM events WHERE id IN ({$inIds})")->execute($ids);
+        }
+        // Workstream C: behaviour rows on the demo cameras (derived ones have no event_id).
+        try {
+            $this->pdo->prepare("DELETE FROM behaviour_events WHERE stream IN ({$in})")->execute($vals);
+        } catch (Throwable $e) {
+            // table not migrated yet
         }
         return count($rows);
     }

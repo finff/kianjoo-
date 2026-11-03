@@ -357,10 +357,35 @@ try {
     } catch (Throwable $e) {
         error_log('[feed] reporter: ' . $e->getMessage());
     }
+    // Workstream C: behaviour scan (chit-chat / idle / cleaning proxy) piggy-
+    // backed on the poll — at most once per 60 s (storage/beh_cursor.json mtime).
+    try {
+        require_once APP_ROOT . '/lib/Behaviour.php';
+        (new Behaviour($pdo, $config, $store))->maybeScan(60);
+    } catch (Throwable $e) {
+        error_log('[feed] behaviour: ' . $e->getMessage());
+    }
+    // Workstream A: unattended-alert escalation piggy-backed on the poll
+    // (at most once per 60 s via storage/escalation.lock, silent on failure).
+    try {
+        require_once APP_ROOT . '/lib/Escalation.php';
+        Escalation::maybeRun($config, $pdo, 60);
+    } catch (Throwable $e) {
+        error_log('[feed] escalation: ' . $e->getMessage());
+    }
+    // Workstream D: daily data-retention purge piggy-backed on the poll
+    // (storage/retention.lock mtime; batch-capped so a poll stays fast).
+    try {
+        require_once APP_ROOT . '/lib/Retention.php';
+        Retention::maybeRun($pdo, $config, 86400, 1500);
+    } catch (Throwable $e) {
+        error_log('[feed] retention: ' . $e->getMessage());
+    }
 
     // The recent window, PLUS every detection that is still open or acknowledged
     // however old it is — nothing disappears from the incident list until it is
-    // resolved. (Stored events are never auto-deleted; MAX_EVENTS is off.)
+    // resolved. (Events are only purged after the Settings → Data Retention
+    // window, default 90 days; MAX_EVENTS is off.)
     $limit  = max(1, min(1000, (int) ($_GET['limit'] ?? 300)));
     $events = $store->query(['limit' => $limit]);   // newest first, hydrated
     $unresolved = $store->query(['status_not' => 'resolved', 'limit' => 1000]);

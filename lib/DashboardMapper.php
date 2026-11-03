@@ -69,6 +69,10 @@ final class DashboardMapper
             'ticketedTs' => $tsOf($e['ticketed_at'] ?? null),
             'ackedTs'    => $tsOf($e['acked_at'] ?? null),
             'resolvedTs' => $tsOf($e['resolved_at'] ?? null),
+            // Workstream A: unattended-alert escalation (lib/Escalation.php)
+            'escLevel'   => (int) ($e['esc_level'] ?? 0),
+            'escTs'      => $tsOf($e['esc_at'] ?? null),
+            'escMin'     => isset($e['esc_min']) ? (int) $e['esc_min'] : null,
         ];
     }
 
@@ -136,6 +140,11 @@ final class DashboardMapper
         // Smoking is a specific detected behaviour → surface on Fire & Smoke.
         if (($dec['Smoking'] ?? '') === 'IsSmoking') {
             return 'fire';
+        }
+        // Workstream C: a behaviour algorithm (fight / fall / cleaning /
+        // loitering) tagged at ingest by lib/Behaviour.php.
+        if (!empty($dec['BehKind'])) {
+            return 'behaviour';
         }
         // A forklift-zone verdict (lib/Forklift.php) or a forklift policy.
         if (!empty($dec['FkVerdict']) || preg_match('/forklift|fork.?lift/', $t)) {
@@ -244,6 +253,20 @@ final class DashboardMapper
         } elseif ($fk === 'logged' || $fk === 'cleared') {
             $sev = 'low';
         }
+        // Workstream C: fighting is Critical, a fall High, a loitering
+        // algorithm Medium; cleaning activity is evidence (Low).
+        if ($mod === 'behaviour') {
+            $beh = (string) ($dec['BehType'] ?? '');
+            if ($beh === 'fight') {
+                $sev = 'critical';
+            } elseif ($beh === 'fall') {
+                $sev = self::maxSev($sev, 'high');
+            } elseif (($dec['BehKind'] ?? '') === 'loiter') {
+                $sev = self::maxSev($sev, 'medium');
+            } elseif (($dec['BehKind'] ?? '') === 'cleaning') {
+                $sev = 'low';
+            }
+        }
         return $sev;
     }
 
@@ -285,9 +308,30 @@ final class DashboardMapper
         if ($mod === 'face' && self::isStranger($e)) {
             return 'Stranger detected — ' . $person . ' (no watchlist match)';
         }
+        if ($mod === 'behaviour') {
+            $at = Text::latin((string) (($e['device_name'] ?? '') ?: strtoupper((string) ($e['stream'] ?? ''))), 'camera');
+            return [
+                'fight'  => 'Abnormal: fighting / altercation — ' . $at,
+                'fall'   => 'Abnormal: person fall — ' . $at,
+            ][(string) ($dec['BehType'] ?? '')] ?? ([
+                'cleaning' => 'Cleaning activity detected — ' . $at,
+                'loiter'   => 'Chit-chat / loitering — ' . $at,
+            ][(string) ($dec['BehKind'] ?? '')] ?? 'Behaviour event — ' . $at);
+        }
         if ($mod === 'forklift') {
             $cam  = strtoupper((string) (($e['stream'] ?? '') ?: (($e['device_serial'] ?? '') ?: 'camera')));
             $zone = (string) (($dec['FkZone'] ?? '') ?: $cam);
+            // Workstream B: pedestrian in a forklift-only zone / operator PPE.
+            $fkKind = (string) ($dec['FkKind'] ?? '');
+            if ($fkKind === 'pedestrian') {
+                return (($dec['FkVerdict'] ?? '') === 'violation' ? 'Pedestrian in forklift-only zone — ' : 'Pedestrian logged — ') . $zone;
+            }
+            if (!empty($dec['FkOpMissing']) && ($dec['FkVerdict'] ?? '') !== 'cleared') {
+                return 'Forklift operator PPE violation — no ' . $dec['FkOpMissing'] . ' · ' . $zone;
+            }
+            if ($fkKind === 'operator') {
+                return 'Forklift operator — ' . $zone;
+            }
             if (($dec['FkVerdict'] ?? '') === 'violation') {
                 return (($dec['FkRule'] ?? '') === 'restricted' ? 'Forklift outside permitted hours — ' : 'Forklift in prohibited zone — ') . $zone;
             }

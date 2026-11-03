@@ -82,6 +82,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>
         <span class="nav-lbl">Cleaning Monitoring</span>
       </button>
+      <button class="c10 navbtn {{ nav.behaviour.cls }}" onClick="{{ nav.behaviour.go }}" title="Behaviour Analytics">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="nav-lbl">Behaviour Analytics</span>
+      </button>
       <button class="c10 navbtn {{ nav.forklift.cls }}" onClick="{{ nav.forklift.go }}" title="Forklift Monitoring">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H5a2 2 0 0 0-2 2v5"/><circle cx="13" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><path d="M8 19h3"/><path d="M16 2v17h6"/><path d="M6 12V7a2 2 0 0 1 2-2h3l5 5"/></svg>
         <span class="nav-lbl">Forklift Monitoring</span>
@@ -139,6 +143,15 @@
         </sc-for>
       </div>
       </sc-if>
+      <!-- Workstream D: AI Performance + POC Scorecard -->
+      <button class="c10 navbtn {{ nav.aiperf.cls }}" onClick="{{ nav.aiperf.go }}" title="AI Performance">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <span class="nav-lbl">AI Performance</span>
+      </button>
+      <button class="c10 navbtn {{ nav.poc.cls }}" onClick="{{ nav.poc.go }}" title="POC Scorecard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+        <span class="nav-lbl">POC Scorecard</span>
+      </button>
       <button class="c10 navbtn {{ nav.settings.cls }}" onClick="{{ nav.settings.go }}" title="Settings">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         <span class="nav-lbl">Settings</span>
@@ -510,6 +523,25 @@
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
                 </div>
                 <div><div class="ov-ppe-name">Gloves</div><div class="ov-ppe-val" style="color:{{ ovPpe.glovesCol }}">{{ ovPpe.gloves }}</div><div class="ov-ppe-sub">violations today</div></div>
+              </div>
+              <!-- Workstream B: safety boots / hair net / ear protection -->
+              <div class="ov-ppe-item" onClick="{{ goPpe }}">
+                <div class="ov-ppe-ico" style="background:var(--tint-amber); color:var(--gold)">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h5v9l7 3a2 2 0 0 1 1.5 2V20H4V3z"/><path d="M4 16h16.5"/></svg>
+                </div>
+                <div><div class="ov-ppe-name">Safety Boots</div><div class="ov-ppe-val" style="color:{{ ovPpe.bootsCol }}">{{ ovPpe.boots }}</div><div class="ov-ppe-sub">violations today</div></div>
+              </div>
+              <div class="ov-ppe-item" onClick="{{ goPpe }}">
+                <div class="ov-ppe-ico" style="background:var(--tint-blue); color:var(--brand)">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M3 13h18"/><path d="M8 9l2 4"/><path d="M12 6v7"/><path d="M16 9l-2 4"/></svg>
+                </div>
+                <div><div class="ov-ppe-name">Hair Net</div><div class="ov-ppe-val" style="color:{{ ovPpe.hairnetCol }}">{{ ovPpe.hairnet }}</div><div class="ov-ppe-sub">violations today</div></div>
+              </div>
+              <div class="ov-ppe-item" onClick="{{ goPpe }}">
+                <div class="ov-ppe-ico" style="background:var(--tint-purple); color:var(--purple)">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2"/><rect x="17" y="14" width="5" height="7" rx="2"/></svg>
+                </div>
+                <div><div class="ov-ppe-name">Ear Protection</div><div class="ov-ppe-val" style="color:{{ ovPpe.earCol }}">{{ ovPpe.ear }}</div><div class="ov-ppe-sub">custom model</div></div>
               </div>
             </div>
             <div class="c100">{{ ovPpe.note }}</div>
@@ -993,6 +1025,7 @@
                   <div class="c65">
                     <span class="c192" style="background:{{ r.tagBg }}">{{ r.tag }}</span>
                     <span class="c193" style="color:{{ r.codeCol }}">{{ r.code }}</span>
+                    <sc-if value="{{ r.escOn }}" hint-placeholder-val="{{ false }}"><span class="esc-chip" title="{{ r.escTitle }}" style="color:{{ r.escCol }}; border-color:{{ r.escCol }}">{{ r.escLabel }}</span></sc-if>
                   </div>
                   <div class="c40">{{ r.title }}</div>
                 </div>
@@ -1434,6 +1467,66 @@
             </sc-for>
           </div>
         </div>
+
+        <!-- Workstream C: incident / detection heatmap -->
+        <div class="c127">
+          <div class="c262">
+            <h3 class="c129">Incident heatmap <span class="c100">— {{ hmTotal }} detections in range by camera or weekday and hour · click a cell to investigate</span></h3>
+            <span class="c100">{{ hmStatus }}</span>
+          </div>
+          <div class="att-bar">
+            <sc-for list="{{ hmViewTabs }}" as="t" hint-placeholder-count="2">
+              <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+            </sc-for>
+            <sc-for list="{{ hmDaysTabs }}" as="t" hint-placeholder-count="4">
+              <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+            </sc-for>
+            <select class="sel" value="{{ hmModSel.value }}" onChange="{{ hmModSel.onChange }}">
+              <sc-for list="{{ hmModSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ hmSevSel.value }}" onChange="{{ hmSevSel.onChange }}">
+              <sc-for list="{{ hmSevSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button class="c185 chip" onClick="{{ hmOpenIncidents }}">Open in Incidents</button>
+          </div>
+          <div class="hm-wrap">
+            <div class="hm-grid">
+              <div class="hm-row hm-head">
+                <div class="hm-lab"></div>
+                <sc-for list="{{ hmHours }}" as="h" hint-placeholder-count="24"><div class="hm-hr">{{ h.label }}</div></sc-for>
+                <div class="hm-tot">Σ</div>
+              </div>
+              <sc-for list="{{ hmRows }}" as="r" hint-placeholder-count="6">
+                <div class="hm-row">
+                  <div class="hm-lab" title="{{ r.sub }}"><b>{{ r.label }}</b><span>{{ r.sub }}</span></div>
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="24">
+                    <div class="{{ c.cls }}" style="background:{{ c.bg }}; color:{{ c.fg }}" title="{{ c.title }}" onClick="{{ c.onClick }}">{{ c.n }}</div>
+                  </sc-for>
+                  <div class="hm-tot">{{ r.total }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ hmNoData }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No detections for these filters.</div>
+          </sc-if>
+          <sc-if value="{{ hmHasPick }}" hint-placeholder-val="{{ false }}">
+            <div class="hm-pick">
+              <div class="c247"><b>{{ hmPickLabel }}</b><span><button class="c185 chip" onClick="{{ hmOpenIncidents }}">Open in Incidents</button> <button class="c185 chip" onClick="{{ hmClearPick }}">✕</button></span></div>
+              <div class="ppe-viol-grid">
+                <sc-for list="{{ hmItems }}" as="v" hint-placeholder-count="4">
+                  <div class="ppe-viol">
+                    <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
+                    <div class="ppe-viol-miss" style="color:{{ v.sevCol }}">{{ v.sev }} · {{ v.mod }}</div>
+                    <div class="att-name">{{ v.title }}</div>
+                    <div class="att-loc">{{ v.where }}</div>
+                    <div class="att-src">{{ v.time }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
       </div>
       </sc-if>
 
@@ -1753,6 +1846,132 @@
       </div>
       </sc-if>
 
+      <!-- ===== Workstream C: BEHAVIOUR ANALYTICS (Line 5) ===== -->
+      <sc-if value="{{ isBehaviour }}" hint-placeholder-val="{{ false }}">
+      <div class="c207 poc-ppe-wrap">
+        <div class="att-panel">
+          <div class="c129">Behaviour analytics <span class="c100">— normal operation, chit-chat / loitering, cleaning activity and abnormal behaviour at the behaviour cameras</span></div>
+          <div class="att-bar">
+            <span class="sel-lab">From</span>
+            <input class="c665 att-date" type="date" value="{{ behFrom }}" onChange="{{ onBehFrom }}">
+            <span class="sel-lab">To</span>
+            <input class="c665 att-date" type="date" value="{{ behTo }}" onChange="{{ onBehTo }}">
+            <sc-for list="{{ behRangeTabs }}" as="t" hint-placeholder-count="2">
+              <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+            </sc-for>
+            <select class="sel" value="{{ behCamSel.value }}" onChange="{{ behCamSel.onChange }}">
+              <sc-for list="{{ behCamSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ behKindSel.value }}" onChange="{{ behKindSel.onChange }}">
+              <sc-for list="{{ behKindSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <select class="sel" value="{{ behVerdictSel.value }}" onChange="{{ behVerdictSel.onChange }}">
+              <sc-for list="{{ behVerdictSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <button class="c185 chip" onClick="{{ reloadBeh }}">⟳</button>
+            <button class="c185 chip on" onClick="{{ exportBehExc }}">⇩ Exceptions CSV</button>
+            <button class="c185 chip on" onClick="{{ exportBehTrend }}">⇩ Trend CSV</button>
+            <button class="c185 chip" onClick="{{ goSettingsBeh }}">⚙ Behaviour rules</button>
+            <span class="c100">{{ behStatus }}</span>
+          </div>
+
+          <sc-if value="{{ behNoScope }}" hint-placeholder-val="{{ false }}">
+            <div class="att-note">No behaviour camera yet. Map the Line 5 camera to the "Line 5" camera point (Settings → POC Camera Points), or pick cameras in Settings → Behaviour Rules.
+              <button class="c185 chip on" onClick="{{ goSettingsBeh }}">Open Behaviour Rules</button>
+            </div>
+          </sc-if>
+          <div class="att-note beh-note">
+            <div><b>How it is detected.</b> {{ behModelNote }}</div>
+            <div class="c100">{{ behScopeLine }}</div>
+            <div class="c100">PPE worn during cleaning (gloves / goggles) is on <button class="ov-link" onClick="{{ goCleaningPpe }}">Cleaning Monitoring</button>.</div>
+          </div>
+
+          <div class="att-kpis att-kpis-6">
+            <sc-for list="{{ behKpis }}" as="k" hint-placeholder-count="6">
+              <div class="att-kpi">
+                <div class="att-kpi-label">{{ k.label }}</div>
+                <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+                <div class="att-kpi-sub">{{ k.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div class="ppe-card">
+            <div class="att-kpi-label">BEHAVIOURAL TREND <span class="c100">— minutes per day with people present, by activity · number = exceptions · click a day for its hourly timeline</span></div>
+            <div class="ppe-trend beh-trend">
+              <sc-for list="{{ behTrend }}" as="d" hint-placeholder-count="7">
+                <div class="ppe-day beh-click" title="{{ d.title }}" onClick="{{ d.onClick }}">
+                  <div class="ppe-day-v">{{ d.v }}</div>
+                  <div class="ppe-day-bars">
+                    <div class="beh-a" style="height:{{ d.aH }}"></div>
+                    <div class="beh-l" style="height:{{ d.lH }}"></div>
+                    <div class="beh-c" style="height:{{ d.cH }}"></div>
+                    <div class="beh-n" style="height:{{ d.nH }}"></div>
+                  </div>
+                  <div class="ppe-day-l">{{ d.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div class="c100"><span class="ppe-key beh-n"></span>normal operation <span class="ppe-key beh-c"></span>cleaning <span class="ppe-key beh-l"></span>chit-chat / loitering <span class="ppe-key beh-a"></span>abnormal</div>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Activity timeline per camera <span class="c100">— minutes per hour by activity on</span>
+            <input class="c665 att-date" type="date" value="{{ behDay }}" onChange="{{ onBehDay }}"></div>
+          <sc-if value="{{ behNoTimeline }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No behaviour camera activity in range.</div>
+          </sc-if>
+          <sc-for list="{{ behTimeline }}" as="c" hint-placeholder-count="1">
+            <div class="beh-cam">
+              <div class="poc-cam-head"><b>{{ c.camera }}</b><span class="c100">{{ c.loc }}</span><span class="c100">{{ c.scope }}</span><span class="poc-cur">{{ c.total }}</span></div>
+              <div class="ppe-trend beh-hours">
+                <sc-for list="{{ c.hours }}" as="h" hint-placeholder-count="24">
+                  <div class="ppe-day" title="{{ h.title }}">
+                    <div class="ppe-day-bars">
+                      <div class="beh-a" style="height:{{ h.aH }}"></div>
+                      <div class="beh-l" style="height:{{ h.lH }}"></div>
+                      <div class="beh-c" style="height:{{ h.cH }}"></div>
+                      <div class="beh-n" style="height:{{ h.nH }}"></div>
+                    </div>
+                    <div class="ppe-day-l">{{ h.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Exception report <span class="c100">— newest first · confirm or clear each event</span> <span class="c100">{{ behMsg }}</span></div>
+          <div class="ppe-viol-grid ra-inc-grid">
+            <sc-for list="{{ behExc }}" as="v" hint-placeholder-count="6">
+              <div class="ppe-viol">
+                <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
+                <div class="ppe-viol-miss" style="color:{{ v.kCol }}">{{ v.kind }}</div>
+                <div class="att-src">{{ v.sub }}</div>
+                <div class="att-loc">{{ v.where }}</div>
+                <div class="att-src">{{ v.time }}</div>
+                <div class="att-attrs">{{ v.reason }}</div>
+                <div class="att-src" style="color:{{ v.vCol }}">{{ v.verdict }}</div>
+                <div class="att-unk-btns ra-btns">
+                  <sc-if value="{{ v.canConfirm }}" hint-placeholder-val="{{ true }}">
+                    <button class="c185 chip ra-btn-bad" onClick="{{ v.onConfirm }}">Confirm</button>
+                  </sc-if>
+                  <sc-if value="{{ v.canClear }}" hint-placeholder-val="{{ true }}">
+                    <button class="c185 chip" onClick="{{ v.onClear }}">False alarm</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ behNoExc }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">No behaviour exceptions for these filters.</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
       <!-- ===== RESTRICTED AREA MONITORING (Use Case 3) ===== -->
       <sc-if value="{{ isIntrPage }}" hint-placeholder-val="{{ false }}">
       <div class="c207 poc-ppe-wrap">
@@ -1926,7 +2145,7 @@
               <div class="att-kpi-label">MISSED BY PPE TYPE</div>
               <sc-for list="{{ ppeByItem }}" as="i" hint-placeholder-count="4">
                 <div class="ppe-meter">
-                  <div class="c247"><span>{{ i.label }}</span><span class="c243">{{ i.value }}</span></div>
+                  <div class="c247"><span>{{ i.label }} <span class="ppx-feas" style="color:{{ i.feasCol }}">{{ i.feas }}</span></span><span class="c243">{{ i.value }}</span></div>
                   <div class="c313"><div class="c245" style="width:{{ i.w }}; background:{{ i.col }}"></div></div>
                 </div>
               </sc-for>
@@ -1961,6 +2180,21 @@
           <sc-if value="{{ ppeNoViol }}" hint-placeholder-val="{{ false }}">
             <div class="c100 att-cap">No PPE violations for these filters.</div>
           </sc-if>
+        </div>
+
+        <!-- Workstream B: detection feasibility per PPE item -->
+        <div class="att-panel">
+          <div class="c129">Detection feasibility <span class="c100">— how each PPE item is detected with SenseStudio V2.13</span></div>
+          <div class="ppx-feas-grid">
+            <sc-for list="{{ ppeFeas }}" as="f" hint-placeholder-count="7">
+              <div class="ppx-feas-card">
+                <div class="ppx-feas-name">{{ f.label }}</div>
+                <div class="ppx-feas-level" style="color:{{ f.col }}">{{ f.level }}</div>
+                <div class="att-src">{{ f.how }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div class="c100">Items marked “custom model required” are still processed end-to-end: when a custom SenseStudio algorithm / policy with a matching name fires on a camera, the event is checked, recorded and alerted like any other PPE violation.</div>
         </div>
 
         <div class="att-panel">
@@ -2364,6 +2598,9 @@
             <select class="sel" value="{{ fkStatusSel.value }}" onChange="{{ fkStatusSel.onChange }}">
               <sc-for list="{{ fkStatusSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
+            <select class="sel" value="{{ fkKindSel.value }}" onChange="{{ fkKindSel.onChange }}">
+              <sc-for list="{{ fkKindSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
             <button class="c185 chip" onClick="{{ reloadFk }}">⟳</button>
             <button class="c185 chip on" onClick="{{ exportFkInc }}">⇩ Incidents CSV</button>
             <button class="c185 chip on" onClick="{{ exportFkSum }}">⇩ Summary CSV</button>
@@ -2377,8 +2614,9 @@
             </div>
           </sc-if>
           <div class="att-note">{{ fkModelNote }}</div>
+          <div class="att-note">{{ fkSafetyNote }}</div>
 
-          <div class="att-kpis att-kpis-6">
+          <div class="att-kpis att-kpis-6 fk-kpis-8">
             <sc-for list="{{ fkKpis }}" as="k" hint-placeholder-count="6">
               <div class="att-kpi">
                 <div class="att-kpi-label">{{ k.label }}</div>
@@ -2415,6 +2653,7 @@
                   <div class="c247"><span>{{ z.zone }} <span class="c100">{{ z.sub }}</span></span></div>
                   <div class="c313"><div class="c245" style="width:{{ z.w }}; background:{{ z.col }}"></div></div>
                   <div class="att-src" style="color:{{ z.col }}">{{ z.line }}</div>
+                  <div class="att-src">{{ z.split }}</div>
                 </div>
               </sc-for>
             </div>
@@ -2429,6 +2668,8 @@
                 <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
                 <div class="ppe-viol-miss" style="color:{{ v.vCol }}">{{ v.verdict }}</div>
                 <div class="att-name">{{ v.zone }}</div>
+                <div class="att-src">{{ v.kindLabel }}</div>
+                <div class="att-src" style="color:{{ v.opCol }}">{{ v.opLine }}</div>
                 <div class="att-loc">{{ v.where }}</div>
                 <div class="att-src">{{ v.cam }}</div>
                 <div class="att-src">{{ v.time }}</div>
@@ -2464,8 +2705,9 @@
         </sc-if>
         <div class="c226">
           <h2 class="c146">Alert rules</h2>
-          <span class="c100">{{ arActive }} of 4 modules alerting · changes save instantly</span>
+          <span class="c100">{{ arActive }} of {{ arTotal }} modules alerting · changes save instantly</span>
           <span class="c321">{{ alertMsg }}</span>
+          <span class="esc-chan">{{ wsA.chanLine }}</span>
           <button class="c322" onClick="{{ testAlertEmail }}">Send test email</button>
         </div>
 
@@ -2534,8 +2776,54 @@
             </div>
             <div class="c343">
               <div class="c335">HOW ALERTS FLOW</div>
-              <div class="c344">VisionAI push → ingest API → rules above → email to recipients (throttled by interval). The bell and dashboard always show every detection.</div>
+              <div class="c344">VisionAI push → ingest API → rules above + condition rules below → email and Telegram (throttled by interval) → unattended alerts auto-escalate L1 → L2 → L3 (Settings → Notifications). The bell and dashboard always show every detection.</div>
             </div>
+          </div>
+        </div>
+
+        <!-- Workstream A: predefined condition rules (real-time) -->
+        <div class="c425">
+          <div class="c332"><span class="c440" style="background:var(--brand)"></span><h3 class="c129">Predefined condition rules</h3>
+            <span class="c351">alert in real time when a detection matches · module · camera · severity · time window · keyword</span></div>
+          <div class="c431">A matching detection alerts immediately on the chosen channels — even below the minimum severity above or when its module switch is off. Example: any PPE detection on Line 5 during the night shift, or anything matching "smok" at the Waste Area.</div>
+          <sc-if value="{{ wsA.condNone }}" hint-placeholder-val="{{ false }}"><div class="c458">No condition rules yet.</div></sc-if>
+          <sc-if value="{{ wsA.condHas }}" hint-placeholder-val="{{ true }}">
+            <div class="cond-list">
+              <sc-for list="{{ wsA.condRows }}" as="c" hint-placeholder-count="2">
+                <div class="cond-row">
+                  <div class="c329" onClick="{{ c.onToggle }}" style="background:{{ c.toggleBg }}"><div class="c330" style="left:{{ c.knobX }}"></div></div>
+                  <div class="cond-main"><div class="cond-name">{{ c.name }}</div><div class="cond-desc">{{ c.desc }}</div></div>
+                  <span class="cond-ch">{{ c.chans }}</span>
+                  <button class="cond-del" onClick="{{ c.onDelete }}" title="Delete rule">✕</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div class="cond-form">
+            <input class="c427" value="{{ wsA.cfName }}" onInput="{{ wsA.onCfName }}" placeholder="Rule name, e.g. Night-shift PPE at Line 5">
+            <label class="selwrap"><span class="sel-lab">Module</span>
+              <select class="sel" value="{{ wsA.cfMod.value }}" onChange="{{ wsA.cfMod.onChange }}">
+                <sc-for list="{{ wsA.cfMod.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></label>
+            <label class="selwrap"><span class="sel-lab">Camera</span>
+              <select class="sel" value="{{ wsA.cfCam.value }}" onChange="{{ wsA.cfCam.onChange }}">
+                <sc-for list="{{ wsA.cfCam.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></label>
+            <label class="selwrap"><span class="sel-lab">Severity</span>
+              <select class="sel" value="{{ wsA.cfSev.value }}" onChange="{{ wsA.cfSev.onChange }}">
+                <sc-for list="{{ wsA.cfSev.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></label>
+            <label class="selwrap"><span class="sel-lab">When</span>
+              <select class="sel" value="{{ wsA.cfWin.value }}" onChange="{{ wsA.cfWin.onChange }}">
+                <sc-for list="{{ wsA.cfWin.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></label>
+            <input class="c427 cond-kw" value="{{ wsA.cfKeyword }}" onInput="{{ wsA.onCfKeyword }}" placeholder="Keyword (optional)">
+            <div class="c339">
+              <button class="c340 {{ wsA.cfEmailCls }}" onClick="{{ wsA.cfToggleEmail }}">Email</button>
+              <button class="c340 {{ wsA.cfTgCls }}" onClick="{{ wsA.cfToggleTg }}">Telegram</button>
+            </div>
+            <button class="c429" onClick="{{ wsA.addCond }}">Add rule</button>
+            <span class="c321">{{ wsA.ntMsg }}</span>
           </div>
         </div>
       </div>
@@ -2817,6 +3105,378 @@
       </div>
       </sc-if>
 
+      <!-- ===== Workstream D: AI PERFORMANCE (/api/aiperf/*) ===== -->
+      <sc-if value="{{ isAiperf }}" hint-placeholder-val="{{ false }}">
+      <div class="c207">
+        <div class="att-note aip-note">
+          <div><b>POC-measured, not vendor claims.</b> Every figure on this page is computed from what reviewers recorded against real detections on site: confirmed / cleared reviews, ticket closures, the sampling queue below and missed detections logged by hand. A small sample is shown with a wide confidence interval.</div>
+          <button class="c185 chip" onClick="{{ toggleAipMethod }}">{{ aipMethodLabel }}</button>
+        </div>
+        <sc-if value="{{ aipMethodOpen }}" hint-placeholder-val="{{ false }}">
+        <div class="att-panel aip-method">
+          <div class="c129">Methodology</div>
+          <div class="aip-method-grid">
+            <div><b>True positive (TP)</b><span>A detection a reviewer confirmed: forklift / restricted / behaviour review "confirm", a ticket closed as Issue resolved / Fix scheduled / Under monitoring, a "Correct" verdict in the sampling queue, or a cleaning session with activity observed and confirmed "Cleaned".</span></div>
+            <div><b>False positive (FP)</b><span>A detection cleared as a false alarm: "Mark as false alarm", a ticket closed as False alarm, a restricted entry cleared as authorized, a forklift detection cleared, a "Wrong" verdict in the sampling queue, or activity observed in a cleaning window that was confirmed "Not done".</span></div>
+            <div><b>False negative (FN)</b><span>A missed detection: logged with the form below (module, camera, time, note) after a reviewer saw the situation on the recording, plus cleaning sessions confirmed "Cleaned" where no activity was observed.</span></div>
+            <div><b>Metrics</b><span>Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R). 95 % Wilson score intervals. Confidence: high ≥ 100 reviewed samples, medium ≥ 30, low below. Lighting period: day 07:00–18:59, night 19:00–06:59 (receive time).</span></div>
+          </div>
+          <div class="c428">Detections are bucketed by module from the SenseStudio policy / trigger type and the dashboard verdict tags (same rules as the incident list). The latest verdict on a detection wins. Unreviewed detections are not counted in precision — the review coverage column shows how representative each figure is.</div>
+        </div>
+        </sc-if>
+
+        <div class="att-bar">
+          <span class="sel-lab">From</span>
+          <input class="c665 att-date" type="date" value="{{ aipFrom }}" onChange="{{ onAipFrom }}">
+          <span class="sel-lab">To</span>
+          <input class="c665 att-date" type="date" value="{{ aipTo }}" onChange="{{ onAipTo }}">
+          <select class="sel" value="{{ aipModSel.value }}" onChange="{{ aipModSel.onChange }}">
+            <sc-for list="{{ aipModSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ aipCamSel.value }}" onChange="{{ aipCamSel.onChange }}">
+            <sc-for list="{{ aipCamSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <select class="sel" value="{{ aipPlantSel.value }}" onChange="{{ aipPlantSel.onChange }}">
+            <sc-for list="{{ aipPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+          <button class="c185 chip" onClick="{{ reloadAip }}">⟳</button>
+          <button class="c185 chip on" onClick="{{ exportAipMetrics }}">⇩ Metrics CSV</button>
+          <button class="c185 chip on" onClick="{{ exportAipTraining }}">⇩ Training samples CSV</button>
+          <span class="c100">{{ aipStatus }}</span>
+          <span class="c100 aip-msg">{{ aipMsg }}</span>
+        </div>
+
+        <div class="att-kpis att-kpis-6">
+          <sc-for list="{{ aipKpis }}" as="k" hint-placeholder-count="6">
+            <div class="att-kpi">
+              <div class="att-kpi-label">{{ k.label }}</div>
+              <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+              <div class="att-kpi-sub">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Accuracy by module <span class="c100">— click a row to filter · precision / recall with 95 % interval</span></div>
+          <div style="overflow-x:auto">
+            <table class="ov-table aip-table">
+              <thead><tr><th>MODULE</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th><th>DAY P / R</th><th>NIGHT P / R</th><th>CONFIDENCE</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ aipModRows }}" as="r" hint-placeholder-count="7">
+                  <tr onClick="{{ r.onPick }}">
+                    <td><b>{{ r.label }}</b></td>
+                    <td>{{ r.det }}</td>
+                    <td>{{ r.reviewed }}<div class="aip-sub">{{ r.cov }}</div></td>
+                    <td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
+                    <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span><div class="aip-sub">{{ r.pCi }}</div></td>
+                    <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span><div class="aip-sub">{{ r.rCi }}</div></td>
+                    <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
+                    <td class="aip-mono">{{ r.day }}</td>
+                    <td class="aip-mono">{{ r.night }}</td>
+                    <td><span class="ov-pill" style="color:{{ r.confCol }}; background:{{ r.confBg }}">{{ r.conf }}</span></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="aip-grid">
+          <div class="att-panel">
+            <div class="c129">Performance under factory conditions <span class="c100">— lighting period (day / night)</span></div>
+            <div style="overflow-x:auto">
+              <table class="ov-table aip-table">
+                <thead><tr><th>PERIOD</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ aipPerRows }}" as="r" hint-placeholder-count="2">
+                    <tr>
+                      <td><b>{{ r.label }}</b></td><td>{{ r.det }}</td><td>{{ r.reviewed }}</td><td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
+                      <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span><div class="aip-sub">{{ r.pCi }}</div></td>
+                      <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span><div class="aip-sub">{{ r.rCi }}</div></td>
+                      <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            <div class="c428 aip-gap">Occlusion and camera angle show up per camera below: a camera with low recall (many logged misses) or low precision points at its mounting height, angle, backlight or obstruction.</div>
+          </div>
+          <div class="att-panel">
+            <div class="c129">Face recognition <span class="c100">— similarity of matched faces</span></div>
+            <sc-for list="{{ aipSimBars }}" as="b" hint-placeholder-count="6">
+              <div class="ppe-meter aip-meter">
+                <div class="c247"><span>{{ b.label }}</span><span class="c243">{{ b.value }}</span></div>
+                <div class="c313"><div class="c245" style="width:{{ b.w }}; background:{{ b.col }}"></div></div>
+              </div>
+            </sc-for>
+            <div class="c428 aip-gap">{{ aipFaceLine }}</div>
+            <div class="c428">{{ aipThLine }} <button class="c185 chip" onClick="{{ goAipModels }}">Tune thresholds</button></div>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">By camera <span class="c100">— each module on each camera</span></div>
+          <sc-if value="{{ aipCamEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">No detections in this range.</div></sc-if>
+          <div style="overflow-x:auto">
+            <table class="ov-table aip-table">
+              <thead><tr><th>CAMERA</th><th>MODULE</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th><th>CONFIDENCE</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ aipCamRows }}" as="r" hint-placeholder-count="5">
+                  <tr>
+                    <td><b>{{ r.name }}</b><div class="aip-sub">{{ r.sub }}</div></td>
+                    <td>{{ r.label }}</td><td>{{ r.det }}</td><td>{{ r.reviewed }}</td><td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
+                    <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span></td>
+                    <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span></td>
+                    <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
+                    <td><span class="ov-pill" style="color:{{ r.confCol }}; background:{{ r.confBg }}">{{ r.conf }}</span></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Sampling review <span class="c100">— verify unreviewed detections to grow the sample (ground truth for every module, incl. face identity)</span></div>
+          <sc-if value="{{ aipQueueEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">Every detection in this range has a verdict.</div></sc-if>
+          <div class="ppe-viol-grid">
+            <sc-for list="{{ aipQueue }}" as="q" hint-placeholder-count="6">
+              <div class="ppe-viol">
+                <div class="ppe-viol-img" style="background:{{ q.thumb }}" onClick="{{ q.onImg }}"></div>
+                <div class="att-name">{{ q.title }}</div>
+                <div class="att-loc">{{ q.sub }}</div>
+                <div class="att-src">{{ q.time }} {{ q.sim }}</div>
+                <div class="poc-chips aip-verify">
+                  <button class="c185 chip" onClick="{{ q.onCorrect }}">✓ Correct</button>
+                  <button class="c185 chip" onClick="{{ q.onWrong }}">✕ False alarm</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="aip-grid">
+          <div class="att-panel">
+            <div class="c129">Log a missed detection (FN)</div>
+            <div class="aip-form">
+              <div><div class="c426">MODULE</div>
+                <select class="sel pfm-sel" value="{{ aipMissModSel.value }}" onChange="{{ aipMissModSel.onChange }}">
+                  <sc-for list="{{ aipMissModSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                </select></div>
+              <div><div class="c426">CAMERA</div>
+                <select class="sel pfm-sel" value="{{ aipMissCamSel.value }}" onChange="{{ aipMissCamSel.onChange }}">
+                  <sc-for list="{{ aipMissCamSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                </select></div>
+              <div><div class="c426">WHEN (blank = now)</div>
+                <input class="c427" type="datetime-local" value="{{ aipMissTime }}" onInput="{{ onAipMissTime }}"></div>
+            </div>
+            <div><div class="c426">WHAT WAS MISSED</div>
+              <input class="c427" value="{{ aipMissNote }}" onInput="{{ onAipMissNote }}" placeholder="e.g. worker without helmet at 10:42, seen on NVR playback, no alert"></div>
+            <div class="poc-chips aip-gap"><button class="c429" onClick="{{ aipLogMiss }}">Log missed detection</button></div>
+          </div>
+          <div class="att-panel">
+            <div class="c129">Missed detections logged</div>
+            <sc-if value="{{ aipMissedEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">None logged in this range.</div></sc-if>
+            <div class="aip-list">
+              <sc-for list="{{ aipMissed }}" as="m" hint-placeholder-count="4">
+                <div class="aip-li">
+                  <div><div class="att-name">{{ m.label }} · {{ m.cam }}</div><div class="att-src">{{ m.time }} · {{ m.by }} {{ m.sim }}</div><div class="att-attrs">{{ m.note }}</div></div>
+                  <button class="lb-x" onClick="{{ m.onDel }}" title="Remove">✕</button>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div class="att-panel">
+          <div class="c129">Latest verdicts</div>
+          <sc-if value="{{ aipRecentEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">No reviewed detections yet — confirm or clear detections on the module pages, close tickets, or use the sampling review above.</div></sc-if>
+          <div class="aip-list">
+            <sc-for list="{{ aipRecent }}" as="r" hint-placeholder-count="5">
+              <div class="aip-li">
+                <div><div class="att-name">{{ r.title }}</div><div class="att-src">{{ r.sub }} · {{ r.src }}</div></div>
+                <span class="ov-pill" style="color:{{ r.col }}; background:{{ r.bg }}">{{ r.verdict }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== Workstream D: POC SCORECARD (/api/poc/*) ===== -->
+      <sc-if value="{{ isPoc }}" hint-placeholder-val="{{ false }}">
+      <div class="c207 ppx-page">
+        <div class="att-views ppx-noprint">
+          <sc-for list="{{ pocTabs }}" as="t" hint-placeholder-count="4">
+            <button class="c384 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+          </sc-for>
+          <span class="c100">{{ pocMsg }}</span>
+        </div>
+        <div class="att-bar ppx-noprint">
+          <sc-if value="{{ pocCanEdit }}" hint-placeholder-val="{{ true }}"><button class="c429" onClick="{{ pocSave }}">{{ pocSaveLabel }}</button></sc-if>
+          <button class="c185 chip" onClick="{{ reloadPoc }}">⟳</button>
+          <button class="c185 chip on" onClick="{{ pocExportCrit }}">⇩ Criteria CSV</button>
+          <button class="c185 chip on" onClick="{{ pocExportTests }}">⇩ Test cases CSV</button>
+          <button class="c185 chip on" onClick="{{ pocExportAll }}">⇩ Full workbook CSV</button>
+          <button class="c185 chip" onClick="{{ pocPrint }}">⎙ Print / PDF report</button>
+          <span class="c100">{{ pocUpdated }}</span>
+          <sc-if value="{{ pocReadOnly }}" hint-placeholder-val="{{ false }}"><span class="c100">· read-only (needs the settings permission to edit)</span></sc-if>
+        </div>
+
+        <div class="ppx-print-head">
+          <div class="ppx-print-title">Kian Joo Can Factory Berhad — Vision AI CCTV POC</div>
+          <div class="c100">Vendor Evaluation &amp; POC Scoring Matrix · POC period 7–12 September 2026 · printed {{ pocPrintDate }}</div>
+        </div>
+
+        <div class="att-kpis att-kpis-6">
+          <sc-for list="{{ pocKpis }}" as="k" hint-placeholder-count="6">
+            <div class="att-kpi">
+              <div class="att-kpi-label">{{ k.label }}</div>
+              <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
+              <div class="att-kpi-sub">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="aip-grid">
+          <div class="att-panel">
+            <div class="c129">Scoring summary <span class="c100">— weighted score ÷ weight of the criteria not marked N/A</span></div>
+            <sc-for list="{{ pocGroups }}" as="g" hint-placeholder-count="5">
+              <div class="ppe-meter aip-meter">
+                <div class="c247"><span>{{ g.label }} <span class="c100">{{ g.sub }}</span></span><span class="c243">{{ g.value }}</span></div>
+                <div class="c313"><div class="c245" style="width:{{ g.w }}; background:{{ g.col }}"></div></div>
+              </div>
+            </sc-for>
+            <div class="c428 aip-gap">Technical = criteria 1–28 and 43–45 · AI Accuracy 29–31 · Infrastructure 32–37 · Reporting 38–42 · Commercial 49–51. POC Execution and Vendor Capability count in the overall score. Interpretation of the average score: 4.0–5.0 strong candidate · 3.0–3.9 acceptable with conditions · 2.0–2.9 significant gaps · below 2.0 not recommended.</div>
+          </div>
+          <div class="att-panel">
+            <div class="c129">By category</div>
+            <sc-for list="{{ pocCats }}" as="g" hint-placeholder-count="11">
+              <div class="ppe-meter aip-meter">
+                <div class="c247"><span>{{ g.label }}</span><span class="c243">{{ g.value }}</span></div>
+                <div class="c313"><div class="c245" style="width:{{ g.w }}; background:{{ g.col }}"></div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- 54 weighted criteria -->
+        <sc-if value="{{ pocTabCriteria }}" hint-placeholder-val="{{ true }}">
+        <div class="att-panel">
+          <div class="c129">Evaluation criteria <span class="c100">— vendor score 0–5 · weighted score = weight × score ÷ 5 · evidence is pre-filled with the dashboard feature that covers each criterion</span></div>
+          <div class="ppx-thead ppx-crit"><span>NO.</span><span>CRITERION</span><span>WEIGHT</span><span>SCORE</span><span>WEIGHTED</span><span>EVIDENCE / REMARKS</span><span>POC RESULT / OBSERVATION</span><span>STATUS</span></div>
+          <sc-for list="{{ pocCrit }}" as="c" hint-placeholder-count="10">
+            <sc-if value="{{ c.catHead }}" hint-placeholder-val="{{ false }}"><div class="ppx-cat">{{ c.cat }}</div></sc-if>
+            <div class="ppx-row ppx-crit">
+              <div class="aip-mono">{{ c.no }}</div>
+              <div><div class="att-name">{{ c.crit }}</div>
+                <sc-if value="{{ c.hasPage }}" hint-placeholder-val="{{ false }}"><button class="ppx-link ppx-noprint" onClick="{{ c.onOpen }}">open feature →</button></sc-if></div>
+              <div class="aip-mono">{{ c.weight }}</div>
+              <div><select class="sel ppx-sel" value="{{ c.scoreSel.value }}" onChange="{{ c.scoreSel.onChange }}">
+                <sc-for list="{{ c.scoreSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></div>
+              <div class="aip-mono"><b>{{ c.weighted }}</b></div>
+              <div><textarea class="c427 ppx-ta" rows="2" value="{{ c.evidence }}" onInput="{{ c.onEvidence }}"></textarea></div>
+              <div><textarea class="c427 ppx-ta" rows="2" value="{{ c.observation }}" onInput="{{ c.onObservation }}" placeholder="What was observed during the POC week"></textarea></div>
+              <div><select class="sel ppx-sel" style="color:{{ c.statusCol }}" value="{{ c.statusSel.value }}" onChange="{{ c.statusSel.onChange }}">
+                <sc-for list="{{ c.statusSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <!-- 21 test cases -->
+        <sc-if value="{{ pocTabTests }}" hint-placeholder-val="{{ false }}">
+        <div class="att-panel">
+          <div class="c129">Test cases <span class="c100">— live system evidence is computed from the last 7 days of data; "Use" copies it into the actual result</span></div>
+          <div class="ppx-thead ppx-test"><span>TEST</span><span>TEST CASE · EXPECTED RESULT</span><span>LIVE SYSTEM EVIDENCE</span><span>ACTUAL RESULT / EVIDENCE</span><span>SCORE</span><span>PASS / FAIL</span><span>REMARKS · EVIDENCE LINK</span></div>
+          <sc-for list="{{ pocTests }}" as="t" hint-placeholder-count="8">
+            <div class="ppx-row ppx-test">
+              <div><div class="aip-mono"><b>{{ t.id }}</b></div><div class="att-src">{{ t.area }}</div></div>
+              <div><div class="att-name">{{ t.tcase }}</div><div class="att-attrs">Expected: {{ t.expected }}</div><div class="att-src">{{ t.crit }}</div></div>
+              <div><div class="ppx-live" style="color:{{ t.liveCol }}">{{ t.live }}</div>
+                <div class="poc-chips ppx-noprint">
+                  <sc-if value="{{ t.hasPage }}" hint-placeholder-val="{{ false }}"><button class="ppx-link" onClick="{{ t.onOpen }}">open →</button></sc-if>
+                  <button class="ppx-link" onClick="{{ t.useLive }}">use ↓</button>
+                </div></div>
+              <div><textarea class="c427 ppx-ta" rows="3" value="{{ t.actual }}" onInput="{{ t.onActual }}" placeholder="What happened when the test was run"></textarea></div>
+              <div><select class="sel ppx-sel" value="{{ t.scoreSel.value }}" onChange="{{ t.scoreSel.onChange }}">
+                <sc-for list="{{ t.scoreSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></div>
+              <div><select class="sel ppx-sel" style="color:{{ t.resultCol }}" value="{{ t.resultSel.value }}" onChange="{{ t.resultSel.onChange }}">
+                <sc-for list="{{ t.resultSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+              </select></div>
+              <div><textarea class="c427 ppx-ta" rows="2" value="{{ t.remarks }}" onInput="{{ t.onRemarks }}" placeholder="Remarks"></textarea>
+                <input class="c427 ppx-in" value="{{ t.evidence }}" onInput="{{ t.onEvidence }}" placeholder="Evidence link (screenshot, ticket, export)"></div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <!-- final POC report (printable) -->
+        <sc-if value="{{ pocTabReport }}" hint-placeholder-val="{{ false }}">
+        <div class="att-panel">
+          <div class="c129">Final POC report <span class="c100">— fill in, save, then print or save as PDF</span></div>
+          <div class="aip-form ppx-noprint">
+            <sc-for list="{{ pocRepInputs }}" as="f" hint-placeholder-count="3">
+              <div><div class="c426">{{ f.label }}</div><input class="c427" value="{{ f.value }}" onInput="{{ f.onInput }}" placeholder="{{ f.ph }}"></div>
+            </sc-for>
+          </div>
+          <div class="ppx-print-only">
+            <sc-for list="{{ pocRepInputs }}" as="f" hint-placeholder-count="3"><div class="ppx-kv"><span>{{ f.label }}</span><b>{{ f.value }}</b></div></sc-for>
+          </div>
+          <div class="ppx-verdict" style="border-left-color:{{ pocBandCol }}">Interpretation: <b style="color:{{ pocBandCol }}">{{ pocBandLine }}</b></div>
+          <div class="ppx-kvgrid">
+            <sc-for list="{{ pocRepScores }}" as="s" hint-placeholder-count="9"><div class="ppx-kv"><span>{{ s.k }}</span><b>{{ s.v }}</b></div></sc-for>
+          </div>
+          <sc-for list="{{ pocRepAreas }}" as="f" hint-placeholder-count="4">
+            <div class="ppx-area">
+              <div class="c426">{{ f.label }}</div>
+              <textarea class="c427 ppx-ta ppx-noprint" rows="4" value="{{ f.value }}" onInput="{{ f.onInput }}" placeholder="{{ f.ph }}"></textarea>
+              <div class="ppx-print-only ppx-text">{{ f.text }}</div>
+            </div>
+          </sc-for>
+          <div class="c426 aip-gap">CRITERIA WITH GAPS (FAIL / PARTIAL)</div>
+          <sc-if value="{{ pocRepNoGaps }}" hint-placeholder-val="{{ false }}"><div class="c100">None marked Fail or Partial.</div></sc-if>
+          <table class="ov-table ppx-table">
+            <tbody>
+              <sc-for list="{{ pocRepCrit }}" as="c" hint-placeholder-count="3">
+                <tr><td class="aip-mono">{{ c.no }}</td><td>{{ c.crit }}</td><td><b style="color:{{ c.col }}">{{ c.status }}</b></td><td>{{ c.obs }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+          <div class="c426 aip-gap">TEST CASE RESULTS</div>
+          <table class="ov-table ppx-table">
+            <thead><tr><th>TEST</th><th>CASE</th><th>RESULT</th><th>SCORE</th><th>ACTUAL RESULT / EVIDENCE</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ pocRepTests }}" as="t" hint-placeholder-count="6">
+                <tr><td class="aip-mono">{{ t.id }}</td><td>{{ t.tcase }}</td><td><b style="color:{{ t.col }}">{{ t.result }}</b></td><td>{{ t.score }}</td><td>{{ t.actual }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+        </sc-if>
+
+        <!-- methodology + documents -->
+        <sc-if value="{{ pocTabDocs }}" hint-placeholder-val="{{ false }}">
+        <div class="att-panel">
+          <div class="c129">POC methodology &amp; documents</div>
+          <div class="c431">The test plan sets the methodology, the 7–12 September 2026 schedule and, for each of the 21 test cases, the procedure, pass criteria and the evidence to capture. The architecture document covers criteria 32–37 (cameras, PoE, bandwidth, NVR / VMS coexistence, storage sizing, multi-plant scaling). The integration document is the HRMS / MES API reference.</div>
+          <div class="poc-chips">
+            <sc-for list="{{ pocDocs }}" as="d" hint-placeholder-count="3">
+              <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ pocDocOpen }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 aip-gap">{{ pocDocTitle }}</div>
+            <div class="ppx-doc">{{ pocDocText }}</div>
+          </sc-if>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
       <!-- ===== SETTINGS ===== -->
       <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
       <div class="c415">
@@ -2960,6 +3620,38 @@
               </div>
             </div>
             <div class="c428 lb-help">Hikvision: rtsp://user:pass@IP:554/Streaming/Channels/101 (main) · …/102 (sub-stream, lighter for walls). Dahua: rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;subtype=0 (main) · subtype=1 (sub). Browsers need H.264 — for H.265 cameras use an ffmpeg: source. An https://…/index.m3u8 HLS link (e.g. an ngrok URL) is played directly in the browser, without the bridge. The label must match the camera's stream label (serial, lower-case, letters and digits only). Bridge setup: live-bridge/README.md in the repository.</div>
+          </div>
+
+          <!-- Workstream D: network / stream load test (INF-01 / INF-02) -->
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Network test</h3><span class="c351">{{ netSummary }}</span></div>
+            <div class="c431">Measured from the dashboard server to the SenseStudio API, the live bridge and every live source: TCP connect latency over 5 attempts (failed attempts = packet-loss proxy, no raw ICMP from PHP), RTSP OPTIONS handshake, HTTP time-to-first-byte and the download throughput of one short media sample (≤ 3 s, ≤ 2 MB — an HLS segment or a bridge MP4 sample). Thresholds: TCP ≤ 100 ms pass / ≤ 300 ms warn · loss 0 % pass / ≤ 20 % warn · TTFB ≤ 500 ms pass / ≤ 1.5 s warn · throughput ≥ 4 Mbps pass (1080p H.264 main stream) / ≥ 1.5 Mbps warn (720p / sub-stream).</div>
+            <div class="lb-actions">
+              <button class="c429" onClick="{{ netRun }}" disabled="{{ netBusy }}">{{ netRunLabel }}</button>
+              <span class="c47">{{ netMsg }}</span>
+            </div>
+            <sc-if value="{{ netHas }}" hint-placeholder-val="{{ false }}">
+            <div style="overflow-x:auto">
+              <table class="ov-table lb-table net-table">
+                <thead><tr><th>TARGET</th><th>TCP LATENCY</th><th>LOSS (N=5)</th><th>TTFB</th><th>THROUGHPUT</th><th>RTSP</th><th>RESULT</th><th></th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ netRows }}" as="r" hint-placeholder-count="4">
+                    <tr>
+                      <td><div class="lb-mono">{{ r.name }}</div><div class="lb-src">{{ r.host }} · {{ r.kind }}</div><div class="net-note">{{ r.note }}</div></td>
+                      <td><span style="color:{{ r.tcpCol }}">{{ r.tcp }}</span><div class="net-note">{{ r.jitter }}</div></td>
+                      <td><span style="color:{{ r.lossCol }}">{{ r.loss }}</span></td>
+                      <td><span style="color:{{ r.ttfbCol }}">{{ r.ttfb }}</span></td>
+                      <td><span style="color:{{ r.mbpsCol }}">{{ r.mbps }}</span></td>
+                      <td>{{ r.rtsp }}</td>
+                      <td><span class="ov-pill" style="color:{{ r.col }}; background:{{ r.bg }}">{{ r.overall }}</span></td>
+                      <td><sc-if value="{{ r.canRetest }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ r.onRetest }}" disabled="{{ netBusy }}">Re-test</button></sc-if></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            </sc-if>
+            <div class="c428">The last full run is attached to test case INF-02 on the POC Scorecard. Run it during the busiest shift with the live wall open to see the network under load.</div>
           </div>
           </sc-if>
 
@@ -3105,6 +3797,13 @@
             <div class="c332"><span class="c360"></span><h3 class="c129">Forklift Zones</h3><span class="c351">{{ appMsg }}</span></div>
             <div class="c431">Draw the forklift zone on the camera in <b>SenseStudio</b> (a vehicle / non-motor-vehicle structuring or zone policy — or name the policy "forklift"), then mark the camera as a forklift zone here and choose its rule. <b>Prohibited</b> — forklifts must not enter: every forklift detection inside the hours set (blank = 24 h) is a <b>zone violation</b> (High alert). <b>Restricted hours</b> — forklifts may operate outside the hours set; detections inside them are violations, detections outside are only <b>logged</b>. Reviewers can confirm a logged event as a violation or clear any event as a false alarm on the Forklift Monitoring page.</div>
             <div class="c431">{{ fkModelNote }}</div>
+            <div class="c431"><b>Forklift only — pedestrians not allowed</b> (e.g. waste area during collection): forklift detections are permitted and logged; any person detection inside the hours is a <b>Pedestrian in forklift-only zone</b> alert (High). <b>Operator PPE</b>: people detected on the same camera within the window below of a forklift detection are treated as its operator / crew and checked against the zone's operator PPE — a missing item raises a <b>Forklift operator PPE violation</b> (High). {{ fkSafetyNote }}</div>
+            <div class="c426">OPERATOR / CREW WINDOW — seconds either side of a forklift detection</div>
+            <div class="poc-chips">
+              <sc-for list="{{ fkOpWinChips }}" as="l" hint-placeholder-count="4">
+                <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+              </sc-for>
+            </div>
             <sc-for list="{{ fkZoneRows }}" as="z" hint-placeholder-count="4">
               <div class="poc-cam">
                 <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="c100">{{ z.loc }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
@@ -3114,6 +3813,12 @@
                     <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
                   </sc-for>
                   <sc-for list="{{ z.ruleChips }}" as="l" hint-placeholder-count="2">
+                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+                  </sc-for>
+                </div>
+                <div class="c426">OPERATOR PPE — required of people seen with a forklift on this camera</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ z.opChips }}" as="l" hint-placeholder-count="7">
                     <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
                   </sc-for>
                 </div>
@@ -3127,6 +3832,36 @@
                 </div>
               </div>
             </sc-for>
+          </div>
+          </sc-if>
+
+          <!-- Workstream C: Behaviour rules -->
+          <sc-if value="{{ spTabBeh }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Behaviour Rules</h3><span class="c351">{{ appMsg }}</span></div>
+            <div class="c431">Behaviour analytics watches the cameras at the selected camera points (default <b>Line 5</b>) plus any camera picked below. <b>Chit-chat / loitering</b> is raised when the set number of people are seen together for the dwell time while no cleaning session is scheduled, or one identified person stays past the idle threshold. Headcount comes from detections: an identified person is "present" between sightings no further apart than the presence gap, each anonymous detection counts for one minute. <b>Cleaning activity</b> is detected from a SenseStudio custom algorithm named clean / mop / sweep / wipe, or — as an attribute proxy — people wearing the cleaning PPE below during a scheduled cleaning window. <b>Fighting</b> and <b>falls</b> need a SenseStudio behaviour / custom algorithm on the camera (policy name containing fight / altercation / fall); they alert as <b>Critical</b> / High through the normal alert pipeline.</div>
+            <div class="c426">BEHAVIOUR ANALYTICS</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.enableChips }}" as="l" hint-placeholder-count="2"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">CAMERA POINTS MONITORED</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.locChips }}" as="l" hint-placeholder-count="7"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">ADDITIONAL CAMERAS</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.camChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">CHIT-CHAT — PEOPLE TOGETHER</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.groupChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">CHIT-CHAT — DWELL THRESHOLD</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.dwellChips }}" as="l" hint-placeholder-count="6"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">SINGLE PERSON IDLE THRESHOLD</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.idleChips }}" as="l" hint-placeholder-count="5"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">PRESENCE GAP (sightings closer than this = still present)</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.gapChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="c426">CLEANING PPE PROXY (worn during a scheduled cleaning window)</div>
+            <div class="poc-chips"><sc-for list="{{ behSet.cleanChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
+            <div class="poc-chips">
+              <button class="c429" onClick="{{ behSave }}">Save behaviour rules</button>
+              <sc-if value="{{ behSet.dirty }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ behDiscard }}">Discard changes</button></sc-if>
+              <button class="c185 chip" onClick="{{ behRescan }}">Re-scan last 7 days</button>
+            </div>
+            <div class="c428">Saved thresholds apply to new detections within a minute. "Re-scan" re-derives unreviewed chit-chat, idle and cleaning-proxy events with the current thresholds; reviewed events and SenseStudio algorithm events are kept.</div>
           </div>
           </sc-if>
 
@@ -3146,6 +3881,14 @@
               </div>
             </sc-for>
             <div class="c428">Areas come from Settings → POC Camera Points. Map a camera to a point there before its people can be checked.</div>
+            <!-- Workstream B: hair-net proxy + new-item detection notes -->
+            <div class="c426">HAIR NET PROXY — head covers (SenseStudio HatsType) that count as hair covered</div>
+            <div class="poc-chips">
+              <sc-for list="{{ ppeHairChips }}" as="l" hint-placeholder-count="3">
+                <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
+              </sc-for>
+            </div>
+            <div class="c428"><b>Safety boots</b> — attribute proxy: ShoesType = Boots is compliant, any other shoe type is missing, no shoe attribute = not checked. <b>Hair net</b> — attribute proxy (the head covers above) or a custom SenseStudio algorithm / policy named “hairnet / hair net / haircap”. <b>Ear protection</b> — custom model required (no native attribute): detected only from a custom algorithm / policy named “ear / earmuff / ear plug / hearing”. A custom policy named “No …” (or an alarm policy named after the item) reports it missing; one named “… OK / wearing” reports it worn. Such custom policies are checked even where the area rule does not list the item.</div>
           </div>
           </sc-if>
 
@@ -3264,8 +4007,238 @@
           </div>
           </sc-if>
 
+          <!-- Workstream D: model customisation (thresholds + training samples) -->
+          <sc-if value="{{ spTabModels }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Model customisation</h3><span class="c351">{{ thMsg }}</span></div>
+            <div class="c431">Model training happens in SenseStudio (custom algorithms, retraining on site imagery). This dashboard tunes the decision thresholds applied when a push arrives, and curates the retraining dataset from what reviewers marked wrong or missed.</div>
+            <div class="c370">
+              <div><div class="c426">FACE MATCH — MINIMUM SIMILARITY % (0 = SenseStudio decides)</div>
+                <input class="c427" type="number" min="0" max="100" step="0.5" value="{{ thFace }}" onInput="{{ onThFace }}">
+                <div class="c428 thc-help">A match below this is stored as an unknown person (tagged FaceBelowThreshold, candidate name kept) — attendance, restricted zones and alerts treat it as unidentified.</div></div>
+              <div><div class="c426">PPE ATTRIBUTE — MINIMUM CONFIDENCE % (0 = off)</div>
+                <input class="c427" type="number" min="0" max="100" step="0.5" value="{{ thPpe }}" onInput="{{ onThPpe }}">
+                <div class="c428 thc-help">Helmet / vest / gloves / glasses / shoes attributes below this confidence count as "not reported", so they never raise a PPE violation.</div></div>
+            </div>
+            <div class="poc-chips">
+              <button class="c429" onClick="{{ thSave }}">Save thresholds</button>
+              <button class="c185 chip on" onClick="{{ thExportFp }}">⇩ Training samples — FP + FN</button>
+              <button class="c185 chip" onClick="{{ thExportAll }}">⇩ Incl. confirmed TP</button>
+              <button class="c185 chip" onClick="{{ goAiperf }}">AI Performance →</button>
+            </div>
+            <div class="c428">The training-samples CSV lists every false positive (with its evidence image URL) and every logged missed detection for the selected period — import it as a labelled dataset in SenseStudio. Thresholds apply to new detections only; past events keep their verdicts.</div>
+          </div>
+          </sc-if>
+
+          <!-- Workstream D: Integrations (HRMS / MES API, webhooks) -->
+          <sc-if value="{{ spTabInt }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Integration API key</h3><span class="c351">{{ intMsg }}</span></div>
+            <div class="c431">Read-only JSON API for HRMS / MES / enterprise systems. Send the key as <b>X-Api-Key: …</b> or <b>Authorization: Bearer …</b>. Every endpoint is paginated (page, per_page ≤ 500), accepts <b>plant=</b> and returns the plant on each row. Full reference: docs/INTEGRATION_API.md.</div>
+            <div class="int-key"><span class="lb-mono">{{ intKeyLine }}</span></div>
+            <sc-if value="{{ intHasNewKey }}" hint-placeholder-val="{{ false }}">
+              <div class="int-newkey"><div class="c426">NEW KEY — COPY IT NOW, IT IS NOT SHOWN AGAIN</div><input class="c427" value="{{ intNewKey }}" readonly></div>
+            </sc-if>
+            <div class="poc-chips">
+              <button class="c429" onClick="{{ intRegen }}">{{ intRegenLabel }}</button>
+              <sc-if value="{{ intHasKey }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ intRevoke }}">Revoke key</button></sc-if>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="ov-table int-table">
+                <thead><tr><th>METHOD</th><th>ENDPOINT</th><th>PARAMETERS</th><th>PURPOSE</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ intCat }}" as="c" hint-placeholder-count="5">
+                    <tr><td class="lb-mono">{{ c.method }}</td><td class="lb-src">{{ c.url }}</td><td class="int-params">{{ c.params }}</td><td>{{ c.purpose }}</td></tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Outbound webhooks</h3><span class="c351">{{ intMsg }}</span></div>
+            <div class="c431">New detections are POSTed as JSON to each URL for the event types ticked. Each delivery is signed: <b>X-VisionAI-Signature: sha256=HMAC_SHA256(secret, X-VisionAI-Timestamp + "." + body)</b>, with <b>X-VisionAI-Event</b> naming the type. Delivery runs at ingest with a 2-second budget for all hooks together and never delays SenseStudio beyond that; failures are logged below. Simulated detections are not sent.</div>
+            <sc-if value="{{ intHooksEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100">No webhooks configured.</div></sc-if>
+            <sc-for list="{{ intHooks }}" as="h" hint-placeholder-count="1">
+              <div class="poc-cam">
+                <div class="poc-cam-head"><b>Webhook</b><span class="c243">{{ h.idLabel }}</span></div>
+                <div class="c370">
+                  <div><div class="c426">URL</div><input class="c427" value="{{ h.url }}" onInput="{{ h.onUrl }}" placeholder="https://hrms.example.com/hooks/visionai"></div>
+                  <div><div class="c426">SIGNING SECRET (blank = generate)</div><input class="c427" value="{{ h.secret }}" onInput="{{ h.onSecret }}" placeholder="generated on save"></div>
+                </div>
+                <div class="c426">EVENT TYPES</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ h.events }}" as="e" hint-placeholder-count="4">
+                    <button class="c185 {{ e.cls }}" onClick="{{ e.onClick }}" title="{{ e.title }}">{{ e.label }}</button>
+                  </sc-for>
+                  <button class="c185 {{ h.enabledCls }}" onClick="{{ h.onEnabled }}">{{ h.enabledLabel }}</button>
+                  <button class="c185 chip" onClick="{{ h.onTest }}">Send test webhook</button>
+                  <button class="c185 chip att-shift-rm" onClick="{{ h.onRemove }}">✕ Remove</button>
+                </div>
+              </div>
+            </sc-for>
+            <div class="poc-chips">
+              <button class="c185 chip" onClick="{{ intAddHook }}">＋ Add webhook</button>
+              <button class="c429" onClick="{{ intSaveHooks }}">Save webhooks</button>
+            </div>
+            <div class="c426">DELIVERY LOG (latest 25)</div>
+            <sc-if value="{{ intLogEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100">No deliveries yet.</div></sc-if>
+            <div style="overflow-x:auto">
+              <table class="ov-table int-table">
+                <tbody>
+                  <sc-for list="{{ intLog }}" as="l" hint-placeholder-count="3">
+                    <tr><td class="lb-mono">{{ l.at }}</td><td>{{ l.type }}</td><td class="lb-src">{{ l.url }}</td><td>{{ l.code }} · {{ l.ms }}</td>
+                      <td><span class="ov-pill" style="color:{{ l.col }}; background:{{ l.bg }}">{{ l.state }}</span> <span class="net-note">{{ l.error }}</span></td></tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- Workstream D: Data retention + storage estimate -->
+          <sc-if value="{{ spTabRet }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Data retention</h3><span class="c351">{{ retMsg }}</span></div>
+            <div class="c431">Detections older than the retention window are purged automatically once a day (cron and the dashboard poll): the event, its attributes, PPE / restricted / forklift rows, incident log and ticket attachments. Detection frames themselves are stored on the SenseStudio box under its own retention — the dashboard keeps only their links.</div>
+            <div class="c426">KEEP EVENTS &amp; EVIDENCE FOR</div>
+            <div class="poc-chips">
+              <sc-for list="{{ retChips }}" as="t" hint-placeholder-count="6">
+                <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <div class="att-kpis ret-kpis">
+              <sc-for list="{{ retKpis }}" as="k" hint-placeholder-count="4">
+                <div class="att-kpi">
+                  <div class="att-kpi-label">{{ k.label }}</div>
+                  <div class="att-kpi-value">{{ k.value }}</div>
+                  <div class="att-kpi-sub">{{ k.sub }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div class="c428">{{ retDueLine }} · {{ retLastLine }}</div>
+            <div class="poc-chips">
+              <button class="c185 chip" onClick="{{ reloadRet }}">⟳ Refresh</button>
+              <button class="c185 chip att-shift-rm" onClick="{{ retPurge }}">Purge expired now</button>
+            </div>
+            <div class="c428">Sizing guidance for continuous recording on the NVR (not stored here) is in docs/ARCHITECTURE_AND_INFRASTRUCTURE.md: per camera ≈ bitrate (Mbps) × 10.8 GB per day.</div>
+          </div>
+          </sc-if>
+
           <!-- NOTIFICATIONS: escalation-matrix routing -->
           <sc-if value="{{ spTabNotify }}" hint-placeholder-val="{{ false }}">
+          <!-- Workstream A: channel status (Email ✓ / Telegram ✓) -->
+          <div class="c425">
+            <div class="c332"><span class="c440" style="background:var(--brand)"></span><h3 class="c129">Alert channels</h3>
+              <span class="c321">{{ wsA.ntMsg }}</span></div>
+            <div class="esc-chans">
+              <div class="esc-chan-card">
+                <div class="esc-chan-head"><span class="esc-chan-mark" style="color:{{ wsA.chEmail.col }}; border-color:{{ wsA.chEmail.col }}">{{ wsA.chEmail.mark }}</span><b>Email</b><span class="esc-chan-line">{{ wsA.chEmail.line }}</span></div>
+                <div class="esc-chan-stat">{{ wsA.chEmail.stat }}</div>
+                <div class="esc-chan-err">{{ wsA.chEmail.err }}</div>
+                <div><button class="esc-btn" onClick="{{ wsA.testEmail }}">Send test email</button></div>
+              </div>
+              <div class="esc-chan-card">
+                <div class="esc-chan-head"><span class="esc-chan-mark" style="color:{{ wsA.chTg.col }}; border-color:{{ wsA.chTg.col }}">{{ wsA.chTg.mark }}</span><b>Telegram</b><span class="esc-chan-line">{{ wsA.chTg.line }}</span></div>
+                <div class="esc-chan-stat">{{ wsA.chTg.stat }}</div>
+                <div class="esc-chan-err">{{ wsA.chTg.err }}</div>
+                <div><button class="esc-btn" onClick="{{ wsA.testTg }}">Send test message</button></div>
+              </div>
+            </div>
+            <div class="c431">Each channel is gated independently: Telegram keeps alerting when SMTP is down or not configured, and vice versa. Both share the alert rules, minimum severity and per-camera interval from the Alert Rules page.</div>
+          </div>
+
+          <!-- Workstream A: Telegram bot -->
+          <div class="c425">
+            <div class="c332"><span class="c440" style="background:#229ED9"></span><h3 class="c129">Telegram</h3>
+              <span class="c351" style="color:{{ wsA.tgTokenCol }}">{{ wsA.tgTokenState }}</span>
+              <div class="c329" onClick="{{ wsA.onTgToggle }}" title="Telegram alerts on / off" style="background:{{ wsA.tgToggleBg }}"><div class="c330" style="left:{{ wsA.tgKnob }}"></div></div></div>
+            <div class="c431">Create a bot with @BotFather, add it to your safety group, then paste the bot token and the group chat ID (e.g. -1001234567890 or @channelname). Alerts include the detection photo when the image URL is publicly reachable; otherwise a text message with a dashboard link is sent.</div>
+            <div class="c370">
+              <div><div class="c426">BOT TOKEN (stored server-side, shown masked)</div>
+                <input class="c427" value="{{ wsA.tgToken }}" onInput="{{ wsA.onTgToken }}" placeholder="123456789:AA…" autocomplete="off"></div>
+              <div><div class="c426">DEFAULT CHAT ID(S) — every alert</div>
+                <input class="c427" value="{{ wsA.tgChats }}" onInput="{{ wsA.onTgChats }}" placeholder="-1001234567890, @kj_safety"></div>
+            </div>
+            <div class="esc-row">
+              <div class="c329" onClick="{{ wsA.onTgPhoto }}" style="background:{{ wsA.tgPhotoBg }}"><div class="c330" style="left:{{ wsA.tgPhotoKnob }}"></div></div>
+              <span class="c458">Attach the detection photo</span>
+              <span class="esc-grow"></span>
+              <button class="esc-btn" onClick="{{ wsA.testTg }}">Send test message</button>
+              <button class="c429" onClick="{{ wsA.saveTg }}">Save Telegram</button>
+            </div>
+          </div>
+
+          <!-- Workstream A: escalation workflow -->
+          <div class="c425">
+            <div class="c332"><span class="c440" style="background:var(--high)"></span><h3 class="c129">Escalation workflow</h3>
+              <span class="c351">unattended alerts · L1 → L2 → L3</span>
+              <div class="c329" onClick="{{ wsA.onEscToggle }}" title="Escalation workflow on / off" style="background:{{ wsA.escToggleBg }}"><div class="c330" style="left:{{ wsA.escKnob }}"></div></div></div>
+            <div class="c431">{{ wsA.escFlow }}</div>
+            <div class="c370">
+              <div><div class="c335">UNATTENDED MINUTES PER LEVEL</div>
+                <div class="c339"><sc-for list="{{ wsA.escMinChips }}" as="o" hint-placeholder-count="4"><button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button></sc-for></div></div>
+              <div><div class="c335">APPLIES TO SEVERITY</div>
+                <div class="c339"><sc-for list="{{ wsA.escSevChips }}" as="o" hint-placeholder-count="3"><button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button></sc-for></div></div>
+            </div>
+            <div class="esc-levels">
+              <sc-for list="{{ wsA.escLevels }}" as="l" hint-placeholder-count="3">
+                <div class="esc-level" style="box-shadow:inset 3px 0 0 {{ l.col }}">
+                  <div class="esc-level-head"><span class="esc-level-tag" style="background:{{ l.col }}">{{ l.tag }}</span><span class="esc-level-after">{{ l.after }}</span><span class="esc-level-warn">{{ l.warn }}</span></div>
+                  <div class="esc-level-grid">
+                    <div><div class="c426">NAME</div><input class="c427" value="{{ l.name }}" onInput="{{ l.onName }}" placeholder="Supervisor"></div>
+                    <div><div class="c426">EMAIL(S)</div><input class="c427" value="{{ l.emails }}" onInput="{{ l.onEmails }}" placeholder="supervisor@kianjoo.com"></div>
+                    <div><div class="c426">TELEGRAM CHAT ID(S)</div><input class="c427" value="{{ l.chats }}" onInput="{{ l.onChats }}" placeholder="-1001234567890"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div class="esc-row">
+              <span class="c458">{{ wsA.escOpenLine }}</span>
+              <span class="esc-grow"></span>
+              <button class="esc-btn" onClick="{{ wsA.runDry }}">Run escalation check now (preview)</button>
+              <button class="esc-btn esc-btn-warn" onClick="{{ wsA.runNow }}">Escalate due alerts now</button>
+              <button class="c429" onClick="{{ wsA.saveLevels }}">Save levels</button>
+            </div>
+            <div class="esc-note">{{ wsA.escLastLine }}</div>
+            <sc-if value="{{ wsA.escResHas }}" hint-placeholder-val="{{ false }}">
+              <div class="esc-res">
+                <div class="c335">{{ wsA.escResTitle }}</div>
+                <sc-if value="{{ wsA.escResNone }}" hint-placeholder-val="{{ false }}"><div class="c458">Nothing due — every open alert is either acknowledged or still inside its unattended window.</div></sc-if>
+                <sc-for list="{{ wsA.escResRows }}" as="x" hint-placeholder-count="3">
+                  <div class="esc-res-row">
+                    <span class="esc-level-tag" style="background:{{ x.col }}">{{ x.lv }}</span>
+                    <div class="cond-main"><div class="cond-name">{{ x.title }} <span style="color:{{ x.sevCol }}">· {{ x.sev }}</span></div><div class="cond-desc">{{ x.camera }} · {{ x.sub }}</div></div>
+                    <span class="cond-ch">{{ x.chan }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ wsA.escPendHas }}" hint-placeholder-val="{{ false }}">
+                  <div class="c335" style="margin-top:8px">UPCOMING</div>
+                  <sc-for list="{{ wsA.escPendRows }}" as="x" hint-placeholder-count="2">
+                    <div class="esc-res-row">
+                      <span class="esc-level-tag" style="background:var(--text3)">{{ x.lv }}</span>
+                      <div class="cond-main"><div class="cond-name">{{ x.title }}</div><div class="cond-desc">{{ x.camera }} {{ x.sub }}</div></div>
+                    </div>
+                  </sc-for>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Workstream A: delivery log -->
+          <div class="c449">
+            <div class="c454"><span class="c360"></span><h3 class="c129">Recent deliveries</h3></div>
+            <sc-if value="{{ wsA.recentNone }}" hint-placeholder-val="{{ false }}"><div class="c458">No alerts sent yet.</div></sc-if>
+            <sc-for list="{{ wsA.recent }}" as="r" hint-placeholder-count="3">
+              <div class="c455">
+                <span class="esc-log-ok" style="color:{{ r.col }}">{{ r.ok }}</span>
+                <span class="esc-log-ch">{{ r.ch }} · {{ r.kind }}</span>
+                <span class="c312 esc-log-note">{{ r.note }}</span>
+                <span class="esc-log-at">{{ r.at }}</span>
+              </div>
+            </sc-for>
+          </div>
+
           <div class="c425">
             <div class="c332"><span class="c440"></span><h3 class="c129">Notification Routing</h3><span class="c351">escalation matrix targets</span></div>
             <div class="c431">Comma-separated email lists. These are added on top of the base alert recipients (Alert Rules page) according to detection severity and ticket escalations — leave a field blank to skip that tier.</div>
@@ -3320,6 +4293,7 @@
         <span class="c463" style="color:{{ mTicket.codeCol }}">{{ mTicket.code }}</span>
         <span class="c464" style="color:{{ mTicket.sevColor }}; border:1.5px solid {{ mTicket.sevColor }}">{{ mTicket.sev }}</span>
         <span class="c465" style="color:{{ mTicket.statusCol }}; border:1.5px solid {{ mTicket.statusCol }}"><span class="c119" style="background:{{ mTicket.statusCol }}"></span>{{ mTicket.statusLabel }}</span>
+        <sc-if value="{{ mTicket.escOn }}" hint-placeholder-val="{{ false }}"><span class="esc-chip esc-chip-lg" title="{{ mTicket.escTitle }}" style="color:{{ mTicket.escCol }}; border-color:{{ mTicket.escCol }}">{{ mTicket.escLabel }}</span></sc-if>
         <sc-if value="{{ mTicket.notTicket }}" hint-placeholder-val="{{ false }}">
           <button class="c466" onClick="{{ mTicket.onTicket }}"><svg class="c52" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Escalate to ticket</button>
         </sc-if>

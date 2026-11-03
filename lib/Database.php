@@ -95,6 +95,113 @@ final class Database
         self::migrateRestricted($pdo);
         self::migrateCleaning($pdo);
         self::migrateForklift($pdo);
+        self::migrateEscalation($pdo);
+        self::migrateForkliftSafety($pdo);
+        self::migrateBehaviour($pdo);
+    }
+
+    /**
+     * Workstream C: behaviour analytics (lib/Behaviour.php) — policy-sourced
+     * (fight / fall / cleaning / loitering algorithms) and derived (group
+     * dwell, idle, cleaning PPE proxy) episodes with their review verdict.
+     */
+    private static function migrateBehaviour(PDO $pdo): void
+    {
+        if (self::$driver === 'sqlite') {
+            $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS behaviour_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id    INTEGER NOT NULL DEFAULT 0,
+    kind        TEXT,
+    sub         TEXT,
+    source      TEXT,
+    started_at  TEXT,
+    ended_at    TEXT,
+    stream      TEXT,
+    location    TEXT,
+    plant       TEXT,
+    persons     INTEGER DEFAULT 1,
+    dwell_sec   INTEGER DEFAULT 0,
+    reason      TEXT,
+    image       TEXT,
+    verdict     TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    note        TEXT
+)
+SQL);
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_beh_time ON behaviour_events(started_at)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_beh_stream ON behaviour_events(stream, kind)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_beh_event ON behaviour_events(event_id)');
+            return;
+        }
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS behaviour_events (
+    id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_id    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    kind        VARCHAR(20),
+    sub         VARCHAR(20),
+    source      VARCHAR(20),
+    started_at  DATETIME,
+    ended_at    DATETIME NULL,
+    stream      VARCHAR(191),
+    location    VARCHAR(80),
+    plant       VARCHAR(80),
+    persons     INT DEFAULT 1,
+    dwell_sec   INT DEFAULT 0,
+    reason      VARCHAR(255),
+    image       TEXT,
+    verdict     VARCHAR(20),
+    reviewed_by VARCHAR(100),
+    reviewed_at DATETIME NULL,
+    note        VARCHAR(500),
+    KEY idx_beh_time (started_at),
+    KEY idx_beh_stream (stream, kind),
+    KEY idx_beh_event (event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
+    }
+
+    /**
+     * Workstream B: forklift_events also records pedestrians in forklift-only
+     * zones and forklift-operator PPE checks. kind = forklift | pedestrian |
+     * operator; op_ppe = ok | missing | unknown ('' = no operator seen);
+     * op_viol = 1 on the one row that carries an operator-PPE alert.
+     */
+    private static function migrateForkliftSafety(PDO $pdo): void
+    {
+        $sq   = self::$driver === 'sqlite';
+        $cols = [
+            'kind'       => $sq ? "TEXT DEFAULT 'forklift'" : "VARCHAR(16) NULL DEFAULT 'forklift'",
+            'op_ppe'     => $sq ? 'TEXT' : 'VARCHAR(16) NULL',
+            'op_missing' => $sq ? 'TEXT' : 'VARCHAR(191) NULL',
+            'op_viol'    => $sq ? 'INTEGER DEFAULT 0' : 'TINYINT NOT NULL DEFAULT 0',
+            'person_id'  => $sq ? 'TEXT' : 'VARCHAR(64) NULL',
+        ];
+        foreach ($cols as $c => $ddl) {
+            if (!self::columnExists($pdo, 'forklift_events', $c)) {
+                $pdo->exec("ALTER TABLE forklift_events ADD COLUMN {$c} {$ddl}");
+            }
+        }
+    }
+
+    /**
+     * Workstream A: unattended-alert escalation state on each event — the
+     * highest level reached (0 = none), when, and the unattended threshold
+     * (minutes) that triggered it. Written by lib/Escalation.php.
+     */
+    private static function migrateEscalation(PDO $pdo): void
+    {
+        $cols = [
+            'esc_level' => self::$driver === 'sqlite' ? 'INTEGER DEFAULT 0' : 'TINYINT UNSIGNED NOT NULL DEFAULT 0',
+            'esc_at'    => self::$driver === 'sqlite' ? 'TEXT' : 'DATETIME NULL',
+            'esc_min'   => self::$driver === 'sqlite' ? 'INTEGER' : 'INT NULL',
+        ];
+        foreach ($cols as $name => $ddl) {
+            if (!self::columnExists($pdo, 'events', $name)) {
+                $pdo->exec("ALTER TABLE events ADD COLUMN {$name} {$ddl}");
+            }
+        }
     }
 
     /**

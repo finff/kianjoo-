@@ -31,7 +31,34 @@ final class Ppe
         'vest'    => 'Safety vest',
         'goggles' => 'Safety goggles',
         'gloves'  => 'Safety gloves',
+        'boots'   => 'Safety boots',
+        'hairnet' => 'Hair net',
+        'ear'     => 'Ear protection',
     ];
+
+    /**
+     * How each item is detected with SenseStudio V2.13 (shown on the PPE page).
+     * level: native | proxy | custom.
+     */
+    public const FEASIBILITY = [
+        'helmet'  => ['level' => 'native', 'label' => 'Native', 'how' => 'Pedestrian attribute HatsType = Helmet'],
+        'vest'    => ['level' => 'native', 'label' => 'Native', 'how' => 'Pedestrian attribute WithReflectiveVest'],
+        'gloves'  => ['level' => 'native', 'label' => 'Native', 'how' => 'Pedestrian attribute WithGlove'],
+        'goggles' => ['level' => 'proxy', 'label' => 'Attribute proxy', 'how' => 'Glasses estimate (ExpressionType Glasses / SunGlasses), or a goggles attribute when the model sends one'],
+        'boots'   => ['level' => 'proxy', 'label' => 'Attribute proxy', 'how' => 'Pedestrian attribute ShoesType = Boots (another shoe type = missing); a custom SenseStudio safety-boot algorithm / policy is also accepted'],
+        'hairnet' => ['level' => 'proxy', 'label' => 'Attribute proxy / custom model', 'how' => 'HatsType Bonnet (configurable list) counts as hair covered; or a custom SenseStudio algorithm / policy named hairnet, hair net or haircap'],
+        'ear'     => ['level' => 'custom', 'label' => 'Custom model required', 'how' => 'No native attribute. Detected only from a custom SenseStudio algorithm / policy named ear, earmuff, ear plug or hearing protection'],
+    ];
+
+    /** Custom algorithm / policy names that report an item (applies to items without a reliable native attribute). */
+    private const CUSTOM_RE = [
+        'boots'   => '/safety\s*(boot|shoe)|\bboots?\b|footwear/i',
+        'hairnet' => '/hair\s*-?\s*(net|cap)|haircap|hairnet/i',
+        'ear'     => '/\bears?\b|ear\s*-?\s*(muff|plug|defender|protect)|earmuff|earplug|hearing/i',
+    ];
+    /** Words that make a custom policy name a violation ("No hairnet") or a pass ("Hairnet OK"). */
+    private const NEG_RE = '/\b(no|non|without|missing|not|absent|lacking|violation|unprotected)\b/i';
+    private const POS_RE = '/\b(ok|compliant|wearing|worn|with|present|pass)\b/i';
     private const CATCHUP_BATCH = 3000;
 
     private PDO $pdo;
@@ -47,9 +74,90 @@ final class Ppe
 
     // ── Rule evaluation (pure) ───────────────────────────────
 
-    /** true = wearing, false = missing, null = the model did not report it. */
-    public static function itemState(string $item, array $dec): ?bool
+    /** Policy / algorithm text of an event row or ingest probe (type, policy name, description). */
+    public static function policyText(array $e): string
     {
+        return trim(($e['trigger_image_type'] ?? '') . ' ' . ($e['event_type'] ?? '') . ' '
+            . ($e['policy_name'] ?? '') . ' ' . ($e['policy_desc'] ?? ''));
+    }
+
+    /**
+     * What a custom SenseStudio algorithm / policy says about an item:
+     * false = it reports the item missing ("No hairnet", or an alarm policy
+     * named only after the item — alarm policies fire on the violation),
+     * true = it reports the item worn ("Hairnet OK"), null = not about it.
+     */
+    public static function customState(string $item, string $text): ?bool
+    {
+        $re = self::CUSTOM_RE[$item] ?? null;
+        if ($re === null || $text === '' || !preg_match($re, $text)) {
+            return null;
+        }
+        $t = preg_replace('/([a-z])([A-Z])/', '$1 $2', $text) ?? $text;   // "NoHairnet" → "No Hairnet"
+        $t = str_replace(['_', '-'], ' ', $t);
+        if (preg_match(self::NEG_RE, $t)) {
+            return false;
+        }
+        return preg_match(self::POS_RE, $t) ? true : false;
+    }
+
+    /** Items a custom PPE algorithm / policy names explicitly (they become required for that event). */
+    public static function customItems(string $text): array
+    {
+        $out = [];
+        foreach (array_keys(self::CUSTOM_RE) as $item) {
+            if (self::customState($item, $text) !== null) {
+                $out[] = $item;
+            }
+        }
+        return $out;
+    }
+
+    /** A decoded attribute from a custom algorithm whose name matches $re (value "No…" = missing). */
+    private static function customAttr(string $re, array $dec): ?bool
+    {
+        foreach ($dec as $k => $v) {
+            if (preg_match($re, (string) $k)) {
+                return !preg_match('/^(no|without|none|false|0$)/i', trim((string) $v));
+            }
+        }
+        return null;
+    }
+
+    /**
+     * true = wearing, false = missing, null = the model did not report it.
+     * $ctx: policy => policy text of the event (custom algorithms),
+     *       hair_hats => HatsType values that count as hair covered.
+     */
+    public static function itemState(string $item, array $dec, array $ctx = []): ?bool
+    {
+        $policy = (string) ($ctx['policy'] ?? '');
+        switch ($item) {
+            case 'boots':
+                $c = self::customState('boots', $policy) ?? self::customAttr('/safety.?(boot|shoe)/i', $dec);
+                if ($c !== null) {
+                    return $c;
+                }
+                $v = (string) ($dec['ShoesType'] ?? '');
+                return $v === '' ? null : (bool) preg_match('/boot/i', $v);
+            case 'hairnet':
+                $c = self::customState('hairnet', $policy) ?? self::customAttr('/hair.?(net|cap)/i', $dec);
+                if ($c !== null) {
+                    return $c;
+                }
+                $v = (string) ($dec['HatsType'] ?? '');
+                if ($v === '') {
+                    return null;
+                }
+                $ok = array_map('strtolower', (array) ($ctx['hair_hats'] ?? ['Bonnet']));
+                if (in_array(strtolower($v), $ok, true)) {
+                    return true;
+                }
+                // A helmet hides whatever is under it — can't tell.
+                return strcasecmp($v, 'Helmet') === 0 ? null : false;
+            case 'ear':
+                return self::customState('ear', $policy) ?? self::customAttr('/ear.?(muff|plug|protect|defender)|hearing/i', $dec);
+        }
         switch ($item) {
             case 'helmet':
                 $v = (string) ($dec['HatsType'] ?? '');
@@ -99,14 +207,14 @@ final class Ppe
      *
      * @return array{required:list<string>,missing:list<string>,unknown:list<string>}|null
      */
-    public static function evaluate(array $dec, array $required): ?array
+    public static function evaluate(array $dec, array $required, array $ctx = []): ?array
     {
         if (!$required) {
             return null;
         }
         $missing = $unknown = [];
         foreach ($required as $item) {
-            $s = self::itemState($item, $dec);
+            $s = self::itemState($item, $dec, $ctx);
             if ($s === null) {
                 $unknown[] = $item;
             } elseif ($s === false) {
@@ -117,6 +225,37 @@ final class Ppe
             return null;   // nothing PPE-related in this detection
         }
         return ['required' => $required, 'missing' => $missing, 'unknown' => $unknown];
+    }
+
+    /** Short text for the PpeMissing tag ("helmet, ear protection"). */
+    public static function missingText(array $missing): string
+    {
+        $short = ['boots' => 'safety boots', 'hairnet' => 'hair net', 'ear' => 'ear protection'];
+        return implode(', ', array_map(static fn ($i) => $short[$i] ?? $i, $missing));
+    }
+
+    /** Evaluation context (custom-policy text + configured hair-cover hats) for an event. */
+    public static function ctx(array $config, string $policyText): array
+    {
+        return ['policy' => $policyText, 'hair_hats' => $config['ppe']['hair_hats'] ?? ['Bonnet']];
+    }
+
+    /**
+     * Full PPE check of one detection at a location: the area rule plus any
+     * cleaning-session items, plus items a custom SenseStudio PPE algorithm
+     * names on this event (e.g. a "No ear protection" policy is checked even
+     * where no area rule asks for ear protection).
+     *
+     * @return array{eval:?array,req:?array}
+     */
+    public static function check(array $dec, string $location, int $ts, array $config, string $policyText): array
+    {
+        $req = $location !== '' ? self::requirement($location, $ts, $config) : ['items' => [], 'schedule' => null];
+        $req['items'] = array_values(array_unique(array_merge($req['items'], self::customItems($policyText))));
+        if (!$req['items']) {
+            return ['eval' => null, 'req' => null];
+        }
+        return ['eval' => self::evaluate($dec, $req['items'], self::ctx($config, $policyText)), 'req' => $req];
     }
 
     /** Camera point name for a stream / device ('' when the camera is not mapped). */
@@ -163,7 +302,8 @@ final class Ppe
             $q->execute(['f' => date('Y-m-d H:i:s', time() - 30 * 86400)]);
             $cur = max(0, (int) $q->fetchColumn() - 1);
         }
-        $st = $this->pdo->prepare('SELECT id, stream, device_name, received_at, trigger_img_url, person_id, decoded_json
+        $st = $this->pdo->prepare('SELECT id, stream, device_name, received_at, trigger_img_url, person_id, decoded_json,
+                                          trigger_image_type, event_type, policy_name, policy_desc
                                      FROM events WHERE id > :c ORDER BY id ASC LIMIT ' . self::CATCHUP_BATCH);
         $st->execute(['c' => $cur]);
         $done = 0;
@@ -176,8 +316,9 @@ final class Ppe
             }
             $dec = json_decode((string) ($r['decoded_json'] ?? ''), true) ?: [];
             $loc = $this->locationOf($r['stream'] ?? null, $r['device_name'] ?? null);
-            $req = $loc !== '' ? self::requirement($loc, strtotime((string) $r['received_at']) ?: time(), $this->config) : null;
-            $ev  = $req ? self::evaluate($dec, $req['items']) : null;
+            $chk = self::check($dec, $loc, strtotime((string) $r['received_at']) ?: time(), $this->config, self::policyText($r));
+            $req = $chk['req'];
+            $ev  = $chk['eval'];
             if ($ev === null) {
                 continue;
             }
@@ -187,7 +328,7 @@ final class Ppe
             }
             $this->record($cur, $r, $ev, $loc, $req['schedule']);
             if ($ev['missing'] && empty($dec['PpeMissing'])) {
-                $dec['PpeMissing'] = implode(', ', $ev['missing']);
+                $dec['PpeMissing'] = self::missingText($ev['missing']);
                 if ($req['schedule']) {
                     $dec['PpeCleaning'] = $req['schedule']['name'];
                 }

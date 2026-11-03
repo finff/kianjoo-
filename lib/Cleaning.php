@@ -136,6 +136,8 @@ final class Cleaning
                     'items' => $s['items'], 'cameras' => count($cams[$s['location']] ?? []),
                     'state' => $now < $a ? 'upcoming' : ($now < $b ? 'in_progress' : 'ended'),
                     'detections' => $seen, 'checks' => (int) $c['c'], 'violations' => (int) $c['v'],
+                    // Workstream C: cleaning activity detected (policy or PPE proxy) — lib/Behaviour.php
+                    'activity' => class_exists('Behaviour') ? Behaviour::cleaningCount($this->pdo, $s['location'], $ta, $tb) : 0,
                     'confirmed' => $cf['status'] ?? null, 'confirmedBy' => $cf['actor'] ?? null,
                     'confirmedAt' => $cf['created_at'] ?? null, 'note' => $cf['note'] ?? null,
                 ];
@@ -193,11 +195,11 @@ final class Cleaning
         [$sess] = $this->sessions($f);
         $state = ['upcoming' => 'Upcoming', 'in_progress' => 'In progress', 'ended' => 'Ended'];
         $out = [['Date', 'Session', 'Plant', 'Cleaning area', 'Scheduled start', 'Scheduled end', 'Required PPE', 'Schedule state',
-                 'People detected in window', 'PPE checks', 'PPE violations', 'Compliance %', 'Supervisor confirmation', 'Confirmed by', 'Note']];
+                 'People detected in window', 'Cleaning activity detected', 'PPE checks', 'PPE violations', 'Compliance %', 'Supervisor confirmation', 'Confirmed by', 'Note']];
         foreach ($sess as $s) {
             $out[] = [$s['date'], $s['name'], $s['plant'], $s['location'], substr($s['start'], 11, 5), substr($s['end'], 11, 5),
                 implode('; ', array_map(static fn ($i) => Ppe::ITEMS[$i] ?? $i, $s['items'])), $state[$s['state']],
-                $s['detections'], $s['checks'], $s['violations'],
+                $s['detections'], $s['activity'] ?? 0, $s['checks'], $s['violations'],
                 $s['checks'] ? round(100 * ($s['checks'] - $s['violations']) / $s['checks'], 1) : '',
                 ['done' => 'Cleaning done', 'not_done' => 'Not performed'][$s['confirmed']] ?? 'Not confirmed',
                 (string) $s['confirmedBy'], (string) $s['note']];

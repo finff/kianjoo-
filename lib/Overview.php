@@ -19,7 +19,7 @@ require_once __DIR__ . '/DashboardMapper.php';
 final class Overview
 {
     private const CACHE_S = 30;
-    private const ITEMS   = ['helmet', 'vest', 'goggles', 'gloves'];
+    private const ITEMS   = ['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'];
 
     private PDO $pdo;
     private array $config;
@@ -257,7 +257,9 @@ final class Overview
                 $recent[] = [
                     'id' => $i['id'], 'time' => $i['time'], 'zone' => $i['zone'] ?: $i['camera'], 'plant' => $i['plant'],
                     'location' => $i['location'], 'camera' => $i['camera'], 'verdict' => $i['verdict'],
-                    'verdictLabel' => Forklift::VERDICTS[$i['verdict']] ?? $i['verdict'],
+                    'verdictLabel' => $i['verdict'] === 'violation' && $i['kind'] !== 'forklift'
+                        ? (Forklift::KINDS[$i['kind']] ?? 'Violation')
+                        : ($i['verdict'] === 'violation' && $i['opViolation'] ? 'Operator PPE violation' : (Forklift::VERDICTS[$i['verdict']] ?? $i['verdict'])),
                     'severity' => $i['verdict'] === 'violation' ? 'high' : ($i['verdict'] === 'logged' ? 'medium' : 'low'),
                     'image' => $i['image'],
                 ];

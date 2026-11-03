@@ -65,19 +65,31 @@ final class EventStore
         $attributesRaw = isset($payload['attributes']) && is_array($payload['attributes']) ? $payload['attributes'] : [];
         $this->loadLiveDictionary();
         $decoded       = Attributes::decodeAll($attributesRaw);
+        // Workstream D: operator-tuned thresholds (Settings → Models) — a face
+        // match below the similarity cut-off becomes unknown, a PPE attribute
+        // below the confidence cut-off counts as not reported.
+        require_once __DIR__ . '/AiMetrics.php';
+        [$payload, $decoded] = AiMetrics::applyThresholds($payload, $decoded, $this->cfg);
 
         // PPE area rule: a person at a location that requires PPE they are not
         // wearing is tagged PpeMissing → classified, titled and alerted as PPE.
         $ppeEval = null;
         $ppeLoc  = '';
         $ppeReq = null;
-        if ((!empty($this->cfg['ppe']['rules']) || !empty($this->cfg['cleaning']['schedules'])) && $decoded['map']) {
-            require_once __DIR__ . '/Ppe.php';
+        // Workstream B: custom SenseStudio PPE algorithms (hair net, ear
+        // protection, safety boots) are matched by policy name — see Ppe::check().
+        require_once __DIR__ . '/Ppe.php';
+        $ppeText = Ppe::policyText(['trigger_image_type' => $this->str($payload, 'triggerImageType') ?? '',
+            'event_type' => $this->str($payload, 'eventType') ?? '', 'policy_name' => $this->str($payload, 'policyName') ?? '',
+            'policy_desc' => $this->str($payload, 'policyDesc') ?? '']);
+        if (((!empty($this->cfg['ppe']['rules']) || !empty($this->cfg['cleaning']['schedules'])) && $decoded['map'])
+            || Ppe::customItems($ppeText)) {
             $ppeLoc  = (string) (($this->cfg['poc']['cam_locations'] ?? [])[self::streamLabel((string) ($stream ?: ''))] ?? '');
-            $ppeReq  = $ppeLoc !== '' ? Ppe::requirement($ppeLoc, time(), $this->cfg) : null;
-            $ppeEval = $ppeReq ? Ppe::evaluate($decoded['map'], $ppeReq['items']) : null;
+            $ppeChk  = Ppe::check($decoded['map'], $ppeLoc, time(), $this->cfg, $ppeText);
+            $ppeReq  = $ppeChk['req'];
+            $ppeEval = $ppeChk['eval'];
             if ($ppeEval && $ppeEval['missing']) {
-                $decoded['map']['PpeMissing'] = implode(', ', $ppeEval['missing']);
+                $decoded['map']['PpeMissing'] = Ppe::missingText($ppeEval['missing']);
                 if ($ppeReq['schedule']) {
                     $decoded['map']['PpeCleaning'] = $ppeReq['schedule']['name'];   // violation during a cleaning session
                 }
@@ -103,6 +115,21 @@ final class EventStore
                 $fkJudge = Forklift::judge($fkZone, time());
                 $decoded['map'] = Forklift::tag($decoded['map'], $fkZone, $fkJudge, (string) $stream);
             }
+            // Workstream B: forklift operator PPE (people within ±N s of a forklift)
+            // and pedestrians in forklift-only zones.
+            if (!empty($this->cfg['forklift']['zones'])) {
+                try {
+                    $fkx = (new Forklift($this->pdo, $this->cfg, $this))->assessIngest(
+                        $fkProbe + ['person_id' => $this->str($payload, 'personId') ?: $this->str($payload, 'triggerPersonId')],
+                        $stream, $this->str($payload, 'deviceName'), $fkJudge !== null ? $fkZone : null, $fkJudge,
+                        $decoded['map'], Forklift::eventTs($this->str($payload, 'triggerTime')));
+                    if ($fkx !== null) {
+                        [$fkZone, $fkJudge, $decoded['map']] = $fkx;
+                    }
+                } catch (Throwable $e) {
+                    error_log('[forklift-safety] ' . $e->getMessage());
+                }
+            }
         }
 
         // Restricted zone: an intrusion detection at a configured zone camera
@@ -126,6 +153,19 @@ final class EventStore
                 $decoded['map']['RaVerdict'] = $raJudge['verdict'];
                 $decoded['map']['RaZone']    = (string) $raZone['name'];
                 $decoded['map']['RaWho']     = $raJudge['name'] !== '' ? $raJudge['name'] : 'unidentified person';
+            }
+        }
+
+        // Workstream C — behaviour algorithm (fight / fall / cleaning /
+        // loitering policy) → tagged BehKind so it alerts as module "beh".
+        $behKind = null;
+        if ($fkJudge === null) {
+            require_once __DIR__ . '/Behaviour.php';
+            $behKind = Behaviour::classify($fkProbe);
+            if ($behKind !== null && ($raJudge === null || $behKind[0] === 'abnormal')) {
+                $decoded['map'] = Behaviour::tag($decoded['map'], $behKind[0], $behKind[1]);
+            } else {
+                $behKind = null;
             }
         }
 
@@ -214,12 +254,22 @@ final class EventStore
                 error_log('[ppe] ' . $e->getMessage());
             }
         }
+        if ($behKind !== null) {
+            try {
+                (new Behaviour($this->pdo, $this->cfg, $this))->record($eventId, $row, $behKind[0], $behKind[1]);
+            } catch (Throwable $e) {
+                error_log('[behaviour] ' . $e->getMessage());
+            }
+        }
 
         $this->pruneIfNeeded();
         if (!$this->silent) {
             $this->forwardFirebase($stream, $payload);
             $this->forwardWestarAI($payload);
             $this->notifyIfSevere($row, $decoded['map']);
+            // Workstream D: outbound integration webhooks (≤ 2 s budget, never throws).
+            require_once __DIR__ . '/Integration.php';
+            Integration::dispatch($this->pdo, $this->cfg, $this, $row + ['id' => $eventId], $decoded['map']);
         }
 
         $row['id']              = $eventId;
@@ -1308,7 +1358,15 @@ final class EventStore
     private function notifyIfSevere(array $row, array $decoded): void
     {
         $mailCfg = $this->cfg['mail'] ?? [];
-        if (empty($mailCfg['host']) || empty($mailCfg['to'])) {
+        // Workstream A: each channel is gated by its own config — Telegram must
+        // work even when SMTP is not configured (and vice versa).
+        require_once __DIR__ . '/Telegram.php';
+        require_once __DIR__ . '/Alerting.php';
+        $tgCfg  = $this->cfg['telegram'] ?? [];
+        $mailOn = !empty($mailCfg['host']) && !empty($mailCfg['to'])
+            && (($this->cfg['alerts']['email_enabled'] ?? true) !== false);
+        $tgOn   = Telegram::ready($tgCfg);
+        if (!$mailOn && !$tgOn) {
             return;
         }
         require_once __DIR__ . '/DashboardMapper.php';
@@ -1330,32 +1388,40 @@ final class EventStore
         $rank = ['low' => 0, 'medium' => 1, 'high' => 2, 'critical' => 3];
         $min  = $alerts['min_severity'] ?? 'high';
 
-        if ($min === 'off') {
-            return;
-        }
+        // Predefined condition rules (Alert Rules → Condition rules): a match
+        // alerts in real time even below the global minimum severity / module switch.
+        $cond = Alerting::matchCondition($alerts['conditions'] ?? [], $mod, $sev, (string) ($row['stream'] ?? ''),
+            implode(' ', [$row['policy_name'] ?? '', $row['policy_desc'] ?? '', $row['trigger_image_type'] ?? '', DashboardMapper::titleOf($ev, $mod)]));
+
+        $eligible = $min !== 'off';
         // Dashboard-managed switches (Alert Rules page → storage/alert_settings.json).
-        if (($alerts['email_enabled'] ?? true) === false) {
-            return;
-        }
         $modsEnabled = $alerts['mods_enabled'] ?? null;
         if (is_array($modsEnabled) && array_key_exists($mod, $modsEnabled) && !$modsEnabled[$mod]) {
-            return;
+            $eligible = false;
         }
-        $eligible = ($rank[$sev] ?? 0) >= ($rank[$min] ?? 2)
-            || in_array($mod, $alerts['always_mods'] ?? [], true);
+        $eligible = $eligible && (($rank[$sev] ?? 0) >= ($rank[$min] ?? 2)
+            || in_array($mod, $alerts['always_mods'] ?? [], true));
 
         // Intrusion armed-window gate (overnight-aware via DashboardMapper).
         if ($mod === 'intr' && $eligible) {
             $eligible = DashboardMapper::armedNow((string) ($alerts['intr_armed'] ?? 'always'));
         }
-        if (!$eligible) {
+        if (!$eligible && $cond === null) {
             return;
         }
+        if (!$eligible) {
+            // Alerting only because of a condition rule → that rule's channels.
+            $mailOn = $mailOn && !empty($cond['channels']['email']);
+            $tgOn   = $tgOn && !empty($cond['channels']['telegram']);
+            if (!$mailOn && !$tgOn) {
+                return;
+            }
+        }
 
-        // Cooldown: one email per stream+trigger type per MAIL_COOLDOWN_MIN.
+        // Cooldown: one alert per stream+trigger type per MAIL_COOLDOWN_MIN (all channels).
         $key  = preg_replace('/[^a-z0-9]+/i', '_', ($row['stream'] ?? 'x') . '-' . ($row['trigger_image_type'] ?? 'evt'));
         $gate = dirname($this->cfg['storage']['raw_log']) . '/mail_' . $key . '.lock';
-        if (is_file($gate) && (time() - (int) filemtime($gate)) < $mailCfg['cooldown'] * 60) {
+        if (is_file($gate) && (time() - (int) filemtime($gate)) < max(1, (int) ($mailCfg['cooldown'] ?? 5)) * 60) {
             return;
         }
         @touch($gate);
@@ -1364,13 +1430,14 @@ final class EventStore
         require_once __DIR__ . '/EmailTemplate.php';
         $img      = $this->fullUrl($row['trigger_img_url'] ?? null);
         $sevTag   = strtoupper($sev);
-        $modLabel = ['fire' => 'FIRE & SMOKE', 'ppe' => 'PPE', 'intr' => 'INTRUSION', 'face' => 'FACE & BODY', 'forklift' => 'FORKLIFT'][$mod] ?? strtoupper($mod);
+        $modLabel = Alerting::modLabel($mod);
         $what     = DashboardMapper::titleOf($ev, $mod);
         $sevCol   = EmailTemplate::sevColor($sev);
 
         $attrRows = [];
         foreach (['Gender' => 'Gender', 'Age' => 'Age group', 'TopsType' => 'Tops', 'TopsColor' => 'Tops colour',
-                  'PpeMissing' => 'Missing PPE (area rule)', 'PpeCleaning' => 'Cleaning session', 'RaZone' => 'Restricted zone', 'RaWho' => 'Identified as',
+                  'PpeMissing' => 'Missing PPE (area rule)', 'PpeCleaning' => 'Cleaning session', 'BehType' => 'Behaviour',
+                  'FkOpMissing' => 'Forklift operator PPE missing', 'FkKind' => 'Forklift-zone detection', 'RaZone' => 'Restricted zone', 'RaWho' => 'Identified as',
                   'HatsType' => 'Head cover', 'WithMask' => 'Mask', 'WithReflectiveVest' => 'Reflective vest', 'WithGlove' => 'Gloves',
                   'Smoking' => 'Smoking'] as $k => $label) {
             if (isset($decoded[$k])) {
@@ -1390,6 +1457,23 @@ final class EventStore
         }
         $loc = $this->locOf($row['stream'] ?? null, $row['device_name'] ?? null,
             $this->cfg['poc']['cam_locations'] ?? []);
+        $logDir = dirname((string) $this->cfg['storage']['raw_log']);
+
+        // Workstream A: Telegram (photo + caption when the frame URL is public).
+        if ($tgOn) {
+            $text = Alerting::eventText([
+                'sev' => $sev, 'mod' => $mod, 'banner' => $sevTag . ' ' . $modLabel . ' ALERT', 'title' => $what,
+                'camera' => strtoupper((string) ($row['stream'] ?: '')) . (($row['device_name'] ?? '') !== '' ? ' · ' . $row['device_name'] : ''),
+                'location' => $loc, 'zone' => (string) ($row['policy_name'] ?? ''),
+                'person' => $personRow ? (string) $personRow[1] : '', 'rule' => $cond !== null && !$eligible ? 'Condition · ' . $cond['name'] : '',
+                'time' => (string) (($row['trigger_time'] ?? '') ?: ($row['received_at'] ?? '')), 'url' => EmailTemplate::host() . '/',
+            ]);
+            $tr = Telegram::send($tgCfg, $text, $img);
+            Alerting::logSend('telegram', $tr['ok'], 'alert', (string) ($row['uuid'] ?? ''), $tr['errors'] ? implode('; ', $tr['errors']) : $what, false, $logDir);
+        }
+        if (!$mailOn) {
+            return;
+        }
 
         $content = EmailTemplate::heading($what)
             . EmailTemplate::sub($modLabel . ' detection on camera ' . strtoupper((string) ($row['stream'] ?: '')) . ' — action may be required.')
@@ -1434,7 +1518,8 @@ final class EventStore
         $to = array_values(array_unique($to));
 
         try {
-            (new Mailer($mailCfg))->send('[Kian Joo VisionAI] ' . $sevTag . ' ' . $modLabel . ' — ' . $what . ' @ ' . ($row['device_name'] ?: ($row['stream'] ?? '')), $html, $to);
+            $sentOk = (new Mailer($mailCfg))->send('[Kian Joo VisionAI] ' . $sevTag . ' ' . $modLabel . ' — ' . $what . ' @ ' . ($row['device_name'] ?: ($row['stream'] ?? '')), $html, $to);
+            Alerting::logSend('email', $sentOk, 'alert', (string) ($row['uuid'] ?? ''), $what, false, $logDir);
         } catch (Throwable $e) {
             error_log('[mailer] ' . $e->getMessage());
         }

@@ -8,6 +8,7 @@ class Component extends DCLogic {
       intr: {tag:'INTR', tagBg:'var(--crit)'},
       face: {tag:'FACE', tagBg:'var(--low)'},
       forklift: {tag:'FORKLIFT', tagBg:'var(--high)'},
+      behaviour: {tag:'BEHAV', tagBg:'var(--purple)'},
     };
     this.SEV = {critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--low)'};
     // Theme survives refresh via localStorage (falls back to prop/light).
@@ -115,6 +116,17 @@ class Component extends DCLogic {
       ov: null, ovBusy: false, ovErr: '',             // /api/overview result (Overview page)
       fkF: {from:'', to:'', plant:'', camera:'', verdict:'', status:'', busy:false, err:''},   // forklift filters
       fkD: null, fkMsg: '', fkDraft: {},              // /api/forklift/summary result · review msg · zone drafts
+      // Workstream C: Behaviour Analytics page filters / result / message · Analytics heatmap · Behaviour Rules draft
+      behF: {from:'', to:'', day:'', camera:'', kind:'', verdict:'', busy:false, err:''}, behD: null, behMsg: '',
+      hmF: {days:7, module:'', sev:'', view:'cam', busy:false, err:''}, hmD: null, hmPick: null, hmItems: null, behDraft: null,
+      // Workstream D: AI Performance · POC Scorecard · Integrations · Data Retention · Network test · Model thresholds
+      aipF: {from:'', to:'', module:'', camera:'', plant:'', busy:false, err:''}, aipD: null, aipMsg: '',
+      aipMiss: {module:'ppe', camera:'', time:'', note:''}, aipMethod: false,
+      pocD: null, pocTab: 'criteria', pocDraft: {criteria:{}, tests:{}, report:{}}, pocMsg: '', pocBusy: false, pocDoc: null,
+      intD: null, intMsg: '', intNewKey: '', intHooks: null,
+      retD: null, retDays: null, retMsg: '',
+      netD: null, netBusy: false, netMsg: '',
+      aiTh: null, aiThMsg: '',
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
     this._vstate = {};       // <video data-cam> element state: connecting | live | buffering | error
@@ -632,7 +644,7 @@ class Component extends DCLogic {
     if(inGroup){ this.setState({navOpen:{...st.navOpen, [g]:!open}}); }
     else { this.setState({navOpen:{...st.navOpen, [g]:true}}); this.setPage(def); } }
   // Sidebar section a page lives in: att | safety | system | '' (Overview).
-  navSecOf(p){ const m={attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',forklift:'safety'};
+  navSecOf(p){ const m={attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',behaviour:'safety',forklift:'safety',aiperf:'system',poc:'system'};
     if(m[p]) return m[p]; const g=this.navGroupOf(p); return g==='cameras'?'safety':((g==='reports'||g==='settings')?'system':''); }
   setNavSec(next){ try{ localStorage.setItem('tmns-nav-sec', JSON.stringify(next)); }catch(e){} this.setState({navSec:next}); }
   toggleNavSec(k){ const open=this.state.navSec[k]!==false; this.setNavSec({...this.state.navSec, [k]:!open}); }
@@ -663,14 +675,19 @@ class Component extends DCLogic {
     if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
     if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
     if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
-    if(p==='rules') this.loadAlerts();
-    if(p==='settings'){ this.loadApp(); this.loadAlerts(); this.loadLive(true); }
+    if(p==='behaviour'){ this.loadBeh(); }             // Workstream C: Line 5 behaviour analytics
+    if(p==='analytics'){ this.loadHm(); }              // Workstream C: incident heatmap
+    if(p==='rules'){ this.loadAlerts(); this.loadNotify(); }   // + condition rules / channels (Workstream A)
+    if(p==='settings'){ this.loadApp(); this.loadAlerts(); this.loadLive(true); this.loadNotify(); }
     if(p==='camera') this.loadLive(true);               // live-bridge readiness on the camera page
     if(p==='forecast') this.loadForecast();
-    if(p==='users'){ this.loadUsers(); this.loadRoles(); } }
+    if(p==='users'){ this.loadUsers(); this.loadRoles(); }
+    if(p==='aiperf') this.loadAip();                 // Workstream D: AI performance metrics
+    if(p==='settings') this.wsdLoadSettings();       // Workstream D: integrations, retention, model thresholds
+    if(p==='poc') this.loadPoc(); }                  // Workstream D: POC scorecard
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
   setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','intr','face','rules','settings','users','camera'];
+  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','aiperf','poc'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
@@ -1235,9 +1252,9 @@ class Component extends DCLogic {
     if(this.state.tktTab!=='comm') return;
     const box=document.getElementById('tkt-comm-list'); if(!box) return;
     const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    const kindCol={comment:'var(--low)', notify:'var(--brand)', tmforce:'var(--crit)', remark:'var(--ok)'};
+    const kindCol={comment:'var(--low)', notify:'var(--brand)', tmforce:'var(--crit)', remark:'var(--ok)', escalation:'var(--high)'};
     const isHtml=(s)=>/<([a-z]+)(\s|\/?>)/i.test(s||'');
-    const all=(this.state.tktLog||[]).filter(l=>['comment','notify','tmforce','remark'].indexOf(l.kind)>=0);
+    const all=(this.state.tktLog||[]).filter(l=>['comment','notify','tmforce','remark','escalation'].indexOf(l.kind)>=0);
     const PS=8, pages=Math.max(1, Math.ceil(all.length/PS));
     const p=Math.min(this.state.tktCommPage||0, pages-1);
     const slice=all.slice(p*PS, p*PS+PS);
@@ -1381,6 +1398,173 @@ class Component extends DCLogic {
         this.setState({alertMsg: ok?((opts&&opts.test)?(d.test_sent?'Saved ✓ · test email sent':'Saved ✓ · test email FAILED'):'Saved ✓'):'Save failed'});
         if(this._amT) clearTimeout(this._amT); this._amT=setTimeout(()=>this.setState({alertMsg:''}), 3000);
       }).catch(()=>this.setState({alertMsg:'Save failed'})); }
+
+  // ── Workstream A: Telegram · escalation workflow · condition rules (/api/notify/settings) ──
+  escChip(e){
+    const lv=(e&&e.escLevel)|0;
+    if(!lv) return {escOn:false, escLabel:'', escCol:'var(--text3)', escTitle:''};
+    const lvl=((((this.state.ntCfg||{}).settings||{}).escalation||{}).levels||[])[lv-1]||{};
+    const mins=e.escMin!=null?e.escMin:((e.escTs&&e.ts)?Math.max(0, Math.round((e.escTs-e.ts)/60000)):null);
+    const col=lv>=3?'var(--crit)':(lv===2?'var(--high)':'var(--gold)');
+    return {escOn:true, escCol:col, escLabel:'L'+lv+' · auto-escalated'+(mins!=null?(' '+mins+'m'):''),
+      escTitle:'Unattended alert auto-escalated to L'+lv+(lvl.name?(' — '+lvl.name):'')+(mins!=null?(' after '+mins+' min'):'')};
+  }
+  ntFetch(path, body){
+    const opt=body ? {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}
+                   : {cache:'no-store', credentials:'same-origin'};
+    return fetch(`${this.API}/${path}?token=${this.TOK}`, opt).then(r=>r.json().catch(()=>({ok:false, error:'HTTP '+r.status})));
+  }
+  ntFlash(msg){ this.setState({ntMsg:msg}); if(this._ntT) clearTimeout(this._ntT); this._ntT=setTimeout(()=>this.setState({ntMsg:''}), 6000); }
+  ntSetDraft(k, v){ this.setState(s=>({ntDraft:{...(s.ntDraft||{}), [k]:v}})); }
+  loadNotify(){ this.ntFetch('notify/settings').then(d=>{ if(d&&d.ok) this.setState({ntCfg:d}); }).catch(()=>{}); }
+  saveNotify(patch, okMsg, clearKeys){
+    this.setState({ntMsg:'Saving…'});
+    this.ntFetch('notify/settings', patch).then(d=>{
+      if(d&&d.ok){
+        this.setState(s=>{ const dr={...(s.ntDraft||{})}; (clearKeys||[]).forEach(k=>{ delete dr[k]; }); return {ntCfg:d, ntDraft:dr}; });
+        this.ntFlash(okMsg||'Saved ✓');
+      } else this.ntFlash('Save failed — '+((d&&d.error)||'unknown error'));
+    }).catch(()=>this.ntFlash('Save failed'));
+  }
+  testTelegram(){
+    this.setState({ntMsg:'Sending Telegram test…'});
+    this.ntFetch('alerts/telegram-test', {}).then(d=>{
+      this.ntFlash(d&&d.ok
+        ? ('Telegram test sent ✓ via @'+(d.bot||'bot')+' to '+d.sent+' chat'+(d.sent===1?'':'s')+(d.failed?(' · '+d.failed+' failed'):''))
+        : ('Telegram test failed — '+((d&&(d.error||(d.errors||[]).join('; ')))||'unknown error')));
+      this.loadNotify();
+    }).catch(()=>this.ntFlash('Telegram test failed'));
+  }
+  testEmailChannel(){
+    this.setState({ntMsg:'Sending test email…'});
+    this.ntFetch('alerts/email-test', {}).then(d=>{
+      this.ntFlash(d&&d.ok ? ('Test email sent ✓ to '+(d.to||[]).join(', ')) : ('Test email failed — '+((d&&d.error)||'unknown error')));
+      this.loadNotify();
+    }).catch(()=>this.ntFlash('Test email failed'));
+  }
+  runEscalation(dry){
+    this.setState({escBusy:true, ntMsg:dry?'Checking open alerts…':'Running escalation…'});
+    this.ntFetch('escalation/run', {dry_run:!!dry}).then(d=>{
+      this.setState({escBusy:false, escRes:(d&&d.ok)?d:null});
+      if(d&&d.ok){
+        const n=(d.escalated||[]).length;
+        this.ntFlash(dry ? (n+' escalation'+(n===1?'':'s')+' due now · '+(d.pending||[]).length+' upcoming')
+                         : (n+' escalation'+(n===1?'':'s')+' performed ✓'));
+        if(!dry){ this.loadNotify(); this.fetchFeed(); }
+      } else this.ntFlash('Escalation check failed — '+((d&&d.error)||'unknown error'));
+    }).catch(()=>{ this.setState({escBusy:false}); this.ntFlash('Escalation check failed'); });
+  }
+  saveConditions(list, msg){ this.saveNotify({conditions:list}, msg||'Condition rules saved ✓'); }
+
+  /** Bindings for the Notifications tab (Telegram / escalation) and the Alert Rules condition rules. */
+  wsAVals(st){
+    const nc=st.ntCfg||null, S=(nc&&nc.settings)||{}, tg=S.telegram||{}, es=S.escalation||{}, ch=(nc&&nc.channels)||{};
+    const stats=(nc&&nc.stats)||{}, dr=st.ntDraft||{};
+    const dv=(k, f)=> dr[k]!=null ? dr[k] : f;
+    const tog=(on)=>({bg:on?'var(--ok)':'var(--line2)', knob:on?'18px':'2px'});
+    const inp=(k)=>(e)=>this.ntSetDraft(k, e&&e.target?e.target.value:'');
+    const chips=(opts, cur, cb)=>opts.map(([v,label])=>({label, cls:String(cur)===String(v)?'chip on':'chip', onClick:()=>cb(v)}));
+    const em=ch.email||{}, tc=ch.telegram||{}, se=stats.email||{}, stg=stats.telegram||{};
+    const chanRow=(label, c, s, okLine, offLine)=>{
+      const ready=!!c.ready;
+      return {label, ready, mark:ready?'✓':'✗', col:ready?'var(--ok)':(c.configured?'var(--gold)':'var(--text3)'),
+        line: ready?okLine:offLine,
+        stat:(s.sent24h||0)+' sent 24h · '+(s.escalations||0)+' escalations'+(s.failed?(' · '+s.failed+' failed'):''),
+        err:s.last_error?('Last error: '+s.last_error):''};
+    };
+    const chEmail=chanRow('Email', em, se, 'Ready · '+(em.recipients||0)+' base recipient'+(em.recipients===1?'':'s'),
+      !em.configured?'Not configured — set MAIL_HOST / MAIL_USERNAME in .env':(!em.enabled?'Switched off on the Alert Rules page':'No recipients'));
+    const chTg=chanRow('Telegram', tc, stg, 'Ready · '+(tc.chats||0)+' default chat'+(tc.chats===1?'':'s'),
+      !tc.configured?'No bot token yet':(!tc.enabled?'Switched off':'No chat ID'));
+    const tgOn=dv('tg_enabled', !!tg.enabled), tgPhoto=tg.send_photo!==false;
+    const escOn=!!es.enabled;
+    const unit=es.unattended_min||5;
+    const lvlCol=['var(--gold)','var(--high)','var(--crit)'];
+    const levels=(es.levels||[{},{},{}]).map((l,i)=>{
+      const k='esc_l'+i+'_';
+      return {tag:'L'+(i+1), col:lvlCol[i], after:'after '+(unit*(i+1))+' min unattended',
+        name:dv(k+'name', l.name||''), onName:inp(k+'name'),
+        emails:dv(k+'emails', (l.emails||[]).join(', ')), onEmails:inp(k+'emails'),
+        chats:dv(k+'chats', (l.chats||[]).join(', ')), onChats:inp(k+'chats'),
+        warn:(!(l.emails||[]).length && !(l.chats||[]).length)?'No recipients — this level is logged only':''};
+    });
+    const levelKeys=[0,1,2].reduce((a,i)=>a.concat(['esc_l'+i+'_name','esc_l'+i+'_emails','esc_l'+i+'_chats']), []);
+    const er=st.escRes, sevCol=this.SEV||{};
+    const stateTxt=(v)=> v==null?'—':v;
+    const escResRows=er?(er.escalated||[]).slice(0,40).map(x=>({
+      lv:'L'+x.level, col:lvlCol[(x.level||1)-1], title:x.title, camera:x.camera, sev:x.sev, sevCol:sevCol[x.sev]||'var(--text2)',
+      sub:x.level_name+' · unattended '+x.unattended_min+' min (age '+x.age_min+' min)'+(x.simulated?' · simulated':''),
+      chan:'Email '+stateTxt(x.email)+' · Telegram '+stateTxt(x.telegram)})):[];
+    const escPendRows=er?(er.pending||[]).slice(0,15).map(x=>({
+      lv:x.level?('L'+x.level):'—', title:x.title, camera:x.camera,
+      sub:'→ L'+x.next+' '+x.next_name+' in '+Math.ceil((x.due_in_s||0)/60)+' min'+(x.simulated?' · simulated':'')})):[];
+    const last=(nc&&nc.escalation&&nc.escalation.last)||null, obl=(nc&&nc.escalation&&nc.escalation.open_by_level)||{};
+    const recent=((nc&&nc.recent)||[]).slice(0,10).map(r=>({at:r.at, ch:r.channel==='telegram'?'Telegram':'Email',
+      kind:r.kind, ok:r.ok?'✓':'✗', col:r.ok?'var(--ok)':'var(--crit)', note:(r.note||'')+(r.sim?' · simulated':'')}));
+
+    // ── condition rules (Alert Rules page) ──
+    const conds=Array.isArray(S.conditions)?S.conditions:[];
+    const modName={any:'Any module', fire:'Fire & Smoke', ppe:'PPE', intr:'Intrusion', face:'Face & Body', forklift:'Forklift', behaviour:'Behaviour'};
+    const condRows=conds.map((c,i)=>{ const t=tog(c.enabled!==false);
+      return {name:c.name, desc:(modName[c.mod]||c.mod)+' · '+(c.camera?c.camera.toUpperCase():'any camera')+' · severity ≥ '+c.min_sev
+          +' · '+(c.window==='always'?'24 h':c.window)+(c.keyword?(' · matches "'+c.keyword+'"'):''),
+        chans:[c.channels&&c.channels.email?'Email':'', c.channels&&c.channels.telegram?'Telegram':''].filter(Boolean).join(' + ')||'No channel',
+        toggleBg:t.bg, knobX:t.knob,
+        onToggle:()=>this.saveConditions(conds.map((x,j)=>j===i?{...x, enabled:!(x.enabled!==false)}:x)),
+        onDelete:()=>{ if(window.confirm('Delete condition rule "'+c.name+'"?')) this.saveConditions(conds.filter((x,j)=>j!==i), 'Condition rule deleted'); }}; });
+    const cf=st.condForm||{};
+    const cfSet=(k)=>(e)=>{ const v=e&&e.target?e.target.value:''; this.setState(s=>({condForm:{...(s.condForm||{}), [k]:v}})); };
+    const sel=(opts, cur, k)=>({value:String(cur), onChange:cfSet(k), options:opts.map(([v,label])=>({v:String(v), label}))});
+    const camOpts=[['','Any camera']].concat(((nc&&nc.cameras)||[]).concat((st.fleet||[]).map(f=>f.stream))
+      .filter((v,i,a)=>v&&a.indexOf(v)===i).slice(0,80).map(c=>[c, String(c).toUpperCase()]));
+    const cfEmail=cf.email!==false, cfTg=cf.telegram!==false;
+    return {
+      ntMsg:st.ntMsg||'', loaded:!!nc,
+      chEmail, chTg, chanLine:'Channels: Email '+chEmail.mark+' · Telegram '+chTg.mark,
+      tgToggleBg:tog(tgOn).bg, tgKnob:tog(tgOn).knob,
+      onTgToggle:()=>{ this.ntSetDraft('tg_enabled', !tgOn); this.saveNotify({telegram:{enabled:!tgOn}}, !tgOn?'Telegram on ✓':'Telegram off', ['tg_enabled']); },
+      tgPhotoBg:tog(tgPhoto).bg, tgPhotoKnob:tog(tgPhoto).knob,
+      onTgPhoto:()=>this.saveNotify({telegram:{send_photo:!tgPhoto}}, 'Saved ✓'),
+      tgToken:dv('tg_token', tg.bot_token||''), onTgToken:inp('tg_token'),
+      tgTokenState:tg.has_token?'TOKEN SET':'NO TOKEN', tgTokenCol:tg.has_token?'var(--ok)':'var(--text3)',
+      tgChats:dv('tg_chats', (tg.chat_ids||[]).join(', ')), onTgChats:inp('tg_chats'),
+      saveTg:()=>{ const t={chat_ids:dv('tg_chats', (tg.chat_ids||[]).join(', '))};
+        const tok=dr.tg_token; if(tok && tok.indexOf('•')<0) t.bot_token=tok.trim();
+        this.saveNotify({telegram:t}, 'Telegram settings saved ✓', ['tg_token','tg_chats']); },
+      testTg:()=>this.testTelegram(), testEmail:()=>this.testEmailChannel(),
+      escToggleBg:tog(escOn).bg, escKnob:tog(escOn).knob,
+      onEscToggle:()=>this.saveNotify({escalation:{enabled:!escOn}}, !escOn?'Escalation workflow on ✓':'Escalation workflow off'),
+      escMinChips:chips([[1,'1 min'],[5,'5 min'],[10,'10 min'],[15,'15 min']], unit, v=>this.saveNotify({escalation:{unattended_min:v}}, 'Unattended threshold '+v+' min ✓')),
+      escSevChips:chips([['medium','Medium +'],['high','High +'],['critical','Critical only']], es.min_severity||'high', v=>this.saveNotify({escalation:{min_severity:v}}, 'Saved ✓')),
+      escLevels:levels,
+      saveLevels:()=>this.saveNotify({escalation:{levels:levels.map(l=>({name:l.name, emails:l.emails, chats:l.chats}))}}, 'Escalation levels saved ✓', levelKeys),
+      escFlow:'Open alert (severity ≥ '+(es.min_severity||'high')+') → not acknowledged for '+unit+' min → L1 '+((levels[0]||{}).name||'')
+        +' → '+(unit*2)+' min → L2 '+((levels[1]||{}).name||'')+' → '+(unit*3)+' min → L3 '+((levels[2]||{}).name||'')
+        +'. Acknowledging or resolving the alert stops the chain.',
+      escOpenLine:'Open & escalated now: L1 '+(obl[1]||0)+' · L2 '+(obl[2]||0)+' · L3 '+(obl[3]||0),
+      escLastLine:last?('Last automatic run '+last.ran_at+' · checked '+last.checked+' open alerts · '+last.escalated+' escalated'):'No automatic run yet — runs from the dashboard poll (at most once a minute) and /api/report/cron',
+      escBusy:!!st.escBusy, runDry:()=>this.runEscalation(true), runNow:()=>this.runEscalation(false),
+      escResHas:!!er, escResTitle:er?((er.dry_run?'Preview (dry run) · ':'Run · ')+er.ran_at+' · '+er.checked+' open alerts checked'+(er.enabled?'':' · workflow is OFF')):'',
+      escResRows, escResHasRows:escResRows.length>0, escResNone:!!er && escResRows.length===0,
+      escPendRows, escPendHas:escPendRows.length>0,
+      recent, recentHas:recent.length>0, recentNone:recent.length===0,
+      // condition rules
+      condRows, condHas:condRows.length>0, condNone:condRows.length===0,
+      cfName:cf.name||'', onCfName:cfSet('name'), cfKeyword:cf.keyword||'', onCfKeyword:cfSet('keyword'),
+      cfMod:sel(Object.entries(modName), cf.mod||'any', 'mod'),
+      cfCam:sel(camOpts, cf.camera||'', 'camera'),
+      cfSev:sel([['low','Any severity'],['medium','Medium +'],['high','High +'],['critical','Critical']], cf.min_sev||'low', 'min_sev'),
+      cfWin:sel([['always','24 h'],['22:00-06:00','After hours 22:00–06:00'],['06:00-22:00','Working hours 06:00–22:00'],['19:00-07:00','Night shift 19:00–07:00'],['07:00-19:00','Day shift 07:00–19:00']], cf.window||'always', 'window'),
+      cfEmailCls:cfEmail?'chip on':'chip', cfTgCls:cfTg?'chip on':'chip',
+      cfToggleEmail:()=>this.setState(s=>({condForm:{...(s.condForm||{}), email:!cfEmail}})),
+      cfToggleTg:()=>this.setState(s=>({condForm:{...(s.condForm||{}), telegram:!cfTg}})),
+      addCond:()=>{ const name=String(cf.name||'').trim();
+        if(!name){ this.ntFlash('Give the condition rule a name'); return; }
+        this.saveConditions(conds.concat([{name, mod:cf.mod||'any', camera:cf.camera||'', min_sev:cf.min_sev||'low', window:cf.window||'always',
+          keyword:String(cf.keyword||'').trim(), enabled:true, channels:{email:cfEmail, telegram:cfTg}}]), 'Condition rule added ✓');
+        this.setState({condForm:{}}); },
+    };
+  }
 
   // ── Danger zone: wipe every stored detection ──────────────
   // Two-step: the first click arms the button, the second one purges.
@@ -1582,7 +1766,7 @@ class Component extends DCLogic {
   // ── Forklift monitoring (/api/forklift/*) ─────────────────
   loadFk(){
     const f=this.state.fkF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||'', kind:f.kind||''});
     this.setState(st=>({fkF:{...st.fkF, busy:true, err:''}}));
     fetch(`${this.API}/forklift/summary?${qs}`, {cache:'no-store'})
       .then(x=>x.json())
@@ -1592,7 +1776,7 @@ class Component extends DCLogic {
   setFkF(patch){ this.setState(st=>({fkF:{...st.fkF, ...patch}})); if(this._fkT) clearTimeout(this._fkT); this._fkT=setTimeout(()=>this.loadFk(), 0); }
   exportFk(report){
     const f=this.state.fkF, d=this.state.fkD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||'', kind:f.kind||''});
     window.open(`${this.API}/forklift/export?${qs}`, '_blank');
   }
   // Reviewer decision on a forklift event: confirm it as a zone violation or clear it as a false alarm.
@@ -1617,6 +1801,68 @@ class Component extends DCLogic {
     this.setState(st=>{ const d={...st.fkDraft}; delete d[key]; return {fkDraft:d}; });
   }
   fkDraftSet(key, k, v){ this.setState(st=>({fkDraft:{...st.fkDraft, [key]:{...(st.fkDraft[key]||{}), [k]:v}}})); }
+
+  // ── Workstream C: Behaviour analytics (/api/behaviour/*) ────
+  loadBeh(){
+    const f=this.state.behF;
+    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', day:f.day||'', camera:f.camera||'', kind:f.kind||'', verdict:f.verdict||''});
+    this.setState(st=>({behF:{...st.behF, busy:true, err:''}}));
+    fetch(`${this.API}/behaviour/summary?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({behD:d, behF:{...st.behF, busy:false}})); })
+      .catch(()=>this.setState(st=>({behF:{...st.behF, busy:false, err:'Could not load behaviour analytics'}})));
+  }
+  setBehF(patch){ this.setState(st=>({behF:{...st.behF, ...patch}})); if(this._behT) clearTimeout(this._behT); this._behT=setTimeout(()=>this.loadBeh(), 0); }
+  // Trend range shortcut: last N days ending today.
+  setBehRange(days){ const d=new Date(), p=(n)=>String(n).padStart(2,'0'), iso=(x)=>x.getFullYear()+'-'+p(x.getMonth()+1)+'-'+p(x.getDate());
+    const from=new Date(d.getTime()-(days-1)*86400000); this.setBehF({from:iso(from), to:iso(d), day:''}); }
+  exportBeh(report){
+    const f=this.state.behF, d=this.state.behD||{};
+    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', camera:f.camera||'', kind:f.kind||'', verdict:f.verdict||''});
+    window.open(`${this.API}/behaviour/export?${qs}`, '_blank');
+  }
+  reviewBeh(item, verdict){
+    const note=window.prompt((verdict==='confirmed'?'Confirm behaviour event':'Clear as false alarm')+' — '+(item.reason||item.camera||'')+'\n\nOptional note:', '');
+    if(note===null) return;
+    this.setState({behMsg:'Saving review…'});
+    fetch(`${this.API}/behaviour/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+      body:JSON.stringify({id:item.id, verdict, note})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
+        this.setState({behMsg:verdict==='confirmed'?'Confirmed ✓':'Cleared as false alarm ✓'}); this.loadBeh(); this.fetchFeed(); })
+      .catch(e=>this.setState({behMsg:'✗ '+(e&&e.message||'Review failed')}));
+  }
+  rescanBeh(){
+    this.setState({behMsg:'Re-scanning the last 7 days with the current thresholds…', appMsg:'Re-scanning…'});
+    fetch(`${this.API}/behaviour/rescan`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({days:7})})
+      .then(x=>x.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Re-scan failed');
+        const m='Re-scan done — '+(d.created||0)+' derived event(s) ✓'; this.setState({behMsg:m, appMsg:m}); if(this.state.page==='behaviour') this.loadBeh(); })
+      .catch(e=>this.setState({behMsg:'✗ '+(e&&e.message||'Re-scan failed'), appMsg:'✗ '+(e&&e.message||'Re-scan failed')}));
+  }
+  // Settings → Behaviour Rules: local draft over the stored settings, saved through /api/settings.
+  behCfg(){ const s=((this.state.appCfg||{}).behaviour)||{}; return {enabled:true, cameras:[], locations:['Line 5'], group_min:2, dwell_min:3, idle_min:10, gap_sec:120, clean_items:['gloves','goggles'], ...s, ...(this.state.behDraft||{})}; }
+  behSet(patch){ this.setState(st=>({behDraft:{...(st.behDraft||{}), ...patch}})); }
+  behSave(){ const c=this.behCfg();
+    this.saveApp({beh_enabled:!!c.enabled, beh_cameras:c.cameras, beh_locations:c.locations, beh_group_min:c.group_min, beh_dwell_min:c.dwell_min,
+      beh_idle_min:c.idle_min, beh_gap_sec:c.gap_sec, beh_clean_items:c.clean_items}, 'Behaviour rules saved ✓');
+    this.setState({behDraft:null}); }
+  // Analytics → incident heatmap (/api/behaviour/heatmap)
+  loadHm(pick){
+    const f=this.state.hmF, seq=(this._hmSeq=(this._hmSeq||0)+1);
+    const qs=new URLSearchParams({token:this.TOK, days:String(f.days||7), module:f.module||'', sev:f.sev||''});
+    if(pick){ qs.set('pick', pick.type); qs.set('row', pick.row); qs.set('hour', String(pick.hour)); }
+    this.setState(st=>({hmF:{...st.hmF, busy:true, err:''}}));
+    fetch(`${this.API}/behaviour/heatmap?${qs}`, {cache:'no-store'})
+      .then(x=>x.json())
+      .then(d=>{ if(seq!==this._hmSeq) return; if(!(d&&d.ok)) throw new Error('bad');
+        this.setState(st=>({hmD:d, hmItems:pick?(d.items||[]):null, hmPick:pick||null, hmF:{...st.hmF, busy:false}})); })
+      .catch(()=>{ if(seq===this._hmSeq) this.setState(st=>({hmF:{...st.hmF, busy:false, err:'Could not load the heatmap'}})); });
+  }
+  setHmF(patch){ this.setState(st=>({hmF:{...st.hmF, ...patch}, hmPick:null, hmItems:null})); setTimeout(()=>this.loadHm(), 0); }
+  pickHm(type, row, hour, label){ const p=this.state.hmPick;
+    if(p && p.type===type && p.row===row && p.hour===hour){ this.setState({hmPick:null, hmItems:null}); return; }
+    this.loadHm({type, row, hour, label}); }
 
   // ── Overview dashboard (/api/overview) ─────────────────────
   // Stale responses (an older plant filter) are dropped via a sequence number.
@@ -1669,6 +1915,20 @@ class Component extends DCLogic {
     if(items.length) cur[loc]=items; else delete cur[loc];
     this.saveApp({ppe_rules:cur}, items.length?('PPE rule saved for '+loc+' ✓'):('PPE rule removed for '+loc));
   }
+  // Workstream B: HatsType values counted as "hair covered" by the hair-net proxy.
+  togglePpeHairHat(v){
+    const cur=((this.state.appCfg||{}).ppe_hair_hats||['Bonnet']).slice(); const i=cur.indexOf(v);
+    if(i>=0) cur.splice(i,1); else cur.push(v);
+    this.saveApp({ppe_hair_hats:cur.length?cur:['Bonnet']}, 'Hair-net proxy saved ✓');
+  }
+  // Workstream B: forklift operator PPE per zone, and the operator correlation window.
+  toggleFkOpPpe(key, item){
+    const z=(((this.state.appCfg||{}).fk_zones)||{})[key]||{};
+    const cur=(Array.isArray(z.op_ppe)?z.op_ppe:['helmet','vest']).slice(); const i=cur.indexOf(item);
+    if(i>=0) cur.splice(i,1); else cur.push(item);
+    this.saveFkZone(key, {op_ppe:cur});
+  }
+  setFkOpWindow(s){ this.saveApp({fk_operator_window:s}, 'Operator window set to ±'+s+' s ✓'); }
 
   // ── Settings page (via /api/settings) ─────────────────────
   loadApp(){ fetch(`${this.API}/settings?token=${this.TOK}`, {cache:'no-store'}).then(r=>r.json())
@@ -1757,6 +2017,350 @@ class Component extends DCLogic {
   matchCol(v){ const p=this.matchPct(v);
     return p==null?'var(--text3)':(p>=90?'var(--ok)':(p>=75?'var(--gold)':'var(--crit)')); }
 
+  // ══ Workstream D: AI performance · POC scorecard · integrations · retention · network test ══
+  wsdGet(path){
+    return fetch(`${this.API}${path}${path.indexOf('?')>=0?'&':'?'}token=${encodeURIComponent(this.TOK)}`, {cache:'no-store', credentials:'same-origin'})
+      .then(r=>r.json().then(d=>{ if(!r.ok||!(d&&d.ok)) throw new Error((d&&d.error)||('HTTP '+r.status)); return d; }));
+  }
+  wsdPost(path, body){
+    return fetch(`${this.API}${path}`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body||{})})
+      .then(r=>r.json().then(d=>{ if(!r.ok||!(d&&d.ok)) throw new Error((d&&d.error)||('HTTP '+r.status)); return d; }));
+  }
+  wsdBytes(n){ n=+n||0; const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024&&i<u.length-1){ n/=1024; i++; } return (i?n.toFixed(n<10?2:1):n)+' '+u[i]; }
+  // ── AI Performance page (/api/aiperf/*) ──
+  aipQs(extra){ const f=this.state.aipF;
+    return new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', module:f.module||'', camera:f.camera||'', plant:f.plant||'', ...(extra||{})}); }
+  loadAip(){
+    this.setState(st=>({aipF:{...st.aipF, busy:true, err:''}}));
+    fetch(`${this.API}/aiperf/summary?${this.aipQs()}`, {cache:'no-store'}).then(r=>r.json())
+      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'bad'); this.setState(st=>({aipD:d, aipF:{...st.aipF, busy:false}})); })
+      .catch(e=>this.setState(st=>({aipF:{...st.aipF, busy:false, err:'Could not load AI performance data'+(e&&e.message&&e.message!=='bad'?' — '+e.message:'')}})));
+  }
+  setAipF(patch){ this.setState(st=>({aipF:{...st.aipF, ...patch}})); if(this._aipT) clearTimeout(this._aipT); this._aipT=setTimeout(()=>this.loadAip(), 0); }
+  exportAip(kind){ window.open(`${this.API}/aiperf/${kind}?${this.aipQs()}`, '_blank'); }
+  aipVerify(item, verdict){
+    this.setState({aipMsg:'Saving…'});
+    this.wsdPost('/aiperf/verify', {uuid:item.uuid, verdict})
+      .then(()=>{ this.setState({aipMsg:verdict==='correct'?'Recorded as correct (TP) ✓':'Recorded as false alarm (FP) ✓'}); this.loadAip(); })
+      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
+  }
+  aipSetMiss(patch){ this.setState(st=>({aipMiss:{...st.aipMiss, ...patch}})); }
+  aipLogMiss(){
+    const m=this.state.aipMiss;
+    if(!m.camera){ this.setState({aipMsg:'✗ Pick the camera where the detection was missed'}); return; }
+    this.setState({aipMsg:'Logging missed detection…'});
+    this.wsdPost('/aiperf/missed', {module:m.module, camera:m.camera, time:m.time||'', note:m.note||''})
+      .then(()=>{ this.setState(st=>({aipMsg:'Missed detection logged (FN) ✓', aipMiss:{...st.aipMiss, note:'', time:''}})); this.loadAip(); })
+      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
+  }
+  aipDelMiss(m){
+    if(!window.confirm('Remove this missed-detection record?\n\n'+(m.label||'')+' · '+(m.cameraName||'')+' · '+(m.time||''))) return;
+    this.wsdPost('/aiperf/missed', {delete:m.id}).then(()=>{ this.setState({aipMsg:'Removed ✓'}); this.loadAip(); })
+      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
+  }
+  // ── POC Scorecard (/api/poc/*) ──
+  loadPoc(){
+    this.setState({pocBusy:true});
+    this.wsdGet('/poc/scorecard').then(d=>this.setState({pocD:d, pocBusy:false}))
+      .catch(e=>this.setState({pocBusy:false, pocMsg:'✗ Could not load the scorecard — '+e.message}));
+  }
+  pocSet(kind, key, field, val){
+    this.setState(st=>{ const d=st.pocDraft;
+      if(kind==='report') return {pocDraft:{...d, report:{...d.report, [field]:val}}, pocMsg:''};
+      const grp={...(d[kind]||{})}; grp[key]={...(grp[key]||{}), [field]:val};
+      return {pocDraft:{...d, [kind]:grp}, pocMsg:''}; });
+  }
+  pocDirtyCount(){ const d=this.state.pocDraft; return Object.keys(d.criteria).length+Object.keys(d.tests).length+(Object.keys(d.report).length?1:0); }
+  pocSave(){
+    if(!this.pocDirtyCount()){ this.setState({pocMsg:'Nothing to save'}); return; }
+    this.setState({pocMsg:'Saving scorecard…'});
+    this.wsdPost('/poc/scorecard', this.state.pocDraft)
+      .then(()=>{ this.setState({pocDraft:{criteria:{}, tests:{}, report:{}}, pocMsg:'Scorecard saved ✓'}); this.loadPoc(); })
+      .catch(e=>this.setState({pocMsg:'✗ '+e.message}));
+  }
+  pocExport(sheet){ window.open(`${this.API}/poc/export?token=${encodeURIComponent(this.TOK)}&sheet=${sheet}`, '_blank'); }
+  pocPrint(){
+    if(this.pocDirtyCount()) this.setState({pocMsg:'Unsaved changes are included in the printout — save them too'});
+    this.setState({pocTab:'report'});
+    setTimeout(()=>{ try{ document.body.classList.add('ppx-printing'); window.print(); }catch(e){}
+      setTimeout(()=>{ try{ document.body.classList.remove('ppx-printing'); }catch(e){} }, 600); }, 250);
+  }
+  pocOpenDoc(name){
+    if(this.state.pocDoc&&this.state.pocDoc.name===name){ this.setState({pocDoc:null}); return; }
+    this.setState({pocDoc:{name, file:'', md:'Loading…'}});
+    this.wsdGet('/poc/doc?name='+encodeURIComponent(name)).then(d=>this.setState({pocDoc:{name, file:d.file, md:d.markdown}}))
+      .catch(e=>this.setState({pocDoc:{name, file:'', md:'Could not load: '+e.message}}));
+  }
+  // ── Settings: integrations, retention, model thresholds, network test ──
+  wsdLoadSettings(){ this.loadInt(); this.loadRet(); this.loadTh(); }
+  loadInt(){ this.wsdGet('/integration/config').then(d=>this.setState({intD:d, intHooks:null})).catch(e=>this.setState({intMsg:'✗ '+e.message})); }
+  intRegen(){
+    const has=!!(this.state.intD&&this.state.intD.settings&&this.state.intD.settings.has_key);
+    if(has && !window.confirm('Rotate the integration API key?\n\nHRMS / MES systems using the current key stop working until they are given the new one.')) return;
+    this.setState({intMsg:'Generating key…'});
+    this.wsdPost('/integration/config', {regen_key:true})
+      .then(d=>this.setState(st=>({intNewKey:d.new_key||'', intD:{...(st.intD||{}), settings:d.settings}, intMsg:'New key generated — copy it now, it is shown only once ✓'})))
+      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
+  }
+  intRevoke(){
+    if(!window.confirm('Revoke the integration API key? The integration API is disabled until a new key is generated.')) return;
+    this.wsdPost('/integration/config', {revoke_key:true})
+      .then(d=>this.setState(st=>({intNewKey:'', intD:{...(st.intD||{}), settings:d.settings}, intMsg:'Key revoked ✓'})))
+      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
+  }
+  intHookList(){ const st=this.state; if(st.intHooks) return st.intHooks;
+    return ((st.intD&&st.intD.settings&&st.intD.settings.webhooks)||[]).map(h=>({...h, events:[...(h.events||[])]})); }
+  intHookSet(i, patch){ const l=this.intHookList().map(h=>({...h})); l[i]={...l[i], ...patch}; this.setState({intHooks:l, intMsg:''}); }
+  intHookAdd(){ const l=this.intHookList(); if(l.length>=10) return;
+    this.setState({intHooks:[...l, {id:'', url:'', secret:'', events:['incident','attendance'], enabled:true}], intMsg:''}); }
+  intHookRemove(i){ this.setState({intHooks:this.intHookList().filter((_,j)=>j!==i), intMsg:'Removed — save to apply'}); }
+  intHookEvent(i, ev){ const h=this.intHookList()[i]; const e=h.events.indexOf(ev)>=0?h.events.filter(x=>x!==ev):[...h.events, ev]; this.intHookSet(i, {events:e}); }
+  intSaveHooks(){
+    const l=this.intHookList(), bad=l.find(h=>!/^https?:\/\/\S+$/i.test(String(h.url||'').trim()));
+    if(bad){ this.setState({intMsg:'✗ Every webhook needs an http(s) URL'}); return; }
+    this.setState({intMsg:'Saving webhooks…'});
+    this.wsdPost('/integration/config', {webhooks:l})
+      .then(d=>this.setState(st=>({intD:{...(st.intD||{}), settings:d.settings}, intHooks:null, intMsg:'Webhooks saved ✓'})))
+      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
+  }
+  intTest(h){
+    if(!h.id){ this.setState({intMsg:'✗ Save the webhook first, then send a test'}); return; }
+    this.setState({intMsg:'Sending test webhook…'});
+    this.wsdPost('/integration/test', {id:h.id})
+      .then(d=>{ this.setState({intMsg:'Test delivered ✓ HTTP '+d.code+' in '+d.ms+' ms'}); this.loadInt(); })
+      .catch(e=>{ this.setState({intMsg:'✗ Test failed — '+e.message}); this.loadInt(); });
+  }
+  loadRet(){ this.wsdGet('/retention').then(d=>this.setState({retD:d})).catch(e=>this.setState({retMsg:'✗ '+e.message})); }
+  retSave(days){
+    this.setState({retMsg:'Saving…', retDays:days});
+    this.wsdPost('/retention', {retention_days:days})
+      .then(d=>this.setState(st=>({retD:{...(st.retD||{}), storage:d.storage}, retDays:null, retMsg:'Retention set to '+(days?days+' days':'keep forever')+' ✓'})))
+      .catch(e=>this.setState({retDays:null, retMsg:'✗ '+e.message}));
+  }
+  retPurge(){
+    const due=this.state.retD&&this.state.retD.due;
+    if(!window.confirm('Purge now?\n\n'+((due&&due.events)||0)+' events older than the retention window (and their PPE / zone rows, incident log and ticket attachments) are deleted permanently.')) return;
+    this.setState({retMsg:'Purging…'});
+    this.wsdPost('/retention', {purge_now:true})
+      .then(d=>{ this.setState({retMsg:'Purged '+((d.purge&&d.purge.events)||0)+' events ✓'}); this.loadRet(); })
+      .catch(e=>this.setState({retMsg:'✗ '+e.message}));
+  }
+  runNetTest(stream){
+    this.setState({netBusy:true, netMsg:stream?('Testing '+stream+'…'):'Running network test — up to ~50 s…'});
+    this.wsdPost('/live/nettest', stream?{stream}:{})
+      .then(d=>{ if(stream && this.state.netD){
+          const rows=(this.state.netD.rows||[]).map(r=>r.name===stream?(d.rows[0]||r):r);
+          this.setState(st=>({netD:{...st.netD, rows}, netBusy:false, netMsg:'Re-tested '+stream+' ✓'})); }
+        else this.setState({netD:d, netBusy:false, netMsg:'Network test finished ✓'}); })
+      .catch(e=>this.setState({netBusy:false, netMsg:'✗ '+e.message}));
+  }
+  loadTh(){ this.wsdGet('/aiperf/thresholds').then(d=>this.setState({aiTh:{face:String(d.face_min_similarity), ppe:String(d.ppe_min_conf)}})).catch(()=>{}); }
+  aiThSave(){
+    const t=this.state.aiTh||{}, f=parseFloat(t.face), p=parseFloat(t.ppe);
+    if(!(f>=0&&f<=100) || !(p>=0&&p<=100)){ this.setState({aiThMsg:'✗ Thresholds are percentages 0–100 (0 = off)'}); return; }
+    this.setState({aiThMsg:'Saving…'});
+    this.wsdPost('/aiperf/thresholds', {face_min_similarity:f, ppe_min_conf:p})
+      .then(d=>this.setState({aiTh:{face:String(d.face_min_similarity), ppe:String(d.ppe_min_conf)}, aiThMsg:'Thresholds saved — applied to new detections ✓'}))
+      .catch(e=>this.setState({aiThMsg:'✗ '+e.message}));
+  }
+
+  // Bindings for the Workstream D pages / settings tabs (spread into renderVals).
+  wsdVals(){
+    const st=this.state;
+    const ev=(e)=>(e&&e.target)?e.target.value:'';
+    const pct=(v)=>v==null?'—':(v+'%');
+    const tone=(v,good,ok)=>v==null?'var(--text3)':(v>=good?'var(--ok)':(v>=ok?'var(--gold)':'var(--crit)'));
+    const GRADE={pass:['PASS','var(--ok)'], warn:['WARN','var(--gold)'], fail:['FAIL','var(--crit)'], na:['N/A','var(--text3)']};
+    const pill=(col)=>'color-mix(in srgb, '+col+' 16%, transparent)';
+    const sel=(value, options, onChange)=>({value:value==null?'':String(value), options, onChange});
+    // ── AI performance ──
+    const ad=st.aipD||{}, af=st.aipF, ao=ad.overall||{};
+    const CONF={high:['HIGH','var(--ok)'], medium:['MEDIUM','var(--gold)'], low:['LOW','var(--high)'], none:['NO SAMPLES','var(--text3)']};
+    const ci=(c)=>c?(c[0]+'–'+c[1]+'%'):'';
+    const mRow=(m)=>{ const c=CONF[m.confidence]||CONF.none;
+      return {det:String(m.detections), reviewed:String(m.reviewed), cov:m.coverage==null?'':('coverage '+m.coverage+'%'),
+        tp:String(m.tp), fp:String(m.fp), fn:String(m.fn), p:pct(m.precision), pCi:ci(m.precisionCi), pCol:tone(m.precision,90,75),
+        r:pct(m.recall), rCi:ci(m.recallCi), rCol:tone(m.recall,90,75), f1:pct(m.f1), f1Col:tone(m.f1,90,75),
+        conf:c[0], confCol:c[1], confBg:pill(c[1])}; };
+    const aipModRows=(ad.modules||[]).map(m=>({label:m.label, ...mRow(m),
+      day:pct(m.day&&m.day.precision)+' / '+pct(m.day&&m.day.recall), night:pct(m.night&&m.night.precision)+' / '+pct(m.night&&m.night.recall),
+      onPick:()=>this.setAipF({module:af.module===m.module?'':m.module})}));
+    const aipPerRows=(ad.periods||[]).map(p=>({label:p.label, ...mRow(p)}));
+    const aipCamRows=(ad.cameras||[]).slice(0,60).map(c=>({name:c.name, sub:[c.location, c.plant, c.camera].filter(Boolean).join(' · '), label:c.label, ...mRow(c)}));
+    const fc=ad.face||{}, bins=fc.bins||[], bMax=Math.max(1,...bins.map(b=>b.count));
+    const aipSimBars=bins.map(b=>({label:b.range+'%', value:String(b.count), w:Math.round(100*b.count/bMax)+'%',
+      col:/^(9|95)/.test(b.range)?'var(--ok)':(/^(85|80)/.test(b.range)?'var(--gold)':'var(--high)')}));
+    const missedTotal=(ad.modules||[]).reduce((a,m)=>a+m.fn,0);
+    const aipKpis=[
+      ['PRECISION', pct(ao.precision), tone(ao.precision,90,75), ao.precisionCi?('95% CI '+ci(ao.precisionCi)):'TP / (TP + FP)'],
+      ['RECALL', pct(ao.recall), tone(ao.recall,90,75), ao.recallCi?('95% CI '+ci(ao.recallCi)):'TP / (TP + FN)'],
+      ['F1 SCORE', pct(ao.f1), tone(ao.f1,90,75), 'harmonic mean of P and R'],
+      ['REVIEWED SAMPLES', String(ao.reviewed||0), (ao.reviewed||0)>=30?'var(--text)':'var(--gold)', (ao.detections||0)+' detections · '+(ao.coverage==null?'—':ao.coverage+'%')+' reviewed'],
+      ['MISSED (FN) LOGGED', String(missedTotal), missedTotal?'var(--high)':'var(--text3)', 'manual + cleaning confirmations'],
+      ['FACE MATCH RATE', pct(fc.matchRate), tone(fc.matchRate,90,75), (fc.matched||0)+' matched · '+(fc.strangers||0)+' unknown'+(fc.avgSim!=null?' · avg '+fc.avgSim+'%':'')],
+    ].map(([label,value,tone,sub])=>({label,value,tone,sub}));
+    const optList=(list,blank)=>[{v:'',label:blank}, ...(list||[]).map(o=>typeof o==='string'?{v:o,label:o}:o)];
+    const aipQueue=(ad.queue||[]).map(q=>({title:q.title||'Detection', sub:q.label+' · '+q.camera, time:q.time,
+      sim:q.sim!=null?(q.sim+'% match'):'', hasImg:!!q.image, thumb:q.image?('url("'+q.image+'") center/cover'):'var(--bg4)',
+      onImg:()=>this.openLightbox(q.image, q.title), onCorrect:()=>this.aipVerify(q,'correct'), onWrong:()=>this.aipVerify(q,'wrong')}));
+    const aipRecent=(ad.recent||[]).map(r=>({title:r.title||'Detection', sub:r.label+' · '+r.camera+' · '+r.time, src:r.source||'',
+      verdict:r.verdict==='tp'?'TRUE POSITIVE':'FALSE POSITIVE', col:r.verdict==='tp'?'var(--ok)':'var(--crit)', bg:pill(r.verdict==='tp'?'var(--ok)':'var(--crit)')}));
+    const aipMissed=(ad.missed||[]).map(m=>({label:m.label, cam:m.cameraName||m.camera, time:m.time, note:m.note||'—', by:m.actor||'',
+      sim:m.sim?'simulated':'', onDel:()=>this.aipDelMiss(m)}));
+    const mm=st.aipMiss, th=ad.thresholds||{};
+    // ── POC scorecard ──
+    const pd=st.pocD||{}, saved=pd.saved||{criteria:{}, tests:{}, report:{}}, comp=pd.computed||{}, dr=st.pocDraft, live=pd.live||{};
+    const canEdit=!!this.PERMS.settings;
+    const scoreOpts=[{v:'',label:'—'},0,1,2,3,4,5].map(x=>typeof x==='object'?x:{v:String(x),label:String(x)});
+    const STAT_COL={'Pass':'var(--ok)','Partial':'var(--gold)','Fail':'var(--crit)','Not Tested':'var(--text3)','N/A':'var(--text3)','':'var(--text3)'};
+    // Draft-aware rows + client-side recompute so totals move as you type.
+    let lastCat='';
+    const critRows=(comp.rows||[]).map(r=>{ const d=dr.criteria[String(r.no)]||{};
+      const score=d.score!==undefined?(d.score===''?null:+d.score):r.score;
+      const status=d.status!==undefined?d.status:r.status;
+      return {...r, score, status, evidence:d.evidence!==undefined?d.evidence:r.evidence, observation:d.observation!==undefined?d.observation:r.observation}; });
+    const agg=(rows)=>{ let w=0, ws=0, sw=0, ss=0;
+      rows.forEach(r=>{ if(r.status==='N/A') return; w+=r.weight; if(r.score!=null){ ws+=r.weight*r.score/5; sw+=r.weight; ss+=r.weight*r.score; } });
+      return {w, ws:Math.round(ws*100)/100, pct:w?Math.round(1000*ws/w)/10:null, avg:sw?Math.round(100*ss/sw)/100:null}; };
+    const all=agg(critRows);
+    const band=(a)=>a==null?'Not scored yet':(a>=4?'Strong candidate':(a>=3?'Acceptable with conditions / improvements':(a>=2?'Significant gaps':'Not recommended for wider deployment')));
+    const bandCol=(a)=>a==null?'var(--text3)':(a>=4?'var(--ok)':(a>=3?'var(--gold)':(a>=2?'var(--high)':'var(--crit)')));
+    const inR=(no,ranges)=>(ranges||[]).some(x=>no>=x[0]&&no<=x[1]);
+    const pocGroups=(pd.groups||[]).map(g=>{ const a=agg(critRows.filter(r=>inR(r.no,g.ranges)));
+      return {label:g.label, value:a.pct==null?'—':(a.pct+'%'), w:(a.pct||0)+'%', col:tone(a.pct,80,60), sub:(a.avg==null?'not scored':('avg '+a.avg+' / 5'))+' · weight '+a.w}; });
+    const cats=[]; critRows.forEach(r=>{ if(cats.indexOf(r.category)<0) cats.push(r.category); });
+    const pocCats=cats.map(c=>{ const a=agg(critRows.filter(r=>r.category===c));
+      return {label:c, value:a.pct==null?'—':(a.pct+'%'), w:(a.pct||0)+'%', col:tone(a.pct,80,60)}; });
+    const cnt={}; critRows.forEach(r=>{ cnt[r.status]=(cnt[r.status]||0)+1; });
+    const pocCrit=critRows.map(r=>{ const head=r.category!==lastCat; lastCat=r.category;
+      return {no:String(r.no), cat:r.category, catHead:head, crit:r.criterion, weight:String(r.weight),
+        weighted:r.score==null?'—':(Math.round(r.weight*r.score/5*100)/100).toString(),
+        scoreSel:sel(r.score, scoreOpts, (e)=>this.pocSet('criteria', String(r.no), 'score', ev(e))),
+        statusSel:sel(r.status, (pd.statuses||[]).map(s=>({v:s,label:s})), (e)=>this.pocSet('criteria', String(r.no), 'status', ev(e))),
+        statusCol:STAT_COL[r.status]||'var(--text3)',
+        evidence:r.evidence||'', onEvidence:(e)=>this.pocSet('criteria', String(r.no), 'evidence', ev(e)),
+        observation:r.observation||'', onObservation:(e)=>this.pocSet('criteria', String(r.no), 'observation', ev(e)),
+        hasPage:!!r.page, onOpen:()=>{ if(r.page==='poc') this.setState({pocTab:'docs'}); else this.setPage(r.page); }}; });
+    let testsPassed=0, testsDone=0;
+    const pocTests=(pd.tests||[]).map(t=>{ const s=saved.tests[t.id]||{}, d=dr.tests[t.id]||{}, l=live[t.id]||{};
+      const g=(k)=>d[k]!==undefined?d[k]:(s[k]==null?'':String(s[k]));
+      const res=g('result'); if(res==='Pass') testsPassed++; if(res) testsDone++;
+      return {id:t.id, area:t.area, tcase:t.case, expected:t.expected, crit:'Criteria '+(t.criteria||[]).join(', '),
+        live:l.text||'—', liveCol:l.ok?'var(--ok)':'var(--text3)', hasPage:!!l.page, onOpen:()=>this.setPage(l.page),
+        actual:g('actual'), onActual:(e)=>this.pocSet('tests', t.id, 'actual', ev(e)),
+        useLive:()=>this.pocSet('tests', t.id, 'actual', (g('actual')?g('actual')+' · ':'')+'[auto '+new Date().toISOString().slice(0,10)+'] '+(l.text||'')),
+        scoreSel:sel(g('score'), scoreOpts, (e)=>this.pocSet('tests', t.id, 'score', ev(e))),
+        resultSel:sel(res, (pd.results||[]).map(x=>({v:x,label:x||'—'})), (e)=>this.pocSet('tests', t.id, 'result', ev(e))),
+        resultCol:STAT_COL[res]||'var(--text3)',
+        remarks:g('remarks'), onRemarks:(e)=>this.pocSet('tests', t.id, 'remarks', ev(e)),
+        evidence:g('evidence'), onEvidence:(e)=>this.pocSet('tests', t.id, 'evidence', ev(e))}; });
+    const rep=saved.report||{}, rv=(k)=>dr.report[k]!==undefined?dr.report[k]:(rep[k]||'');
+    const pocRepInputs=[['vendor','VENDOR','Vendor name'],['prepared_by','PREPARED BY','Name / role'],['report_date','REPORT DATE','YYYY-MM-DD']]
+      .map(([k,label,ph])=>({label, ph, value:rv(k), onInput:(e)=>this.pocSet('report','', k, ev(e))}));
+    const pocRepAreas=[['summary','EXECUTIVE SUMMARY','Scope, cameras, dates, what was tested and the headline result'],
+      ['strengths','KEY STRENGTHS','What worked well, with evidence'],['gaps','KEY GAPS','Limitations, failed / partial criteria, open risks'],
+      ['recommendation','RECOMMENDATION','Proceed / proceed with conditions / do not proceed — and the conditions']]
+      .map(([k,label,ph])=>({label, ph, value:rv(k), text:rv(k)||'—', onInput:(e)=>this.pocSet('report','', k, ev(e))}));
+    const dirty=this.pocDirtyCount();
+    const pocKpis=[
+      ['OVERALL SCORE', all.pct==null?'—':(all.pct+'%'), tone(all.pct,80,60), all.ws+' of '+all.w+' weighted points'],
+      ['AVERAGE SCORE', all.avg==null?'—':(all.avg+' / 5'), bandCol(all.avg), band(all.avg)],
+      ['CRITERIA SCORED', critRows.filter(r=>r.score!=null).length+' / '+critRows.length, 'var(--text)', 'total weight '+((comp.overall&&comp.overall.totalWeight)||141)],
+      ['PASS · PARTIAL · FAIL', (cnt['Pass']||0)+' · '+(cnt['Partial']||0)+' · '+(cnt['Fail']||0), 'var(--text)', (cnt['Not Tested']||0)+' not tested · '+(cnt['N/A']||0)+' N/A'],
+      ['TEST CASES PASSED', testsPassed+' / '+(pd.tests||[]).length, testsPassed?'var(--ok)':'var(--text3)', testsDone+' executed'],
+      ['LIVE EVIDENCE', Object.values(live).filter(l=>l.ok).length+' / '+Object.keys(live).length, 'var(--low)', 'test cases with system evidence (7 days)'],
+    ].map(([label,value,tone,sub])=>({label,value,tone,sub}));
+    const pocRepScores=[['Overall score', all.pct==null?'—':all.pct+'%'], ['Weighted score', all.ws+' / '+all.w], ['Average score (0–5)', all.avg==null?'—':String(all.avg)], ['Interpretation', band(all.avg)]]
+      .concat((pd.groups||[]).map((g,i)=>[g.label+' score', pocGroups[i].value])).map(([k,v])=>({k,v}));
+    const pocRepTests=pocTests.map(t=>({id:t.id, tcase:t.tcase, result:t.resultSel.value||'Not run', col:t.resultCol, score:t.scoreSel.value||'—', actual:t.actual||t.live}));
+    const pocRepCrit=pocCrit.filter(c=>c.statusSel.value==='Fail'||c.statusSel.value==='Partial').map(c=>({no:c.no, crit:c.crit, status:c.statusSel.value, col:c.statusCol, obs:c.observation||c.evidence}));
+    const DOCS={testplan:'POC test plan', architecture:'Architecture & infrastructure', integration:'Integration API'};
+    const pocDocs=(pd.docs||[]).map(d=>({label:(DOCS[d.name]||d.name)+' · '+d.file, cls:(st.pocDoc&&st.pocDoc.name===d.name)?'chip on':'chip', onClick:()=>this.pocOpenDoc(d.name)}));
+    // ── Settings: integrations ──
+    const id=st.intD||{}, is=id.settings||{};
+    const intHooks=this.intHookList().map((h,i)=>({idLabel:h.id?('#'+h.id):'new — not saved', url:h.url||'', onUrl:(e)=>this.intHookSet(i,{url:ev(e)}),
+      secret:h.secret||'', onSecret:(e)=>this.intHookSet(i,{secret:ev(e)}),
+      events:Object.keys(id.events||{}).map(k=>({label:k, title:(id.events||{})[k], cls:(h.events||[]).indexOf(k)>=0?'chip on':'chip', onClick:()=>this.intHookEvent(i,k)})),
+      enabledLabel:h.enabled!==false?'Enabled':'Paused', enabledCls:h.enabled!==false?'chip on':'chip', onEnabled:()=>this.intHookSet(i,{enabled:h.enabled===false}),
+      onTest:()=>this.intTest(h), onRemove:()=>this.intHookRemove(i)}));
+    const intLog=(id.log||[]).slice(0,25).map(l=>({at:l.at, type:l.type, url:l.url, code:l.code?('HTTP '+l.code):'—', ms:l.ms+' ms',
+      state:l.ok?'DELIVERED':'FAILED', col:l.ok?'var(--ok)':'var(--crit)', bg:pill(l.ok?'var(--ok)':'var(--crit)'), error:l.error||''}));
+    // ── Settings: retention ──
+    const rs=(st.retD&&st.retD.storage)||{}, due=(st.retD&&st.retD.due)||{};
+    const curDays=st.retDays!=null?st.retDays:(rs.retention_days!=null?rs.retention_days:90);
+    const retChips=[[30,'30 days'],[60,'60 days'],[90,'90 days'],[180,'180 days'],[365,'1 year'],[0,'Keep forever']]
+      .map(([v,label])=>({label, cls:curDays===v?'chip on':'chip', onClick:()=>this.retSave(v)}));
+    const lr=rs.last_run||{};
+    const retKpis=[
+      ['STORED NOW', this.wsdBytes(rs.total_bytes), 'DB '+this.wsdBytes(rs.db_bytes)+' · attachments '+this.wsdBytes(rs.attachments_bytes)+' · raw log '+this.wsdBytes(rs.raw_log_bytes)],
+      ['EVENTS STORED', String(rs.events||0), rs.oldest?('oldest '+String(rs.oldest).slice(0,10)):'—'],
+      ['EVENTS / DAY', String(rs.events_per_day||0), 'last 7 days · ~'+this.wsdBytes(rs.bytes_per_event)+' per event'],
+      ['PROJECTED AT RETENTION', this.wsdBytes(rs.projected_bytes), 'at '+(rs.projection_days||'—')+' days with the current event rate'],
+    ].map(([label,value,sub])=>({label,value,sub}));
+    // ── Settings: network test ──
+    const nd=st.netD||{};
+    const gcol=(g)=>(GRADE[g]||GRADE.na)[1];
+    const netRows=(nd.rows||[]).map(r=>{ const gr=r.grades||{}, g=GRADE[r.overall]||GRADE.na;
+      return {name:r.name, kind:r.kind, target:r.target||'', host:r.host||'',
+        tcp:r.tcp_ms==null?'—':(r.tcp_ms+' ms'), tcpCol:gcol(gr.tcp_ms), loss:r.loss_pct==null?'—':(r.loss_pct+'%'), lossCol:gcol(gr.loss_pct),
+        jitter:r.jitter_ms==null?'':('±'+r.jitter_ms+' ms'), ttfb:r.ttfb_ms==null?'—':(r.ttfb_ms+' ms'), ttfbCol:gcol(gr.ttfb_ms),
+        mbps:r.mbps==null?'—':(r.mbps+' Mbps'), mbpsCol:gcol(gr.mbps), rtsp:r.rtsp||'', note:r.note||'',
+        overall:g[0], col:g[1], bg:pill(g[1]), canRetest:r.kind==='camera'||r.kind==='hls'||r.kind==='skipped', onRetest:()=>this.runNetTest(r.name)}; });
+    const ns=nd.summary||{};
+    const tq=st.aiTh||{face:'0', ppe:'0'};
+    return {
+      // AI performance page
+      isAiperf:st.page==='aiperf', aipKpis, aipModRows, aipPerRows, aipCamRows, aipCamEmpty:aipCamRows.length===0,
+      aipSimBars, aipFaceLine:(fc.total||0)+' face detections · '+(fc.matched||0)+' matched to an employee · '+(fc.strangers||0)+' unknown · '+(fc.belowThreshold||0)+' below the similarity cut-off',
+      aipQueue, aipQueueEmpty:aipQueue.length===0, aipRecent, aipRecentEmpty:aipRecent.length===0, aipMissed, aipMissedEmpty:aipMissed.length===0,
+      aipStatus:af.busy?'Loading…':(af.err||(ad.from?('window '+ad.from+' → '+ad.to+(ad.truncated?' · capped at 60 000 detections':'')):'')), aipMsg:st.aipMsg||'',
+      aipFrom:af.from||ad.from||'', aipTo:af.to||ad.to||'', onAipFrom:(e)=>this.setAipF({from:ev(e)}), onAipTo:(e)=>this.setAipF({to:ev(e)}),
+      aipModSel:sel(af.module, optList(ad.moduleList,'All modules'), (e)=>this.setAipF({module:ev(e)})),
+      aipCamSel:sel(af.camera, optList(ad.cameraList,'All cameras'), (e)=>this.setAipF({camera:ev(e)})),
+      aipPlantSel:sel(af.plant, optList(ad.plants,'All plants'), (e)=>this.setAipF({plant:ev(e)})),
+      reloadAip:()=>this.loadAip(), exportAipMetrics:()=>this.exportAip('export'), exportAipTraining:()=>this.exportAip('training'),
+      aipMethodOpen:!!st.aipMethod, toggleAipMethod:()=>this.setState({aipMethod:!st.aipMethod}), aipMethodLabel:st.aipMethod?'Hide methodology':'How these metrics are computed',
+      aipMissModSel:sel(mm.module, (ad.moduleList||[]).map(o=>o), (e)=>this.aipSetMiss({module:ev(e)})),
+      aipMissCamSel:sel(mm.camera, optList(ad.cameraList,'Camera…'), (e)=>this.aipSetMiss({camera:ev(e)})),
+      aipMissTime:mm.time||'', onAipMissTime:(e)=>this.aipSetMiss({time:ev(e)}),
+      aipMissNote:mm.note||'', onAipMissNote:(e)=>this.aipSetMiss({note:ev(e)}), aipLogMiss:()=>this.aipLogMiss(),
+      aipThLine:'Face similarity cut-off '+(th.face_min_similarity?th.face_min_similarity+'%':'off (SenseStudio decides)')+' · PPE confidence cut-off '+(th.ppe_min_conf?th.ppe_min_conf+'%':'off'),
+      goAipModels:()=>{ this.setState({spTab:'models'}); this.setPage('settings'); },
+      // POC scorecard page
+      isPoc:st.page==='poc', pocKpis, pocGroups, pocCats, pocCrit, pocTests, pocRepInputs, pocRepAreas, pocRepScores, pocRepTests, pocRepCrit,
+      pocRepNoGaps:pocRepCrit.length===0, pocDocs, pocDocOpen:!!st.pocDoc, pocDocTitle:st.pocDoc?(st.pocDoc.file||''):'', pocDocText:st.pocDoc?st.pocDoc.md:'',
+      pocTabs:[['criteria','Evaluation criteria (54)'],['tests','Test cases (21)'],['report','Final report'],['docs','Method & documents']].map(([k,label])=>({label, cls:st.pocTab===k?'chip on':'chip', onClick:()=>this.setState({pocTab:k})})),
+      pocTabCriteria:st.pocTab==='criteria', pocTabTests:st.pocTab==='tests', pocTabReport:st.pocTab==='report', pocTabDocs:st.pocTab==='docs',
+      pocMsg:st.pocMsg||(st.pocBusy?'Loading…':''), pocSaveLabel:dirty?('Save '+dirty+' change'+(dirty===1?'':'s')):'Saved', pocCanEdit:canEdit, pocReadOnly:!canEdit,
+      pocSave:()=>this.pocSave(), pocExportCrit:()=>this.pocExport('criteria'), pocExportTests:()=>this.pocExport('tests'), pocExportAll:()=>this.pocExport('all'),
+      pocPrint:()=>this.pocPrint(), reloadPoc:()=>this.loadPoc(),
+      pocUpdated:saved.updated_at?('Last saved '+saved.updated_at+(saved.updated_by?' by '+saved.updated_by:'')):'Not saved yet',
+      pocBandLine:band(all.avg), pocBandCol:bandCol(all.avg), pocPrintDate:new Date(st.now||Date.now()).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}),
+      // Settings → Integrations
+      spTabInt:st.spTab==='integrations', intKeyLine:is.has_key?is.integration_key:'No key — the integration API is disabled', intHasKey:!!is.has_key,
+      intNewKey:st.intNewKey||'', intHasNewKey:!!st.intNewKey, intRegen:()=>this.intRegen(), intRevoke:()=>this.intRevoke(),
+      intRegenLabel:is.has_key?'Rotate key':'Generate API key', intHooks, intHooksEmpty:intHooks.length===0,
+      intAddHook:()=>this.intHookAdd(), intSaveHooks:()=>this.intSaveHooks(), intMsg:st.intMsg||'', intLog, intLogEmpty:intLog.length===0,
+      intCat:(id.catalogue||[]).map(c=>({method:c[0], url:c[1], params:c[2], purpose:c[3]})),
+      // Settings → Data Retention
+      spTabRet:st.spTab==='retention', retChips, retKpis, retMsg:st.retMsg||'',
+      retDueLine:due.disabled?'Retention is off — events are kept forever':((due.events||0)+' events older than '+(due.cutoff||'—')+' are due for purge'),
+      retLastLine:lr.last_run?('Last purge '+String(lr.last_run).replace('T',' ').slice(0,16)+' · '+lr.purged+' events · '+(lr.by||'')):'No purge has run yet (runs daily)',
+      retPurge:()=>this.retPurge(), reloadRet:()=>this.loadRet(),
+      // Settings → Live Video → network test
+      netRows, netHas:netRows.length>0, netBusy:!!st.netBusy, netMsg:st.netMsg||'', netRun:()=>this.runNetTest(''),
+      netRunLabel:st.netBusy?'Testing…':'Run network test',
+      netSummary:nd.at?(String(nd.at).replace('T',' ').slice(0,19)+' · '+(ns.pass||0)+' pass · '+(ns.warn||0)+' warn · '+(ns.fail||0)+' fail'):'',
+      // Settings → Models → customisation
+      thFace:tq.face, onThFace:(e)=>this.setState(s=>({aiTh:{...(s.aiTh||{}), face:ev(e)}, aiThMsg:''})),
+      thPpe:tq.ppe, onThPpe:(e)=>this.setState(s=>({aiTh:{...(s.aiTh||{}), ppe:ev(e)}, aiThMsg:''})),
+      thSave:()=>this.aiThSave(), thMsg:st.aiThMsg||'',
+      thExportFp:()=>window.open(`${this.API}/aiperf/training?token=${encodeURIComponent(this.TOK)}`, '_blank'),
+      thExportAll:()=>window.open(`${this.API}/aiperf/training?token=${encodeURIComponent(this.TOK)}&include_tp=1`, '_blank'),
+      goAiperf:()=>this.setPage('aiperf'),
+    };
+  }
+
   renderVals(){
     const st=this.state;
     const showBoxes = this.props.showOverlays !== false;
@@ -1780,7 +2384,7 @@ class Component extends DCLogic {
     ];
 
     // Filters
-    const fdefs=[['all','All'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift']];
+    const fdefs=[['all','All'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift'],['behaviour','Behaviour']];
     const filters=fdefs.map(([k,label])=>{
       const active=st.filter===k;
       return {label, onClick:()=>this.setFilter(k),
@@ -1842,7 +2446,7 @@ class Component extends DCLogic {
     // Live Events rail — event-type filter (dropdown in the rail header).
     const evType=st.evType||'all';
     const evTypeSel={value:evType, onChange:(ev)=>this.setState({evType:(ev&&ev.target)?ev.target.value:'all'}),
-      options:[['all','All types'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift']].map(([v,label])=>({v,label}))};
+      options:[['all','All types'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift'],['behaviour','Behaviour']].map(([v,label])=>({v,label}))};
     const events=st.events.filter(e=>evType==='all'||e.mod===evType).map(e=>{
       const m=this.MODS[e.mod];
       const sel=st.selectedId===e.id;
@@ -1904,11 +2508,12 @@ class Component extends DCLogic {
       return {go:()=>this.toggleNavGroup(key,def), cls:active?'nav-grp-on':'', open, caret:open?'open':'',
         items:NAV_GROUPS[key].map(([pg,label])=>({label, go:()=>this.setPage(pg), cls:st.page===pg?'nav-on':''}))}; };
     const nav={overview:navStyle('overview'), attendance:navStyle('attendance'), employees:navStyle('employees'), faces:navStyle('faces'),
-      ppe:navStyle('ppe'), intr:navStyle('intr'), cleaning:navStyle('cleaning'), forklift:navStyle('forklift'),
+      ppe:navStyle('ppe'), intr:navStyle('intr'), cleaning:navStyle('cleaning'), behaviour:navStyle('behaviour'), forklift:navStyle('forklift'),
       cameras:navGroupEntry('cameras','camdash'), reports:navGroupEntry('reports','incidents'), settings:navGroupEntry('settings','settings'),
       // per-page entries kept for any direct link
       live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
-      fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users')};
+      fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users'),
+      aiperf:navStyle('aiperf'), poc:navStyle('poc')};   // Workstream D
     // Sidebar sections (fold / unfold); a folded section holding the active page shows a dot.
     const curSec=this.navSecOf(st.page);
     const navSecEntry=(k,label)=>{ const open=st.navSec[k]!==false; const has=k==='plants'?!!st.plant:curSec===k;
@@ -1929,9 +2534,12 @@ class Component extends DCLogic {
       faces:['Face Registration','Enrol faces so CCTV can recognise employees'],
       forklift:['Forklift Monitoring','Forklift detections, zone rules and incident review'],
       cleaning:['Cleaning Monitoring','Cleaning schedules and PPE compliance during cleaning'],
+      behaviour:['Behaviour Analytics','Line 5 normal operation, chit-chat / loitering, cleaning activity and abnormal behaviour'],
       ppe:['PPE Compliance','PPE rules by area, violation history and reports'],
       intr:['Restricted Area Monitoring','Zone access rules, entry review and reports'],
       attendance:['Attendance & Movement','Facial-recognition entry, latest location and movement journey'],
+      aiperf:['AI Performance','POC-measured precision, recall and F1 per module, camera and lighting period'],
+      poc:['POC Scorecard','Vendor evaluation matrix, test cases with live evidence and the final POC report'],
       incidents:['Incident Management','Track, triage and resolve detection events'],
       cameras:['Camera Fleet','Manage RTSP streams and detection assignments'],
       analytics:['Analytics','Detection trends and operational performance'],
@@ -1981,6 +2589,7 @@ class Component extends DCLogic {
         statusRank:({open:0,ack:1,resolved:2})[e.status]||0,
         slaRank: sla.col==='var(--crit)'?0:(sla.col==='var(--gold)'?1:2),
         tsMs:e.ts, tickRank:e.ticket?1:0,
+        ...this.escChip(e),                                   // Workstream A: auto-escalation level chip
         onOpen:()=>this.openTicket(e), onTicket:(ev)=>this.makeTicket(e.id, ev)};
     });
     const elOk=(x)=> st.incEl==='all'?true : st.incEl==='1h'?x.elapsedMs<3600e3
@@ -2008,7 +2617,7 @@ class Component extends DCLogic {
     const nStatus=(k)=> k==='all'?allInc.length:allInc.filter(x=>x.status===k).length;
     const incStatusSel=mkSel([['all','All ('+nStatus('all')+')'],['open','Open ('+nStatus('open')+')'],
       ['ack','Ack ('+nStatus('ack')+')'],['resolved','Resolved ('+nStatus('resolved')+')']], st.incFilter, v=>this.setIncFilter(v));
-    const incTypeSel=mkSel([['all','All types'],['fire','Fire & Smoke'],['ppe','PPE'],['intr','Intrusion'],['face','Face & Body'],['forklift','Forklift']],
+    const incTypeSel=mkSel([['all','All types'],['fire','Fire & Smoke'],['ppe','PPE'],['intr','Intrusion'],['face','Face & Body'],['forklift','Forklift'],['behaviour','Behaviour']],
       incMod, v=>this.setState({incMod:v, incPage:0}));
     const incSevSel=mkSel([['all','All'],['critical','Critical'],['high','High'],['medium','Medium'],['low','Low']], st.incSev, v=>this.setIncSev(v));
     const incElSel=mkSel([['all','Any'],['1h','< 1h'],['12h','1–12h'],['12h+','> 12h']], st.incEl, v=>this.setIncEl(v));
@@ -2076,6 +2685,7 @@ class Component extends DCLogic {
         thumb: tk.image? ("url('"+tk.image+"') center/cover no-repeat") : 'linear-gradient(160deg,#141830,#0c0f1d)',
         onExpand:()=>{ if(tk.image) this.openLightbox(tk.image, (tk.ticket||'Detection')+' · '+tk.camera+' · '+(tk.received||'')); },
         onViewDetection:()=>this.openModal('event', tk),
+        ...this.escChip(tk),                                  // Workstream A: auto-escalation level
         escUp:()=>{ if(si<3) this.tktPost(tk.id,'severity',{severity:sevOrder[si+1], actor:this.UNAME, note:st.tktNote||null},'Escalated ▲'); },
         escDown:()=>{ if(si>0) this.tktPost(tk.id,'severity',{severity:sevOrder[si-1], actor:this.UNAME, note:st.tktNote||null},'De-escalated ▼'); }};
       tktTabs=[['comm','Communication'],['near','Nearby detections'],['esc','Escalation'],['att','Attachments'],['hist','Change history'],['close','Closing']].map(([k,label])=>{
@@ -2100,8 +2710,8 @@ class Component extends DCLogic {
       tktNearEmpty = !tktNearLoading && tktNearV.length===0;
       const log=st.tktLog||[];
       const kindCol={comment:'var(--low)', status:'var(--gold)', severity:'var(--high)', ticketed:'var(--brand)',
-        notify:'var(--brand)', tmforce:'var(--crit)', attachment:'var(--text2)', remark:'var(--ok)', system:'var(--text3)', detected:'var(--crit)'};
-      tktComments=log.filter(l=>['comment','notify','tmforce','remark'].indexOf(l.kind)>=0).map(l=>({
+        notify:'var(--brand)', tmforce:'var(--crit)', attachment:'var(--text2)', remark:'var(--ok)', system:'var(--text3)', detected:'var(--crit)', escalation:'var(--high)'};
+      tktComments=log.filter(l=>['comment','notify','tmforce','remark','escalation'].indexOf(l.kind)>=0).map(l=>({
         actor:l.actor||'—', when:l.created_at||'', kind:l.kind, col:kindCol[l.kind]||'var(--low)',
         text:l.note||((l.from_val||'')+' → '+(l.to_val||''))}));
       // change history with per-step elapsed time
@@ -2327,6 +2937,7 @@ class Component extends DCLogic {
       ['ppe','PPE','var(--gold)','PPE violation → email', 'Missing vest / helmet body attribute', 'medium','var(--med)'],
       ['intr','INTR','var(--crit)','Intrusion detection', 'Person in monitored zone · armed window applies', 'high','var(--high)'],
       ['face','FACE','var(--low)','Face & body / stranger', 'Stranger (Person Group −99) escalates HIGH', 'high','var(--high)'],
+      ['forklift','FORK','var(--brand)','Forklift zone violation', 'Vehicle / forklift in a prohibited or time-restricted zone', 'high','var(--high)'],
     ];
     const arRules = ac? arModDefs.map(([mod,tag,tagBg,name,cond,sevL,sevC])=>{
       const on = ac.mods_enabled ? (ac.mods_enabled[mod]!==false) : true;
@@ -2449,7 +3060,7 @@ class Component extends DCLogic {
       +liveShown.length+' camera'+(liveShown.length===1?'':'s')+' shown on Live Monitoring · '
       +Object.keys(polCamAll).length+' of them reporting detections';
     const setStream=kv([
-      ['Default protocol','RTSP / H.264'],['Ingest resolution','1080p @ 25fps'],['Clip retention','30 days'],['Snapshot storage','S3 · cp-evidence'],
+      ['Default protocol','RTSP / H.264'],['Ingest resolution','1080p @ 25fps'],['Event & evidence retention', (()=>{ const r=st.retD&&st.retD.storage; return r?(r.retention_days?r.retention_days+' days (auto-purge daily)':'kept forever'):'90 days (default)'; })()],['Snapshot storage','S3 · cp-evidence'],
     ]);
     const setNotify=[
       ['SOC dashboard','Enabled',true],['SMS gateway','Enabled · Twilio',true],['Email digest','Daily 07:00',true],['Siren relay','Critical only',true],['Slack / Teams','Disabled',false],
@@ -3137,7 +3748,7 @@ class Component extends DCLogic {
 
     // ===== CLEANING ACTIVITY MONITORING (/api/cleaning/summary) =====
     const cd=st.clD||{}, cf=st.clF, ck=cd.kpi||{};
-    const CL_ITEMS=cd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves'};
+    const CL_ITEMS=cd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves', boots:'Safety boots', hairnet:'Hair net', ear:'Ear protection'};
     const clItem=(i)=>CL_ITEMS[i]||i;
     const clSel=(key,list,blank)=>({value:cf[key]||'', options:[{v:'',label:blank}, ...list],
       onChange:(e)=>this.setClF({[key]:(e&&e.target)?e.target.value:''})});
@@ -3159,7 +3770,8 @@ class Component extends DCLogic {
         name:s.name, when:s.date+' · '+String(s.start).slice(11,16)+'–'+String(s.end).slice(11,16),
         where:[s.plant, s.location].filter(Boolean).join(' · '), req:'Requires '+s.items.map(clItem).join(', '),
         state:stt[0], stateCol:stt[1],
-        observed:s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'no camera mapped to this area',
+        observed:(s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'no camera mapped to this area')
+          +((Number(s.activity)||0)?(' · cleaning activity detected ×'+(Number(s.activity)||0)):''),   // Workstream C (Behaviour Analytics)
         observedCol:!s.cameras?'var(--high)':(s.state==='ended'&&!s.detections?'var(--high)':'var(--text2)'),
         ppe:s.checks?(s.checks+' checked · '+s.violations+' violation'+(s.violations===1?'':'s')+' · '+comp+'%'):'no PPE checks',
         ppeCol:s.violations?'var(--crit)':(s.checks?'var(--ok)':'var(--text3)'),
@@ -3272,7 +3884,15 @@ class Component extends DCLogic {
       }; });
     // ===== PPE COMPLIANCE BY AREA (/api/ppe/summary) =====
     const pd=st.ppeD||{}, pf=st.ppeF, pk=pd.kpi||{};
-    const PPE_ITEMS=pd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves'};
+    const PPE_ITEMS=pd.items||{helmet:'Safety helmet', vest:'Safety vest', goggles:'Safety goggles', gloves:'Safety gloves', boots:'Safety boots', hairnet:'Hair net', ear:'Ear protection'};
+    // Workstream B: how each item is detected (Native / Attribute proxy / Custom model required).
+    const PPE_FEAS=pd.feasibility||{helmet:{level:'native',label:'Native'}, vest:{level:'native',label:'Native'}, gloves:{level:'native',label:'Native'},
+      goggles:{level:'proxy',label:'Attribute proxy'}, boots:{level:'proxy',label:'Attribute proxy'}, hairnet:{level:'proxy',label:'Attribute proxy / custom model'},
+      ear:{level:'custom',label:'Custom model required'}};
+    const FEAS_COL={native:'var(--ok)', proxy:'var(--gold)', custom:'var(--high)'};
+    const feasOf=(k)=>PPE_FEAS[k]||{level:'native',label:'Native',how:''};
+    const ppeFeas=Object.keys(PPE_ITEMS).map(k=>{ const f=feasOf(k);
+      return {label:PPE_ITEMS[k], level:k==='ear'?'Custom model required — no native attribute':f.label, how:f.how||'', col:FEAS_COL[f.level]||'var(--text3)'}; });
     const itemLabel=(i)=>PPE_ITEMS[i]||i;
     const ppeSel=(key,list,blank)=>({value:pf[key]||'', options:[{v:'',label:blank}, ...list],
       onChange:(e)=>this.setPpeF({[key]:(e&&e.target)?e.target.value:''})});
@@ -3295,7 +3915,8 @@ class Component extends DCLogic {
       v:d.violations?String(d.violations):''}));
     const ppeByItem=Object.keys(PPE_ITEMS).map(k=>{ const b=(pd.byItem||{})[k]||{required:0,missing:0};
       const pct=b.required?Math.round(100*b.missing/b.required):0;
-      return {label:PPE_ITEMS[k], value:b.required?(b.missing+' missed / '+b.required+' required'):'not required in range',
+      return {label:PPE_ITEMS[k], feas:feasOf(k).label, feasCol:FEAS_COL[feasOf(k).level]||'var(--text3)',
+        value:b.required?(b.missing+' missed / '+b.required+' required'):'not required in range',
         w:pct+'%', col:pct>20?'var(--crit)':(pct>5?'var(--gold)':'var(--ok)')}; });
     const ppeByLoc=(pd.byLocation||[]).map(l=>{ const c=l.checks?Math.round(100*(l.checks-l.violations)/l.checks):100;
       return {loc:l.location, plant:l.plant||'', req:(l.required||[]).map(itemLabel).join(' · '),
@@ -3313,7 +3934,8 @@ class Component extends DCLogic {
     const pocPpe=Object.entries(pd.rules||((ap&&ap.ppe_rules)||{})).map(([loc,items])=>{
       const l=(pd.byLocation||[]).find(x=>x.location===loc);
       return {loc, tag:'REQUIRED PPE', note:l?(l.checks+' people checked · '+l.violations+' violations in range'):'No checks in range',
-        items:items.map(i=>({label:itemLabel(i)+(i==='goggles'?' (glasses estimate)':''), value:'required', col:'var(--ok)'}))}; });
+        items:items.map(i=>({label:itemLabel(i)+(feasOf(i).level==='native'?'':(' ('+feasOf(i).label.toLowerCase()+')')), value:'required',
+          col:FEAS_COL[feasOf(i).level]||'var(--ok)'}))}; });
     const ppeStatus=pf.busy?'Loading…':(pf.err||'');
     // Settings → PPE Area Rules
     const ppeRulesCur=(ap&&ap.ppe_rules)||{};
@@ -3323,6 +3945,10 @@ class Component extends DCLogic {
       return {name:L, cams:cams.length?cams.join(', '):'no camera mapped', camsCol:cams.length?'var(--text3)':'var(--high)',
         cur:cur.length?(cur.length+' item'+(cur.length===1?'':'s')+' required'):'Not monitored', curCol:cur.length?'var(--ok)':'var(--text3)',
         chips:Object.keys(PPE_ITEMS).map(i=>({label:PPE_ITEMS[i], cls:cur.indexOf(i)>=0?'chip on':'chip', onClick:()=>this.togglePpeRule(L,i)}))}; });
+    // Workstream B: hair-net proxy — which SenseStudio HatsType values count as hair covered.
+    const ppeHairCur=(ap&&ap.ppe_hair_hats)||pd.hairHats||['Bonnet'];
+    const ppeHairChips=[['Bonnet','Bonnet / hair cap'],['Cap','Cap'],['BucketHat','Bucket hat']].map(([v,label])=>({label,
+      cls:ppeHairCur.indexOf(v)>=0?'chip on':'chip', onClick:()=>this.togglePpeHairHat(v)}));
 
     // ===== GLOBAL PLANT FILTER (topbar select + sidebar PLANTS) =====
     const plantNames=(()=>{
@@ -3423,6 +4049,8 @@ class Component extends DCLogic {
     const pb=opp.byItem||{};
     const pcol=(v)=>N(v)?'var(--crit)':'var(--ok)';
     const ovPpe={helmet:fmtN(pb.helmet), vest:fmtN(pb.vest), goggles:fmtN(pb.goggles), gloves:fmtN(pb.gloves),
+      boots:fmtN(pb.boots), hairnet:fmtN(pb.hairnet), ear:fmtN(pb.ear),
+      bootsCol:pcol(pb.boots), hairnetCol:pcol(pb.hairnet), earCol:pcol(pb.ear),
       helmetCol:pcol(pb.helmet), vestCol:pcol(pb.vest), gogglesCol:pcol(pb.goggles), glovesCol:pcol(pb.gloves),
       note:opp.compliance!=null?('7-day compliance '+opp.compliance+'% · '+N(opp.today)+' violations today'):(N(opp.today)+' violations today')};
     // Restricted / forklift recent lists
@@ -3437,7 +4065,7 @@ class Component extends DCLogic {
     const ovFkStats={today:fmtN(ofk.today), violations:fmtN(ofk.violationsToday), violCol:N(ofk.violationsToday)?'var(--crit)':'var(--text)'};
     // Cleaning card
     const cb=ocl.byItem||{};
-    const OV_CL_ITEMS=[['helmet','Helmet'],['vest','Safety Vest'],['goggles','Goggles'],['gloves','Gloves']];
+    const OV_CL_ITEMS=[['helmet','Helmet'],['vest','Safety Vest'],['goggles','Goggles'],['gloves','Gloves'],['hairnet','Hair Net']];
     const ovClean={
       ring:`conic-gradient(var(--ok) 0 ${clPct||0}%, var(--line2) 0)`, pct:clPct==null?'—':(clPct+'%'),
       total:fmtN(clSess), done:fmtN(clDone), pending:fmtN(ocl.pending),
@@ -3459,9 +4087,9 @@ class Component extends DCLogic {
           onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
     // Recent events table
     const EVT={face:['var(--brand)',tint.low], ppe:['#B45309',tint.gold], intr:['var(--crit)',tint.crit], forklift:['var(--high)',tint.high],
-      fire:['var(--crit)',tint.crit], cleaning:['var(--ok)',tint.ok]};
+      fire:['var(--crit)',tint.crit], cleaning:['var(--ok)',tint.ok], behaviour:['var(--purple)','var(--tint-purple)']};
     const EST={open:['Open','var(--crit)',tint.crit], ack:['Acknowledged','#B45309',tint.gold], resolved:['Resolved','var(--ok)',tint.ok]};
-    const MODPAGE={face:'attendance', ppe:'ppe', intr:'intr', forklift:'forklift', cleaning:'cleaning', fire:'fire'};
+    const MODPAGE={face:'attendance', ppe:'ppe', intr:'intr', forklift:'forklift', cleaning:'cleaning', fire:'fire', behaviour:'behaviour'};
     const ovEvents=(Array.isArray(ov.events)?ov.events:[]).slice(0,8).map(e=>{ const t=EVT[e.mod]||['var(--text2)',tint.muted];
       const s=(e.mod==='face'&&e.type==='Attendance')?['Present','var(--ok)',tint.ok]:(EST[e.status]||EST.open);
       const ts=String(e.time||'');
@@ -3537,7 +4165,7 @@ class Component extends DCLogic {
       ...cxCams.filter(c=>c.online&&!c.det).map(c=>({name:c.name, sub:(c.loc||c.id)+' · no detections in 24 h', pill:'Silent', pillCol:'#B45309', pillBg:tint.gold, onClick:c.onOpen})),
       ...cxCams.filter(c=>!c.loc).map(c=>({name:c.name, sub:c.id+' · not mapped to a camera point', pill:'Unmapped', pillCol:'var(--text3)', pillBg:tint.muted, onClick:goPoc})),
     ].slice(0,10);
-    const MODLBL={fire:'Fire',ppe:'PPE',intr:'Intrusion',face:'Face',forklift:'Forklift'};
+    const MODLBL={fire:'Fire',ppe:'PPE',intr:'Intrusion',face:'Face',forklift:'Forklift',behaviour:'Behaviour'};
     const cxRows=cxCams.slice().sort((a,b)=>(a.online-b.online)||(b.det-a.det)).map(c=>({
       name:c.name, id:c.id, where:[c.plant, c.loc].filter(Boolean).join(' · ')||(c.zone||'—'),
       mods:c.mods.map(m=>({label:MODLBL[m]||m, bg:(this.MODS[m]||{}).tagBg||'var(--text3)'})), modsEmpty:!c.mods.length,
@@ -3549,9 +4177,107 @@ class Component extends DCLogic {
       return {camera:e.camera, zone:e.zone||'', tag:m.tag||'EVT', tagBg:m.tagBg||'var(--low)', title:e.title, ago:this.ago(e.ts),
         status:s[0], statusCol:s[1], statusBg:s[2], onOpen:()=>this.openModal('event', e)}; });
 
+    // ===== Workstream C: BEHAVIOUR ANALYTICS (/api/behaviour/summary) =====
+    const bhd=st.behD||{}, bhf=st.behF, bhk=bhd.kpi||{};
+    const BEHK={loiter:['CHIT-CHAT / LOITERING','#B45309'], cleaning:['CLEANING ACTIVITY','var(--ok)'], abnormal:['ABNORMAL','var(--crit)']};
+    const BEHSUB=bhd.subs||{fight:'Fighting / altercation', fall:'Person fall', policy:'SenseStudio policy', group:'Group dwell (chit-chat)', idle:'Single person lingering', ppe_proxy:'Cleaning PPE during scheduled window'};
+    const BEHSRC={policy:'SenseStudio algorithm', dwell:'Derived · dwell time', ppe:'Derived · PPE attribute proxy'};
+    const BEHV={detected:['NOT REVIEWED','var(--text3)'], confirmed:['CONFIRMED','var(--crit)'], false_alarm:['FALSE ALARM','var(--ok)']};
+    const behMin=(m)=>{ m=N(m); return m>=60?(Math.floor(m/60)+' h '+(m%60)+' min'):(m+' min'); };
+    const behSel=(key,list,blank)=>({value:bhf[key]||'', options:[{v:'',label:blank}, ...list],
+      onChange:(e)=>this.setBehF({[key]:(e&&e.target)?e.target.value:''})});
+    const behCamSel=behSel('camera', (bhd.cameras||[]).map(c=>({v:c.key, label:(c.location?c.location+' · ':'')+c.label})), 'All behaviour cameras');
+    const behKindSel=behSel('kind', [['loiter','Chit-chat / loitering'],['cleaning','Cleaning activity'],['abnormal','Abnormal (fight / fall)']].map(([v,label])=>({v,label})), 'All behaviours');
+    const behVerdictSel=behSel('verdict', Object.keys(BEHV).map(k=>({v:k, label:(bhd.verdicts||{})[k]||k})), 'Any review state');
+    const behNormal=bhk.normalPct==null?'—':(bhk.normalPct+'%');
+    const behKpis=[
+      ['NORMAL OPERATION', behNormal, bhk.normalPct==null?'var(--text3)':(bhk.normalPct>=80?'var(--ok)':(bhk.normalPct>=60?'#B45309':'var(--crit)')), behMin(bhk.normalMin)+' of '+behMin(bhk.monitoredMin)+' with people present'],
+      ['CHIT-CHAT / LOITERING', N(bhk.loiter), N(bhk.loiter)?'#B45309':'var(--ok)', behMin(bhk.loiterMin)+' · group dwell, idle, loiter policy'],
+      ['CLEANING ACTIVITY', N(bhk.cleaning), N(bhk.cleaning)?'var(--ok)':'var(--text3)', behMin(bhk.cleaningMin)+' · algorithm or PPE proxy'],
+      ['FIGHT / ABNORMAL', N(bhk.abnormal), N(bhk.abnormal)?'var(--crit)':'var(--ok)', N(bhk.fight)+' fighting · '+N(bhk.fall)+' fall · Critical alert'],
+      ['AWAITING REVIEW', N(bhk.unreviewed), N(bhk.unreviewed)?'var(--high)':'var(--ok)', N(bhk.confirmed)+' confirmed · '+N(bhk.falseAlarm)+' false alarms'],
+      ['TODAY', N(bhk.today), N(bhk.today)?'var(--high)':'var(--ok)', 'exceptions since midnight'],
+    ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
+    const behSpan=(bhd.from&&bhd.to)?Math.round((new Date(bhd.to)-new Date(bhd.from))/86400000)+1:7;
+    const behRangeTabs=[[7,'7 days'],[30,'30 days']].map(([n,label])=>({label, cls:behSpan===n?'chip on':'chip', onClick:()=>this.setBehRange(n)}));
+    const behStack=(m, max)=>{ const h=(v)=>Math.round(100*N(v)/Math.max(1,max))+'%';
+      return {nH:h(m.normal), lH:h(m.loiter), cH:h(m.cleaning), aH:h(m.abnormal)}; };
+    const behDMax=Math.max(1, ...(bhd.daily||[]).map(d=>N(d.min.normal)+N(d.min.loiter)+N(d.min.cleaning)+N(d.min.abnormal)));
+    const behTrend=(bhd.daily||[]).map(d=>{ const m=d.min||{}, ev=d.ev||{}, tot=N(m.normal)+N(m.loiter)+N(m.cleaning)+N(m.abnormal);
+      const exc=N(ev.loiter)+N(ev.abnormal);
+      return {label:String(d.date).slice(5), v:exc?String(exc):'', onClick:()=>this.setBehF({day:d.date}),
+        title:d.date+' · '+tot+' min monitored · normal '+(tot?Math.round(100*N(m.normal)/tot):0)+'% · '+N(ev.loiter)+' loitering · '+N(ev.cleaning)+' cleaning · '+N(ev.abnormal)+' abnormal — click for the hourly timeline',
+        ...behStack(m, behDMax)}; });
+    const behTimeline=(bhd.timeline||[]).map(c=>{ const mx=Math.max(1, ...c.hours.map(h=>N(h.normal)+N(h.loiter)+N(h.cleaning)+N(h.abnormal)));
+      return {camera:c.camera, loc:c.location||'not mapped to a camera point', scope:c.inScope?'behaviour camera':'algorithm events only',
+        total:behMin(c.total)+' with people present',
+        hours:c.hours.map((h,i)=>({label:i%3===0?String(i).padStart(2,'0'):'', ...behStack(h, mx),
+          title:String(i).padStart(2,'0')+':00 · normal '+N(h.normal)+' · loitering '+N(h.loiter)+' · cleaning '+N(h.cleaning)+' · abnormal '+N(h.abnormal)+' min'}))}; });
+    const behExc=(bhd.exceptions||[]).map(i=>{ const kk=BEHK[i.kind]||[String(i.kind||'').toUpperCase(),'var(--text3)'], vv=BEHV[i.verdict]||BEHV.detected;
+      const isAbn=i.kind==='abnormal';
+      return {thumb:thumbOf(i.image), kind:(isAbn?(i.sub==='fight'?'ABNORMAL: FIGHTING':'ABNORMAL: PERSON FALL'):kk[0]), kCol:kk[1],
+        sub:(BEHSUB[i.sub]||i.sub)+' · '+(BEHSRC[i.source]||i.source), where:[i.plant, i.location||i.camera].filter(Boolean).join(' · '),
+        time:String(i.start||'').slice(0,16)+(i.durMin?(' · '+i.durMin+' min'):'')+(i.persons>1?(' · '+i.persons+' people'):''),
+        reason:i.reason||'', verdict:vv[0]+(i.reviewedBy?(' · '+i.reviewedBy):'')+(i.note?(' — '+i.note):''), vCol:vv[1],
+        canConfirm:i.verdict!=='confirmed', canClear:i.verdict!=='false_alarm',
+        onConfirm:()=>this.reviewBeh(i,'confirmed'), onClear:()=>this.reviewBeh(i,'false_alarm'),
+        onOpen:()=>{ if(i.image) this.openLightbox(i.image, (BEHSUB[i.sub]||i.kind)+' · '+(i.location||i.camera)+' · '+String(i.start).slice(0,16)); }}; });
+    const behScopeList=(bhd.cameras||[]).filter(c=>c.inScope).map(c=>c.label+(c.location?' ('+c.location+')':''));
+    const behScopeLine=behScopeList.length?('Monitoring '+behScopeList.join(', ')+' · chit-chat = '+((bhd.settings||{}).group_min||2)+'+ people for '+((bhd.settings||{}).dwell_min||3)+' min'
+      +(((bhd.settings||{}).idle_min)?(' · idle = 1 person for '+bhd.settings.idle_min+' min'):' · idle check off')):'';
+    // Settings → Behaviour Rules
+    const bc=this.behCfg();
+    const behToggle=(list,v)=>list.indexOf(v)>=0?list.filter(x=>x!==v):[...list, v];
+    const behChipRow=(key,opts,fmt)=>opts.map(v=>({label:fmt(v), cls:bc[key]===v?'chip on':'chip', onClick:()=>this.behSet({[key]:v})}));
+    const behPpeItems=(st.clD&&st.clD.items)||(st.ppeD&&st.ppeD.items)||{gloves:'Safety gloves', goggles:'Safety goggles', helmet:'Safety helmet', vest:'Safety vest'};
+    const behSet={
+      enableChips:[[true,'Behaviour analytics on'],[false,'Off']].map(([v,label])=>({label, cls:!!bc.enabled===v?'chip on':'chip', onClick:()=>this.behSet({enabled:v})})),
+      locChips:spLocOpts.map(L=>({label:L, cls:(bc.locations||[]).indexOf(L)>=0?'chip on':'chip', onClick:()=>this.behSet({locations:behToggle(bc.locations||[], L)})})),
+      camChips:pocStreams.map(c=>({label:String(c.key).toUpperCase()+(spCamLocCur[c.key]?' · '+spCamLocCur[c.key]:''),
+        cls:(bc.cameras||[]).indexOf(c.key)>=0?'chip on':'chip', onClick:()=>this.behSet({cameras:behToggle(bc.cameras||[], c.key)})})),
+      groupChips:behChipRow('group_min',[2,3,4,5],v=>v+'+ people'),
+      dwellChips:behChipRow('dwell_min',[1,2,3,5,10,15],v=>v+' min'),
+      idleChips:behChipRow('idle_min',[0,5,10,15,30],v=>v?v+' min':'Off'),
+      gapChips:behChipRow('gap_sec',[60,120,180,300],v=>v+' s'),
+      cleanChips:Object.keys(behPpeItems).map(k=>({label:behPpeItems[k], cls:(bc.clean_items||[]).indexOf(k)>=0?'chip on':'chip',
+        onClick:()=>this.behSet({clean_items:behToggle(bc.clean_items||[], k)})})),
+      dirty:!!st.behDraft,
+    };
+    // ===== Workstream C: INCIDENT HEATMAP (Analytics) =====
+    const hmd=st.hmD||{}, hmf=st.hmF, hmView=hmf.view==='dow'?'dow':'cam';
+    const hmSrc=(hmd[hmView]||[]);
+    const hmMax=Math.max(1, ...hmSrc.map(r=>Math.max(0, ...(r.cells||[]))));
+    const hmP=st.hmPick;
+    const hmRows=hmSrc.map(r=>({label:hmView==='cam'?r.label:r.label, sub:hmView==='cam'?(r.location||''):'', total:String(r.total||0),
+      cells:(r.cells||[]).map((n,h)=>{ const a=n?(0.12+0.88*Math.pow(n/hmMax,0.6)):0;
+        const on=hmP&&hmP.type===hmView&&String(hmP.row)===String(r.key)&&hmP.hour===h;
+        return {n:n?String(n):'', bg:n?`rgba(249,115,22,${a.toFixed(2)})`:'var(--bg3)', fg:a>0.55?'#fff':'var(--text2)', cls:on?'hm-cell hm-on':'hm-cell',
+          title:(hmView==='cam'?(r.label+(r.location?' · '+r.location:'')):r.label)+' · '+String(h).padStart(2,'0')+':00–'+String(h+1).padStart(2,'0')+':00 · '+n+' detection'+(n===1?'':'s'),
+          onClick:()=>{ if(n) this.pickHm(hmView, String(r.key), h, (hmView==='cam'?r.label:r.label)+' · '+String(h).padStart(2,'0')+':00–'+String(h+1).padStart(2,'0')+':00'); }}; })}));
+    const hmHours=Array.from({length:24},(_,h)=>({label:h%3===0?String(h).padStart(2,'0'):''}));
+    const hmModList=[['','All modules'],['fire','Fire & Smoke'],['ppe','PPE'],['intr','Intrusion / Restricted'],['face','Face & Body'],['forklift','Forklift'],['behaviour','Behaviour']];
+    const hmModSel={value:hmf.module||'', options:hmModList.map(([v,label])=>({v, label:label+(v&&hmd.byMod&&hmd.byMod[v]!=null?' ('+hmd.byMod[v]+')':'')})),
+      onChange:(e)=>this.setHmF({module:(e&&e.target)?e.target.value:''})};
+    const hmSevSel={value:hmf.sev||'', options:[['','Any severity'],['medium','Medium and above'],['high','High and above'],['critical','Critical only']].map(([v,label])=>({v,label})),
+      onChange:(e)=>this.setHmF({sev:(e&&e.target)?e.target.value:''})};
+    const hmDaysTabs=[[1,'24 h'],[7,'7 days'],[30,'30 days'],[90,'90 days']].map(([n,label])=>({label, cls:N(hmf.days)===n?'chip on':'chip', onClick:()=>this.setHmF({days:n})}));
+    const hmViewTabs=[['cam','Camera × hour'],['dow','Day of week × hour']].map(([v,label])=>({label, cls:hmView===v?'chip on':'chip', onClick:()=>this.setState(s=>({hmF:{...s.hmF, view:v}, hmPick:null, hmItems:null}))}));
+    const HMSEV={critical:'var(--crit)', high:'var(--high)', medium:'#B45309', low:'var(--low)'};
+    const MODLBL_HM={fire:'Fire & Smoke', ppe:'PPE', intr:'Intrusion', face:'Face & Body', forklift:'Forklift', behaviour:'Behaviour'};
+    const hmItems=(st.hmItems||[]).map(i=>({thumb:thumbOf(i.image), title:i.title, mod:(MODLBL_HM[i.mod]||i.mod), sev:String(i.sev||'').toUpperCase(), sevCol:HMSEV[i.sev]||'var(--text3)',
+      where:[i.camera, i.location].filter(Boolean).join(' · '), time:String(i.time||'').slice(0,16)+' · '+(i.status||'open'),
+      onOpen:()=>{ if(i.image) this.openLightbox(i.image, i.title+' · '+String(i.time).slice(0,16)); }}));
+
     // ===== FORKLIFT MONITORING (/api/forklift/summary) =====
     const fkd=st.fkD||{}, fkf=st.fkF, fkk=fkd.kpi||{};
     const FKV={violation:['ZONE VIOLATION','var(--crit)'], logged:['FORKLIFT DETECTED','var(--low)'], cleared:['CLEARED — FALSE ALARM','var(--ok)']};
+    // Workstream B: per-kind verdict labels (pedestrian intrusion / operator PPE).
+    const FKV_KIND={pedestrian:{violation:'PEDESTRIAN IN FORKLIFT-ONLY ZONE', logged:'PEDESTRIAN LOGGED'},
+      operator:{violation:'OPERATOR PPE VIOLATION', logged:'FORKLIFT OPERATOR'}};
+    const fkItemLbl=(i)=>(PPE_ITEMS[i]||i).replace('Safety ','').toLowerCase();
+    const fkKindSel={value:fkf.kind||'', options:[{v:'',label:'All detection types'}, ...Object.entries(fkd.kinds||{forklift:'Forklift detection',
+      pedestrian:'Pedestrian in forklift-only zone', operator:'Forklift operator PPE violation'}).map(([v,label])=>({v,label}))],
+      onChange:(e)=>this.setFkF({kind:(e&&e.target)?e.target.value:''})};
     const fkSel=(key,list,blank)=>({value:fkf[key]||'', options:[{v:'',label:blank}, ...list],
       onChange:(e)=>this.setFkF({[key]:(e&&e.target)?e.target.value:''})});
     const fkPlantSel=fkSel('plant', ((fkd.plants&&fkd.plants.length)?fkd.plants:plantNames).map(x=>({v:x,label:x})), 'All plants');
@@ -3565,20 +4291,30 @@ class Component extends DCLogic {
       ['CLEARED', fkk.cleared||0, 'var(--text3)', 'false alarms cleared by a reviewer'],
       ['TODAY', fkk.today||0, (fkk.today?'var(--high)':'var(--ok)'), 'violations since midnight'],
       ['OPEN ALERTS', fkk.open||0, (fkk.open?'var(--high)':'var(--ok)'), 'violations not yet handled'],
+      ['PEDESTRIAN INTRUSIONS', fkk.pedIntrusions||0, (fkk.pedIntrusions?'var(--crit)':'var(--ok)'), 'people in forklift-only zones'],
+      ['OPERATOR PPE', fkk.opViolations||0, (fkk.opViolations?'var(--crit)':'var(--ok)'),
+        fkk.opChecked?(Math.round(100*N(fkk.opCompliant)/N(fkk.opChecked))+'% of '+fkk.opChecked+' forklifts with operator compliant'):'operator / crew missing required PPE'],
     ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
     const fkMax=Math.max(1, ...(fkd.daily||[]).map(x=>N(x.detections)));
     const fkDaily=(fkd.daily||[]).map(x=>{ const v=N(x.violations), l=Math.max(0, N(x.detections)-v);
       return {label:String(x.date).slice(5), title:x.date+' · '+N(x.detections)+' detections · '+v+' violations',
         vH:Math.round(100*v/fkMax)+'%', lH:Math.round(100*l/fkMax)+'%', v:N(x.detections)?String(N(x.detections)):''}; });
     const fkZMax=Math.max(1, ...(fkd.byZone||[]).map(z=>N(z.detections)));
-    const FKRULE={prohibited:'prohibited', restricted:'restricted hours'};
+    const FKRULE={prohibited:'prohibited', restricted:'restricted hours', forklift_only:'forklift only — no pedestrians'};
     const fkByZone=(fkd.byZone||[]).map(z=>({zone:z.zone||z.camera, sub:[z.plant, z.camera, FKRULE[z.rule]].filter(Boolean).join(' · '),
       line:N(z.violations)+' violations · '+N(z.detections)+' detections', w:Math.round(100*N(z.detections)/fkZMax)+'%',
+      split:N(z.forklifts)+' forklift · '+N(z.pedestrians)+' pedestrian · '+N(z.operators)+' operator detections'
+        +(N(z.pedViolations)?(' · '+N(z.pedViolations)+' pedestrian intrusions'):'')+(N(z.opViolations)?(' · '+N(z.opViolations)+' operator PPE'):''),
       col:N(z.violations)?'var(--crit)':'var(--low)',
       onClick:()=>this.setFkF({camera:fkf.camera===z.camera?'':z.camera})}));
-    const fkInc=(fkd.incidents||[]).map(i=>{ const vv=FKV[i.verdict]||[String(i.verdict||'').toUpperCase(),'var(--text3)'];
+    const fkInc=(fkd.incidents||[]).map(i=>{ const vv0=FKV[i.verdict]||[String(i.verdict||'').toUpperCase(),'var(--text3)'];
+      const kl=(FKV_KIND[i.kind]||{})[i.verdict];
+      const vv=kl?[kl, vv0[1]]:(i.verdict==='violation'&&i.opViolation?['OPERATOR PPE VIOLATION', vv0[1]]:vv0);
       return {
         thumb:thumbOf(i.image), verdict:vv[0], vCol:vv[1], zone:i.zone||i.camera,
+        kindLabel:(fkd.kinds||{})[i.kind]||(i.kind==='pedestrian'?'Pedestrian':(i.kind==='operator'?'Forklift operator':'Forklift detection')),
+        opLine:i.opPpe==='missing'?('Operator PPE: missing '+(i.opMissing||[]).map(fkItemLbl).join(', ')):(i.opPpe==='ok'?'Operator PPE: compliant':(i.opPpe==='unknown'?'Operator PPE: not reported by model':'')),
+        opCol:i.opPpe==='missing'?'var(--crit)':(i.opPpe==='ok'?'var(--ok)':'var(--text3)'),
         where:[i.plant, i.location].filter(Boolean).join(' · '), cam:(i.camera||'')+(i.policy?(' · '+i.policy):'')+(i.rule?(' · '+(FKRULE[i.rule]||i.rule)):''),
         time:String(i.time||'').slice(0,16), reason:i.reason||'',
         status:'Alert: '+(i.status||'open')+(i.reviewedBy?(' · reviewed by '+i.reviewedBy):'')+(i.note?(' — '+i.note):''),
@@ -3599,11 +4335,13 @@ class Component extends DCLogic {
         key:key.toUpperCase(), camName:cam?cam.name:key.toUpperCase(), loc:spCamLocCur[key]||'not mapped to a camera point',
         pols:pols.length?('SenseStudio vehicle / forklift policies: '+pols.join(', ')):'No vehicle or forklift policy has fired on this camera yet — set one up in SenseStudio',
         polsCol:pols.length?'var(--text3)':'var(--high)',
-        state:z.enabled?(z.rule==='restricted'?'FORKLIFT ZONE · RESTRICTED HOURS':'FORKLIFT ZONE · PROHIBITED'):'Not a forklift zone',
+        state:z.enabled?(z.rule==='restricted'?'FORKLIFT ZONE · RESTRICTED HOURS':(z.rule==='forklift_only'?'FORKLIFT ONLY · NO PEDESTRIANS':'FORKLIFT ZONE · PROHIBITED')):'Not a forklift zone',
+        opChips:Object.keys(PPE_ITEMS).map(i=>{ const opl=Array.isArray(z.op_ppe)?z.op_ppe:['helmet','vest'];
+          return {label:PPE_ITEMS[i], cls:opl.indexOf(i)>=0?'chip on':'chip', onClick:()=>this.toggleFkOpPpe(key,i)}; }),
         stateCol:z.enabled?'var(--high)':'var(--text3)',
         enableChips:[[true,'Forklift zone'],[false,'Off']].map(([v,label])=>({label, cls:z.enabled===v?'chip on':'chip',
           onClick:()=>this.saveFkZone(key,{enabled:v, name:z.name||((spCamLocCur[key]||key.toUpperCase())+' forklift zone')})})),
-        ruleChips:[['prohibited','Prohibited'],['restricted','Restricted hours']].map(([v,label])=>({label, cls:z.rule===v?'chip on':'chip',
+        ruleChips:[['prohibited','Prohibited'],['restricted','Restricted hours'],['forklift_only','Forklift only — pedestrians not allowed']].map(([v,label])=>({label, cls:z.rule===v?'chip on':'chip',
           onClick:()=>this.saveFkZone(key,{rule:v})})),
         name:dr.name!=null?dr.name:z.name, onName:(e)=>this.fkDraftSet(key,'name',(e&&e.target)?e.target.value:''),
         hours:dr.hours!=null?dr.hours:(z.hours==='always'?'':z.hours), onHours:(e)=>this.fkDraftSet(key,'hours',(e&&e.target)?e.target.value:''),
@@ -3614,6 +4352,8 @@ class Component extends DCLogic {
           note:String(dr.note!=null?dr.note:(z.note||'')).trim()}),
       }; });
 
+    // Workstream D bindings (AI Performance, POC Scorecard, Integrations, Data Retention, Network test, Model thresholds)
+    const {isAiperf, aipKpis, aipModRows, aipPerRows, aipCamRows, aipCamEmpty, aipSimBars, aipFaceLine, aipQueue, aipQueueEmpty, aipRecent, aipRecentEmpty, aipMissed, aipMissedEmpty, aipStatus, aipMsg, aipFrom, aipTo, onAipFrom, onAipTo, aipModSel, aipCamSel, aipPlantSel, reloadAip, exportAipMetrics, exportAipTraining, aipMethodOpen, toggleAipMethod, aipMethodLabel, aipMissModSel, aipMissCamSel, aipMissTime, onAipMissTime, aipMissNote, onAipMissNote, aipLogMiss, aipThLine, goAipModels, isPoc, pocKpis, pocGroups, pocCats, pocCrit, pocTests, pocRepInputs, pocRepAreas, pocRepScores, pocRepTests, pocRepCrit, pocRepNoGaps, pocDocs, pocDocOpen, pocDocTitle, pocDocText, pocTabs, pocTabCriteria, pocTabTests, pocTabReport, pocTabDocs, pocMsg, pocSaveLabel, pocCanEdit, pocReadOnly, pocSave, pocExportCrit, pocExportTests, pocExportAll, pocPrint, reloadPoc, pocUpdated, pocBandLine, pocBandCol, pocPrintDate, spTabInt, intKeyLine, intHasKey, intNewKey, intHasNewKey, intRegen, intRevoke, intRegenLabel, intHooks, intHooksEmpty, intAddHook, intSaveHooks, intMsg, intLog, intLogEmpty, intCat, spTabRet, retChips, retKpis, retMsg, retDueLine, retLastLine, retPurge, reloadRet, netRows, netHas, netBusy, netMsg, netRun, netRunLabel, netSummary, thFace, onThFace, thPpe, onThPpe, thSave, thMsg, thExportFp, thExportAll, goAiperf}=this.wsdVals();
     return {
       theme:st.theme, clock, dateStr, dateLong, infLoad:st.infLoad,
       sideMode:st.sideCollapsed?'collapsed':'open', toggleSide:()=>this.toggleSide(),
@@ -3633,6 +4373,27 @@ class Component extends DCLogic {
       // employees + face registration pages
       isEmployees:st.page==='employees', isFaces:st.page==='faces',
       // forklift monitoring
+      // Workstream C: behaviour analytics page
+      isBehaviour:st.page==='behaviour', behKpis, behRangeTabs, behTrend, behTimeline, behExc,
+      behNoExc:!!bhd.from && behExc.length===0, behNoTimeline:!!bhd.from && behTimeline.length===0,
+      behNoScope:!!bhd.from && behScopeList.length===0, behScopeLine, behCamSel, behKindSel, behVerdictSel,
+      behFrom:bhf.from||bhd.from||'', behTo:bhf.to||bhd.to||'', behDay:bhf.day||bhd.day||'',
+      onBehFrom:(e)=>this.setBehF({from:(e&&e.target)?e.target.value:''}), onBehTo:(e)=>this.setBehF({to:(e&&e.target)?e.target.value:''}),
+      onBehDay:(e)=>this.setBehF({day:(e&&e.target)?e.target.value:''}),
+      behStatus:bhf.busy?'Loading…':(bhf.err||''), behMsg:st.behMsg||'', reloadBeh:()=>this.loadBeh(),
+      exportBehExc:()=>this.exportBeh('exceptions'), exportBehTrend:()=>this.exportBeh('trend'),
+      behModelNote:bhd.modelNote||'SenseStudio V2.13 has no native fighting, fall or cleaning-action model — those come from a SenseStudio behaviour / custom algorithm on the camera. Chit-chat, idle loitering and PPE-proxy cleaning are derived from detection dwell and attributes.',
+      goSettingsBeh:()=>{ this.setState({spTab:'beh'}); this.setPage('settings'); }, goCleaningPpe:()=>this.setPage('cleaning'),
+      // Settings → Behaviour Rules
+      spTabBeh:st.spTab==='beh', behSet, behSave:()=>this.behSave(), behRescan:()=>this.rescanBeh(),
+      behDiscard:()=>this.setState({behDraft:null}),
+      // Analytics → incident heatmap
+      hmRows, hmHours, hmModSel, hmSevSel, hmDaysTabs, hmViewTabs, hmItems, hmHasPick:!!st.hmPick,
+      hmPickLabel:st.hmPick?(st.hmPick.label+' — '+(st.hmItems||[]).length+' detection'+((st.hmItems||[]).length===1?'':'s')+((st.hmItems||[]).length>=60?' (first 60)':'')):'',
+      hmNoData:!!st.hmD && hmRows.every(r=>r.total==='0'), hmTotal:fmtN(hmd.total), hmStatus:hmf.busy?'Loading…':(hmf.err||''),
+      hmClearPick:()=>this.setState({hmPick:null, hmItems:null}),
+      hmOpenIncidents:()=>{ const p=st.hmPick;
+        this.setState({incMod:hmf.module||'all', incCam:(p&&p.type==='cam')?String(p.row).toUpperCase():'all', incPage:0}); this.setPage('incidents'); },
       isForklift:st.page==='forklift', fkKpis, fkDaily, fkByZone, fkNoZoneRows:!!fkd.from && fkByZone.length===0, fkInc,
       fkNoInc:!!fkd.from && fkInc.length===0, fkNoZones:!!fkd.from && !(fkd.zones||[]).some(z=>z.enabled),
       fkPlantSel, fkCamSel, fkVerdictSel, fkStatusSel, fkMsg:st.fkMsg||'', fkModelNote,
@@ -3643,6 +4404,10 @@ class Component extends DCLogic {
       reloadFk:()=>this.loadFk(), exportFkInc:()=>this.exportFk('incidents'), exportFkSum:()=>this.exportFk('summary'),
       goSettingsFk:()=>{ this.setState({spTab:'fk'}); this.setPage('settings'); },
       spTabFk:st.spTab==='fk', fkZoneRows,
+      // Workstream B: forklift pedestrian / operator PPE, PPE feasibility + hair-net proxy
+      fkKindSel, fkSafetyNote:fkd.safetyNote||'People seen within ±N s of a forklift on the same camera are treated as its operator / crew and checked against the zone operator PPE; anyone else in a forklift-only zone during its hours is a pedestrian intrusion.',
+      fkOpWinChips:[5,10,15,30].map(s=>({label:'±'+s+' s', cls:N((ap&&ap.fk_operator_window)||10)===s?'chip on':'chip', onClick:()=>this.setFkOpWindow(s)})),
+      ppeFeas, ppeHairChips,
       camsOnline:(st.live.camsOnline!=null?st.live.camsOnline:this.camPool.length),
       camsTotal:(st.live.camsTotal!=null?st.live.camsTotal:this.camPool.length),
       ppePct:(st.live.ppePct!=null?st.live.ppePct:100),
@@ -3767,6 +4532,8 @@ class Component extends DCLogic {
       onAddName:(e)=>this.updAddCam({name:e&&e.target?e.target.value:''}), onAddRtsp:(e)=>this.updAddCam({rtsp:e&&e.target?e.target.value:''}), submitCamera:()=>this.submitCamera(),
       // routing
       page:st.page, nav, sec, pageTitle, pageSub,
+      // Workstream D
+      isAiperf, aipKpis, aipModRows, aipPerRows, aipCamRows, aipCamEmpty, aipSimBars, aipFaceLine, aipQueue, aipQueueEmpty, aipRecent, aipRecentEmpty, aipMissed, aipMissedEmpty, aipStatus, aipMsg, aipFrom, aipTo, onAipFrom, onAipTo, aipModSel, aipCamSel, aipPlantSel, reloadAip, exportAipMetrics, exportAipTraining, aipMethodOpen, toggleAipMethod, aipMethodLabel, aipMissModSel, aipMissCamSel, aipMissTime, onAipMissTime, aipMissNote, onAipMissNote, aipLogMiss, aipThLine, goAipModels, isPoc, pocKpis, pocGroups, pocCats, pocCrit, pocTests, pocRepInputs, pocRepAreas, pocRepScores, pocRepTests, pocRepCrit, pocRepNoGaps, pocDocs, pocDocOpen, pocDocTitle, pocDocText, pocTabs, pocTabCriteria, pocTabTests, pocTabReport, pocTabDocs, pocMsg, pocSaveLabel, pocCanEdit, pocReadOnly, pocSave, pocExportCrit, pocExportTests, pocExportAll, pocPrint, reloadPoc, pocUpdated, pocBandLine, pocBandCol, pocPrintDate, spTabInt, intKeyLine, intHasKey, intNewKey, intHasNewKey, intRegen, intRevoke, intRegenLabel, intHooks, intHooksEmpty, intAddHook, intSaveHooks, intMsg, intLog, intLogEmpty, intCat, spTabRet, retChips, retKpis, retMsg, retDueLine, retLastLine, retPurge, reloadRet, netRows, netHas, netBusy, netMsg, netRun, netRunLabel, netSummary, thFace, onThFace, thPpe, onThPpe, thSave, thMsg, thExportFp, thExportAll, goAiperf,
       // camera dashboard
       isCamDash:st.page==='camdash', cxKpi, cxPlantRows, cxPlantsEmpty:cxPlantRows.length===0, cxByCam, cxByCamEmpty:cxByCam.length===0,
       cxDonut, cxDonutLegend, cxDonutTotal:fmtN(cxModSum), cxWall, cxWallEmpty:cxWall.length===0, cxAttention, cxAttentionEmpty:cxAttention.length===0,
@@ -3875,7 +4642,7 @@ class Component extends DCLogic {
       purgeEvents:()=>this.purgeEvents(),
       purgeCancel:(ev)=>this.purgeCancel(ev),
       // alert rules (live settings)
-      arRules, arActive:String(arActive), arSev, arArmed, arCool, alertMsg:st.alertMsg,
+      arRules, arActive:String(arActive), arTotal:String(arRules.length||5), arSev, arArmed, arCool, alertMsg:st.alertMsg,
       arMasterToggle:()=>this.saveAlerts({email_enabled:!arMasterOn}),
       arMasterBg:arMasterOn?'var(--ok)':'var(--line2)', arMasterKnob:arMasterOn?'18px':'2px',
       arMailVal, onArMail:(e)=>this.setState({arMailDraft:(e&&e.target)?e.target.value:''}),
@@ -3885,7 +4652,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['live','Live Video'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['live','Live Video'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['beh','Behaviour Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models'],['integrations','Integrations'],['retention','Data Retention']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabLive:st.spTab==='live', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',
@@ -3964,6 +4731,7 @@ class Component extends DCLogic {
       applySpRepTo:()=>{ this.saveApp({report_recipients:spRepTo}); this.setState({spRepDraft:null}); },
       sendReportNow:()=>this.sendReportNow(),
       goRules:()=>this.setPage('rules'),
+      wsA:this.wsAVals(st),                              // Workstream A: Telegram / escalation / condition rules
       // forecast page
       fcHas, fcEmpty:!fcHas, fcKpis, fcTrends, fcDaysTabs,
       fcStatus: st.fcBusy?'crunching collected data…':(fcHas?('window '+fa.days+' days · confidence: '+ff.confidence):''),

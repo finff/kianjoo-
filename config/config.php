@@ -319,7 +319,7 @@ $ppeRules = [];
 if (is_array($app['ppe_rules'] ?? null)) {
     foreach ($app['ppe_rules'] as $loc => $items) {
         $loc   = substr(trim((string) $loc), 0, 64);
-        $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) $items));
+        $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'], (array) $items));
         if ($loc !== '' && $items) {
             $ppeRules[$loc] = $items;
         }
@@ -328,6 +328,11 @@ if (is_array($app['ppe_rules'] ?? null)) {
     $ppeRules = ['Line 5' => ['gloves', 'goggles'], 'Waste Area — Spot 9' => ['helmet', 'vest']];
 }
 $config['ppe'] = ['rules' => $ppeRules];
+// Workstream B: HatsType values that count as hair covered for the hair-net
+// proxy (Settings → PPE Area Rules). Default: Bonnet.
+$hairHats = array_values(array_filter(array_map(static fn ($v) => substr(trim((string) $v), 0, 40),
+    is_array($app['ppe_hair_hats'] ?? null) ? $app['ppe_hair_hats'] : ['Bonnet'])));
+$config['ppe']['hair_hats'] = $hairHats ?: ['Bonnet'];
 
 // Restricted zones (Settings → Restricted Zones): camera stream key → zone
 // name, restricted hours ("always" or "HH:MM-HH:MM") and the staff IDs /
@@ -362,12 +367,18 @@ foreach ((is_array($app['fk_zones'] ?? null) ? $app['fk_zones'] : []) as $k => $
     $fkZones[$k] = [
         'enabled' => !empty($z['enabled']),
         'name'    => substr(trim((string) ($z['name'] ?? '')), 0, 80) ?: strtoupper($k),
-        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted'], true) ? (string) $z['rule'] : 'prohibited',
+        'rule'    => in_array($z['rule'] ?? '', ['prohibited', 'restricted', 'forklift_only'], true) ? (string) $z['rule'] : 'prohibited',
         'hours'   => preg_match('/^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}$/', $hours) ? $hours : 'always',
         'note'    => substr(trim((string) ($z['note'] ?? '')), 0, 200),
+        // Workstream B: PPE the forklift operator / nearby crew must wear.
+        'op_ppe'  => array_key_exists('op_ppe', $z)
+            ? array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'], (array) $z['op_ppe']))
+            : ['helmet', 'vest'],
     ];
 }
-$config['forklift'] = ['zones' => $fkZones];
+$config['forklift'] = ['zones' => $fkZones,
+    // Workstream B: ±seconds around a forklift detection in which a person on the same camera is its operator / crew.
+    'operator_window' => max(2, min(120, (int) ($app['fk_operator_window'] ?? 10)))];
 
 // Cleaning schedules (Cleaning Activity page): when cleaning is expected at
 // an area and the PPE required during it. A schedule is a time window, not
@@ -384,7 +395,7 @@ foreach ((is_array($app['cleaning_schedules'] ?? null) ? $app['cleaning_schedule
     }
     $days  = array_values(array_unique(array_filter(array_map('intval', (array) ($s['days'] ?? [])), static fn ($d) => $d >= 1 && $d <= 7)));
     $dates = array_values(array_filter((array) ($s['dates'] ?? []), static fn ($d) => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $d)));
-    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves'], (array) ($s['items'] ?? [])));
+    $items = array_values(array_intersect(['helmet', 'vest', 'goggles', 'gloves', 'boots', 'hairnet', 'ear'], (array) ($s['items'] ?? [])));
     sort($days);
     $clean[] = [
         'id'       => $id,
@@ -400,6 +411,12 @@ foreach ((is_array($app['cleaning_schedules'] ?? null) ? $app['cleaning_schedule
 }
 $config['cleaning'] = ['schedules' => $clean];
 
+// Workstream C — behaviour analytics (Settings → Behaviour Rules, keys beh_*):
+// monitored cameras / locations (default: the "Line 5" camera point), group
+// size + dwell for chit-chat, idle threshold, presence gap, cleaning PPE proxy.
+require_once dirname(__DIR__) . '/lib/Behaviour.php';
+$config['behaviour'] = Behaviour::configFrom($app);
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)
@@ -409,5 +426,20 @@ $config['reports'] = [
         is_array($app['report_recipients'] ?? null) ? $app['report_recipients'] : []),
         static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL))) ?: ($config['mail']['to'] ?? []),
 ];
+
+// Workstream A: Telegram channel, unattended-alert escalation workflow and
+// predefined alert conditions (Settings → Notifications / Alert Rules →
+// storage/notify_settings.json, .env TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).
+require_once APP_ROOT . '/lib/NotifySettings.php';
+$__wsa = NotifySettings::load(APP_ROOT . '/storage/notify_settings.json');
+$config['telegram']             = $__wsa['telegram'];
+$config['escalation']           = $__wsa['escalation'];
+$config['alerts']['conditions'] = $__wsa['conditions'];
+unset($__wsa);
+
+// Workstream D: AI thresholds, integration API / webhooks and data retention
+// (Settings → Models / Integrations / Data Retention → storage/wsd_settings.json).
+require_once APP_ROOT . '/lib/WsdSettings.php';
+$config['wsd'] = WsdSettings::load(APP_ROOT . '/storage');
 
 return $config;

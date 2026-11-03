@@ -1529,3 +1529,177 @@ body{font-variant-numeric:tabular-nums}
 .lb-hint{margin-top:4px}
 .lb-msg{margin-top:6px}
 @media (max-width:700px){.lb-add{grid-template-columns:1fr}}
+
+
+/* ── Workstream A: alert channels, Telegram, escalation workflow, condition rules ── */
+.esc-chip{display:inline-flex;align-items:center;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.2px;border:1px solid currentColor;border-radius:4px;padding:0 5px;white-space:nowrap;background:color-mix(in srgb, currentColor 10%, transparent)}
+.esc-chip-lg{font-size:10.5px;padding:3px 9px;border-width:1.5px;border-radius:20px}
+.esc-chan{color:var(--text3);font-family:var(--mono);font-size:10.5px;margin-left:8px}
+.esc-chans{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.esc-chan-card{background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.esc-chan-head{display:flex;align-items:center;gap:8px;font-size:12.5px;flex-wrap:wrap}
+.esc-chan-mark{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1.5px solid;border-radius:50%;font-size:11px;font-weight:700}
+.esc-chan-line{color:var(--text2);font-size:11.5px}
+.esc-chan-stat{color:var(--text3);font-family:var(--mono);font-size:10.5px}
+.esc-chan-err{color:var(--crit);font-size:10.5px;word-break:break-word}
+.esc-chan-err:empty{display:none}
+.esc-btn{border:1px solid var(--line2);background:var(--bg2);color:var(--brand);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.esc-btn:hover{border-color:var(--brand)}
+.esc-btn-warn{color:var(--high)}
+.esc-btn-warn:hover{border-color:var(--high)}
+.esc-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.esc-grow{flex:1}
+.esc-note{color:var(--text3);font-family:var(--mono);font-size:10.5px}
+.esc-levels{display:flex;flex-direction:column;gap:8px}
+.esc-level{background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px 15px}
+.esc-level-head{display:flex;align-items:center;gap:9px;margin-bottom:8px;flex-wrap:wrap}
+.esc-level-tag{display:inline-flex;align-items:center;justify-content:center;min-width:26px;border-radius:5px;color:#fff;font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 6px;flex-shrink:0}
+.esc-level-after{color:var(--text2);font-size:11.5px;font-weight:600}
+.esc-level-warn{color:var(--gold);font-size:10.5px;margin-left:auto}
+.esc-level-grid{display:grid;grid-template-columns:1fr 1.4fr 1.4fr;gap:8px}
+.esc-res{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:2px}
+.esc-res-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.esc-res-row:last-child{border-bottom:none}
+.esc-log-ok{font-weight:700;width:14px;text-align:center}
+.esc-log-ch{font-weight:600;min-width:150px;font-size:11.5px}
+.esc-log-note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.esc-log-at{color:var(--text3);font-family:var(--mono);font-size:10.5px;white-space:nowrap}
+.cond-list{display:flex;flex-direction:column}
+.cond-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.cond-main{flex:1;min-width:0}
+.cond-name{font-size:12.5px;font-weight:600}
+.cond-desc{color:var(--text3);font-size:11px;margin-top:2px}
+.cond-ch{color:var(--text2);font-family:var(--mono);font-size:10.5px;white-space:nowrap}
+.cond-del{border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px}
+.cond-del:hover{color:var(--crit);background:var(--bg3)}
+.cond-form{display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px}
+.cond-form>.c427{width:auto;flex:1 1 220px}
+.cond-form>.cond-kw{flex:0 1 160px}
+@media (max-width:760px){
+  .esc-chans,.esc-level-grid{grid-template-columns:1fr}
+  .esc-log-ch{min-width:0}
+  .esc-log-at{display:none}
+  .cond-row{flex-wrap:wrap}
+}
+
+/* ── Workstream B: PPE feasibility + forklift pedestrian / operator PPE ── */
+.ppx-feas{font-size:10.5px;font-weight:700;letter-spacing:.02em;margin-left:6px;text-transform:uppercase}
+.ppx-feas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:10px 0}
+.ppx-feas-card{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.ppx-feas-name{font-size:13px;font-weight:700;color:var(--text)}
+.ppx-feas-level{font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;margin:3px 0 4px}
+.att-kpis.fk-kpis-8{grid-template-columns:repeat(4,1fr)}
+@media (max-width:700px){
+  .att-kpis.fk-kpis-8{grid-template-columns:repeat(2,1fr)}
+  .ppx-feas-grid{grid-template-columns:1fr}
+}
+
+/* ── Workstream C: Behaviour Analytics (Line 5) + Analytics incident heatmap ── */
+.beh-note{display:flex;flex-direction:column;gap:4px}
+.beh-trend{height:160px}
+.beh-click{cursor:pointer}
+.beh-click:hover .ppe-day-l{color:var(--brand)}
+.beh-n{background:var(--ok);opacity:.6}
+.beh-c{background:var(--low)}
+.beh-l{background:var(--med)}
+.beh-a{background:var(--crit)}
+.ppe-day-bars .beh-n,.ppe-day-bars .beh-c,.ppe-day-bars .beh-l,.ppe-day-bars .beh-a{border-radius:2px}
+.beh-cam{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.beh-cam:first-of-type{border-top:0;margin-top:4px}
+.beh-hours{height:90px;gap:2px}
+.beh-hours .ppe-day-bars{max-width:none}
+.hm-wrap{overflow-x:auto;margin-top:10px;-webkit-overflow-scrolling:touch}
+.hm-grid{display:flex;flex-direction:column;gap:2px;min-width:640px}
+.hm-row{display:grid;grid-template-columns:150px repeat(24,minmax(18px,1fr)) 46px;gap:2px;align-items:stretch}
+.hm-head .hm-hr{font-family:var(--mono);font-size:9px;color:var(--text3);text-align:left}
+.hm-lab{display:flex;flex-direction:column;justify-content:center;min-width:0;font-size:11px;color:var(--text);padding-right:6px}
+.hm-lab b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm-lab span{font-size:9.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm-cell{height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;border:1px solid transparent;transition:transform .08s}
+.hm-cell:hover{border-color:var(--text2);transform:scale(1.08)}
+.hm-on{border-color:var(--brand);box-shadow:0 0 0 2px var(--brand)}
+.hm-tot{font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--text2);display:flex;align-items:center;justify-content:flex-end}
+.hm-pick{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.hm-pick .c247{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+@media (max-width:700px){.hm-row{grid-template-columns:96px repeat(24,minmax(16px,1fr)) 36px}}
+
+/* ══ Workstream D: AI Performance · POC Scorecard · Integrations · Retention · Network test ══ */
+/* AI Performance page */
+.aip-note{justify-content:space-between}
+.aip-note>div{flex:1;min-width:260px}
+.aip-method-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 18px;margin:10px 0}
+.aip-method-grid>div{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);line-height:1.45}
+.aip-method-grid b{color:var(--text);font-size:12.5px}
+.aip-msg{color:var(--text2)}
+.aip-method .c428{margin-top:4px}
+.aip-table td,.aip-table th{white-space:nowrap}
+.aip-table tbody tr{cursor:default}
+.aip-sub{font-family:var(--mono);font-size:9.5px;color:var(--text3);margin-top:2px;white-space:nowrap}
+.aip-mono{font-family:var(--mono);font-size:11.5px}
+.aip-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.aip-grid>.att-panel{margin-bottom:0}
+.aip-grid+.att-panel,.aip-grid+.aip-grid{margin-top:16px}
+.aip-meter{margin:8px 0}
+.aip-gap{margin-top:10px}
+.aip-verify{margin-top:6px}
+.aip-verify .c185{padding:4px 10px;font-size:11px}
+.aip-form{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;margin:10px 0}
+.aip-form .pfm-sel{width:100%}
+.aip-list{display:flex;flex-direction:column;margin-top:8px;max-height:340px;overflow-y:auto}
+.aip-li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 6px;border-bottom:1px solid var(--line)}
+.aip-li:last-child{border-bottom:none}
+.aip-li>div{min-width:0}
+@media (max-width:1100px){.aip-grid,.aip-method-grid{grid-template-columns:1fr}.aip-form{grid-template-columns:1fr}}
+
+/* POC Scorecard */
+.ppx-thead,.ppx-row{display:grid;gap:10px;align-items:start}
+.ppx-crit{grid-template-columns:38px 2fr 52px 72px 64px 2.2fr 2fr 112px}
+.ppx-test{grid-template-columns:70px 1.6fr 1.6fr 1.8fr 72px 104px 1.6fr}
+.ppx-thead{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.8px;color:var(--text3);padding:8px;border-bottom:1px solid var(--line);margin-top:10px}
+.ppx-row{padding:9px 8px;border-bottom:1px solid var(--line)}
+.ppx-row:hover{background:var(--bg3)}
+.ppx-row .att-name{white-space:normal;overflow:visible}
+.ppx-cat{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--brand);padding:12px 8px 4px;border-bottom:1px solid var(--line)}
+.ppx-sel{width:100%;padding:6px 24px 6px 9px;font-size:11.5px}
+.ppx-ta{resize:vertical;min-height:34px;font-size:11.5px;line-height:1.4;font-family:inherit}
+.ppx-in{margin-top:5px;font-size:11px}
+.ppx-live{font-size:11.5px;line-height:1.4;font-weight:600}
+.ppx-link{background:none;border:none;padding:0;margin-top:4px;color:var(--brand);font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+.ppx-link:hover{text-decoration:underline}
+.ppx-verdict{border-left:4px solid var(--line2);background:var(--bg3);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:13px}
+.ppx-kvgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.ppx-kv{display:flex;justify-content:space-between;gap:10px;background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12px}
+.ppx-kv span{color:var(--text3)}
+.ppx-area{margin-top:12px}
+.ppx-text{white-space:pre-wrap;font-size:12.5px;line-height:1.5}
+.ppx-table{margin-top:6px}
+.ppx-table tbody tr{cursor:default}
+.ppx-doc{white-space:pre-wrap;font-family:var(--code,var(--mono));font-size:11.5px;line-height:1.55;background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:8px;max-height:620px;overflow:auto;color:var(--text)}
+.ppx-print-head,.ppx-print-only{display:none}
+.ppx-print-title{font-size:18px;font-weight:700}
+@media (max-width:1200px){
+  .ppx-thead{display:none}
+  .ppx-crit,.ppx-test{grid-template-columns:1fr 1fr}
+  .ppx-kvgrid{grid-template-columns:1fr}
+}
+@media print{
+  body.ppx-printing aside,body.ppx-printing header,body.ppx-printing .as-fab,body.ppx-printing .ppx-noprint{display:none!important}
+  body.ppx-printing,body.ppx-printing div{height:auto!important;max-height:none!important;overflow:visible!important}
+  body.ppx-printing .ppx-print-head{display:block;margin-bottom:12px}
+  body.ppx-printing .ppx-print-only{display:block}
+  body.ppx-printing .ppx-page{padding:0}
+  body.ppx-printing .att-panel,body.ppx-printing .att-kpi{break-inside:avoid;box-shadow:none}
+}
+
+/* Settings → Integrations / Data Retention / Models / Live Video network test */
+.int-key{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.int-newkey{border:1px solid var(--gold);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--gold) 8%,var(--bg2))}
+.int-table td{vertical-align:top}
+.int-table tbody tr{cursor:default}
+.int-params{font-family:var(--mono);font-size:10.5px;color:var(--text2)}
+.ret-kpis{grid-template-columns:repeat(4,1fr)}
+@media (max-width:1000px){.ret-kpis{grid-template-columns:repeat(2,1fr)}}
+.net-table td{vertical-align:top}
+.net-table tbody tr{cursor:default}
+.net-note{font-size:10px;color:var(--text3);margin-top:2px;white-space:normal;max-width:340px}
+.thc-help{margin-top:4px}
