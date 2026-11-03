@@ -99,6 +99,51 @@ event response gains an `images` object with absolute, viewable URLs, e.g.
 `https://sensestudio.ngrok.io/intersense/images/cognitivesvc/roiIntrusion/…jpg`.
 (Verified live — that base serves the actual trigger frames.)
 
+### Live video (RTSP)
+
+Browsers cannot play RTSP, so live tiles go through a **go2rtc** bridge; the
+ready-to-run package (docker compose: go2rtc 1.9.9 + Caddy) is in
+**[`live-bridge/`](live-bridge/README.md)**. How it flows:
+
+1. Camera RTSP (`rtsp://user:pass@192.168.1.10:554/Streaming/Channels/102`) →
+2. go2rtc on a host that can reach the cameras (plant LAN VM, or a VPS with a
+   VPN into the camera network) →
+3. Caddy in front: HTTPS + shared token (`?token=` or the `lt` cookie it sets) →
+4. the dashboard's `<video>` plays `{base}/api/stream.mp4?src={stream}&token=…`
+   (fragmented MP4, needs H.264). `{stream}` is the SenseStudio device serial
+   lower-cased to `a-z0-9`, or a manual source's label.
+
+Without a bridge, tiles show the latest detection frame instead.
+
+**Settings › Live Video** (overrides the `LIVE_*` keys in `.env`): public base
+URL (`LIVE_STREAM_BASE`), token (`LIVE_STREAM_TOKEN`), optional internal API
+URL for server calls (`LIVE_BRIDGE_API`, e.g. `http://127.0.0.1:1984`),
+optional go2rtc basic-auth user / password (`LIVE_BRIDGE_USER` / `_PASS`),
+auto-register On/Off (`LIVE_AUTO_SYNC`), *Test bridge*, *Register all RTSP
+sources*, and the RTSP sources table (state Registered / Missing / Mismatch /
+Orphan, *Probe* with a snapshot thumbnail, manual sources).
+
+The server registers sources on the bridge itself (`PUT /api/streams?name=&src=`,
+persisted by go2rtc into its `go2rtc.yaml`) — no manual go2rtc work:
+
+- automatically on the fleet refresh, at most every 5 minutes (missing and
+  changed URLs; never deletes);
+- when a camera is added or edited in the dashboard with an RTSP URL;
+- on *Register all RTSP sources*;
+- manual sources for cameras outside SenseStudio (*Add manual RTSP source*,
+  or `RTSP_STREAMS={"label":"rtsp://…"}`), which override a fleet camera with
+  the same label.
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `GET`  | `/live/status[?net=0]` | **read** | Bridge reachability, version, per-stream state and counts (`net=0`: cached, no network) |
+| `POST` | `/live/sync` | **read** + session + settings | Register missing / changed sources; returns the result + status |
+| `POST` | `/live/probe` `{stream}` | **read** | Grab one frame (`/api/frame.jpeg`) → `ready`, `ms`, snapshot URL |
+| `GET`  | `/live/snapshot?stream=` | **read** | The probed JPEG (cached 15 s) |
+| `POST` | `/live/source` `{stream, rtsp}` / `{stream, remove:true}` | **read** + session + settings | Save / remove a manual source and push it to the bridge |
+
+RTSP credentials never leave the server unmasked (`rtsp://user:••••@…`).
+
 **Keep the Firebase feed working too (optional):** set `FORWARD_FIREBASE_BASE`
 in `.env` to `https://weststar-c5290-default-rtdb.asia-southeast1.firebasedatabase.app/tmlab1`.
 Each event is then also `PUT` to `{base}/{stream}.json`, mirroring the old feed.
@@ -166,15 +211,18 @@ Pages (sidebar order):
   as false alarm) and CSV exports. SenseStudio V2.13 has no forklift class, so
   detections come from its vehicle / non-motor-vehicle attributes or a policy
   named "forklift" — see `lib/Forklift.php`.
-- **Cameras** — Live Feeds (one tile per stream with detection boxes and the
-  go2rtc live video) and the Camera Fleet.
+- **Cameras** — Camera Dashboard, Live Feeds (one tile per stream with
+  detection boxes and the go2rtc live video, with a connecting / buffering /
+  error chip) and the Camera Fleet; each camera's detail page shows its live
+  bridge readiness (Registered · *Test source*, or *Register now*). See
+  [Live video (RTSP)](#live-video-rtsp).
 - **Reports** — Incidents (tickets, SLA), Analytics, Forecast, Fire & Smoke and
   Face & Body reports.
 - **Settings → Detection simulator** — one click generates a week of realistic
   detections (demo employees, PPE, restricted zone, forklift, cleaning window,
   smoking, strangers) via `POST /api/simulate`, on `DEMO-*` cameras that
   "Remove demo data" deletes again. Simulated events never e-mail or forward.
-- **Settings** — SenseTime API, endpoints & tokens, POC camera points,
+- **Settings** — SenseTime API, Live Video (go2rtc bridge), endpoints & tokens, POC camera points,
   attendance rules, PPE area rules, restricted zones, forklift zones,
   notifications, AI source, auto reports; plus Alert Rules and Users & Roles.
 
@@ -215,6 +263,7 @@ lib/Overview.php        Overview page aggregate (attendance, PPE, restricted, cl
 lib/Simulator.php       Detection simulator: a week of SenseStudio-shaped pushes through the real ingest path
 storage/                raw JSONL backup + AI cache (+ SQLite if used) — deny-all
 tests/                  sample_payload.json + local dev router
+live-bridge/            go2rtc + Caddy package for live RTSP video (see live-bridge/README.md)
 deploy.sh               Local, FTP-based deploy tool (LFTP) for the FTP-hosted site
 deploy.php              Auto-deploy webhook receiver (GitHub push → cPanel) — see docs/deploy.md
 git-deploy.sh           Server-side `git fetch && reset --hard`, invoked by deploy.php

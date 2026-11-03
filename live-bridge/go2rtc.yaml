@@ -1,0 +1,26 @@
+# go2rtc 1.9.x configuration for the Kian Joo VisionAI live bridge.
+#
+# The dashboard registers camera sources itself (PUT /api/streams?name=&src=)
+# and go2rtc persists them into the `streams:` map below, so you normally never
+# edit it by hand. Once it is filled this file contains camera RTSP passwords:
+# keep it on the bridge host only and do not copy it back into git.
+#
+# Manual entries are still allowed, e.g.:
+#   streams:
+#     line5: rtsp://user:pass@192.168.1.10:554/Streaming/Channels/102#transport=tcp
+#     wastearea: ffmpeg:rtsp://user:pass@192.168.1.11:554/Streaming/Channels/101#video=h264
+
+api:
+  listen: ":1984"   # HTTP API + /api/stream.mp4 + /stream.html (behind Caddy)
+  origin: "*"       # CORS: let the dashboard origin call the API
+
+rtsp:
+  listen: ":8554"   # RTSP restream (optional, for NVR / VLC re-use)
+
+webrtc:
+  listen: ":8555/tcp"
+
+log:
+  level: info
+
+streams: {}

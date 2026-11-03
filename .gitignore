@@ -22,6 +22,8 @@ storage/forecast_llm.json
 storage/mail_*.lock
 storage/attachments/
 storage/kiosk/
+storage/live_bridge.json
+storage/live_snap/
 
 # Employee/operator-uploaded profile photos — privacy, not source.
 uploads/profiles/

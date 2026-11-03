@@ -18,6 +18,7 @@ require_once APP_ROOT . '/lib/DashboardMapper.php';
 require_once APP_ROOT . '/lib/Insights.php';
 require_once APP_ROOT . '/lib/Attendance.php';
 require_once APP_ROOT . '/lib/Overview.php';
+require_once APP_ROOT . '/lib/LiveBridge.php';
 
 Response::cors();
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
@@ -74,34 +75,13 @@ function senseCameras(array $config, array $incidents): array
         return [];
     }
 
-    $rtspMap = $config['live']['rtsp'] ?? [];
-    $rows = [];
-    foreach ($res['data'] as $d) {
-        $uri    = (string) ($d['deviceUri'] ?? '');
-        $serial = (string) ($d['deviceSerial'] ?? '');
-        // Match a configured stream label by RTSP url or serial.
-        $stream = '';
-        foreach ($rtspMap as $label => $url) {
-            if ($uri !== '' && $url === $uri) {
-                $stream = $label;
-                break;
-            }
-        }
-        if ($stream === '' && $serial !== '') {
-            $stream = strtolower(preg_replace('/[^a-z0-9]+/i', '', $serial));
-        }
-        $rows[] = [
-            'did'    => (string) ($d['did'] ?? ''),
-            // SenseStudio's *CnName / typeName fields are Chinese — English only here.
-            'name'   => Text::latin((string) ($d['deviceEnName'] ?? $d['deviceCnName'] ?? $serial), $serial),
-            'serial' => $serial,
-            'type'   => Text::latin((string) ($d['deviceTypeName'] ?? $d['deviceType'] ?? ''), 'Camera'),
-            'online' => (string) ($d['sts'] ?? '1') === '0',
-            'rtsp'   => $uri,
-            'stream' => $stream,
-        ];
-    }
+    // Same mapping LiveBridge uses (stream label = RTSP_STREAMS key whose url
+    // matches, else the normalised serial).
+    $rows = LiveBridge::mapDevices($res['data'], $config['live']['rtsp'] ?? []);
     @file_put_contents($cache, json_encode($rows, JSON_UNESCAPED_SLASHES));
+    // Keep the go2rtc bridge in step with the fleet's RTSP sources
+    // (rate-limited to once / 5 min, 2 s timeouts, silent on failure).
+    LiveBridge::autoSync($config, $rows);
     return attachFrames($rows, $incidents);
 }
 
@@ -511,6 +491,8 @@ try {
         'liveToken'  => $config['live']['stream_token'] ?? '',
         // Cameras the operator hid from the Live Monitoring grid (stream keys).
         'liveHidden' => array_values($config['live']['hidden'] ?? []),
+        // Last known go2rtc bridge state (no network): reachable + registered stream names.
+        'liveBridge' => LiveBridge::cached($config),
         // Policies observed per camera → Settings shows how many are enabled
         // on the cameras currently displayed on Live Monitoring.
         'policies'   => $store->policyMatrix(30),

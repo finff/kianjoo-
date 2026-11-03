@@ -19,6 +19,10 @@ class Component extends DCLogic {
       sideCollapsed: savedSide==='1' || (savedSide===null && typeof window!=='undefined' && window.innerWidth<1100),
       navOpen: {},             // sidebar groups the user expanded / collapsed (cameras | reports | settings)
       simBusy: false, simMsg: '',   // Settings → Detection simulator
+      lb: null, lbBusy: false, lbMsg: '', lbProbe: {},   // Settings → Live Video: /api/live/status payload · busy · message · per-stream probe results
+      lbNewName: '', lbNewUrl: '',                     // Live Video → add-manual-source row
+      liveBridge: null,                                // feed.liveBridge — cached bridge summary {reachable, version, streams[], …}
+      vTick: 0,                                        // bumped (throttled) when a <video> tile changes state
       navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
       now,
       filter: 'all',
@@ -112,6 +116,7 @@ class Component extends DCLogic {
       fkD: null, fkMsg: '', fkDraft: {},              // /api/forklift/summary result · review msg · zone drafts
     };
     this._over = {};         // local triage overrides (ack/assign) keyed by id
+    this._vstate = {};       // <video data-cam> element state: connecting | live | buffering | error
     this.API = (window.TMNS && window.TMNS.api) || '/api';
     this.TOK = (window.TMNS && window.TMNS.token) || '';
     // Logged-in user (injected by index.php after login) → audit-log actor.
@@ -138,6 +143,123 @@ class Component extends DCLogic {
           : ('Generated '+(c.events||0)+' detections over '+(d.days||7)+' days — '+(c.face||0)+' face, '+(c.ppe||0)+' PPE, '+(c.restricted||0)+' restricted-zone, '+(c.forklift||0)+' forklift ✓ Open the Overview.')});
         this.fetchFeed(); this.loadPeople(); this.loadApp(); if(this.state.reg.data) this.loadRegister(); })
       .catch(e=>this.setState({simBusy:false, simMsg:'✗ '+((e&&e.message)||'Simulation failed')}));
+  }
+
+  // ── Live video bridge (go2rtc) — /api/live/* (Settings → Live Video, camera detail) ──
+  // Full status payload → st.lb. net=false asks for the cached summary only and is
+  // skipped when any status was fetched in the last 30 s.
+  loadLive(net, force){
+    const now=Date.now();
+    if(!force && this._lbAt && now-this._lbAt<30000) return Promise.resolve(this.state.lb);
+    this._lbAt=now;
+    return fetch(`${this.API}/live/status?token=${this.TOK}${net?'':'&net=0'}`, {cache:'no-store'})
+      .then(r=>r.json())
+      .then(d=>{ const lb=(d&&d.ok)?d:{ok:false, error:(d&&(d.error||d.msg))||'Status unavailable'}; this.setState({lb}); return lb; })
+      .catch(e=>{ const lb={ok:false, error:(e&&e.message)||'Network error'}; this.setState({lb}); return lb; });
+  }
+  testLive(){
+    if(this.state.lbBusy) return;
+    this.setState({lbBusy:true, lbMsg:'Contacting the bridge…'});
+    this.loadLive(true, true).then(lb=>{ const b=(lb&&lb.bridge)||{};
+      let msg;
+      if(lb && lb.ok && !lb.configured) msg='✗ Not configured — set the public base URL and save first';
+      else if(lb && lb.ok && b.reachable) msg='✓ Bridge reachable · go2rtc '+(b.version||'?')+(b.ms!=null&&b.ms!==''?(' · '+b.ms+' ms'):'');
+      else msg='✗ Unreachable: '+((lb&&(lb.ok?b.error:lb.error))||'no response');
+      this.setState({lbBusy:false, lbMsg:msg}); });
+  }
+  syncLive(){
+    if(this.state.lbBusy) return;
+    this.setState({lbBusy:true, lbMsg:'Registering RTSP sources on the bridge…'});
+    fetch(`${this.API}/live/sync?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:'{}'})
+      .then(r=>r.json())
+      .then(d=>{ if(!d || (!d.ok && !d.status)) throw new Error((d&&(d.error||d.msg))||'Sync failed');
+        const n=(k)=>Number(d[k])||0, errs=Array.isArray(d.errors)?d.errors:[];
+        let msg=(d.ok?'✓ ':'✗ ')+n('registered')+' registered · '+n('updated')+' updated · '+n('unchanged')+' unchanged'+(n('failed')?(' · '+n('failed')+' failed'):'');
+        if(errs.length) msg+=' — '+errs.slice(0,3).map(e=>((e&&e.name)||'?')+': '+((e&&e.error)||'error')).join('; ');
+        if(d.status){ this._lbAt=Date.now(); this.setState({lbBusy:false, lbMsg:msg, lb:d.status}); }
+        else { this.setState({lbBusy:false, lbMsg:msg}); this.loadLive(true, true); }
+        this.fetchFeed(); })
+      .catch(e=>this.setState({lbBusy:false, lbMsg:'✗ '+((e&&e.message)||'Sync failed')}));
+  }
+  // Browser URL for an /api/... path returned by the server (snapshot), with the read token.
+  liveApiUrl(path){
+    const rel=String(path||'').replace(/^\/api(?=\/)/, '');
+    return this.API+rel+(rel.indexOf('?')>=0?'&':'?')+'token='+encodeURIComponent(this.TOK);
+  }
+  probeLive(stream){
+    if(!stream) return; const cur=(this.state.lbProbe||{})[stream];
+    if(cur && cur.busy) return;
+    const put=(v)=>this.setState(s=>({lbProbe:{...s.lbProbe, [stream]:v}}));
+    put({busy:true});
+    fetch(`${this.API}/live/probe?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stream})})
+      .then(r=>r.json())
+      .then(d=>{ if(!d || !d.ok) throw new Error((d&&(d.error||d.msg))||'Probe failed');
+        put({busy:false, ready:!!d.ready, ms:d.ms, error:d.error||'', snapshot:(d.ready&&d.snapshot)?this.liveApiUrl(d.snapshot):''}); })
+      .catch(e=>put({busy:false, ready:false, error:(e&&e.message)||'Network error', snapshot:''}));
+  }
+  // Probe state → {busy, text, col, snap} for a table row / the camera page.
+  probeView(p){
+    if(!p) return {busy:false, text:'', col:'var(--text3)', snap:''};
+    if(p.busy) return {busy:true, text:'', col:'var(--text3)', snap:''};
+    if(p.ready) return {busy:false, text:'✓ frame'+((p.ms!=null&&p.ms!=='')?(' '+(Number(p.ms)/1000).toFixed(1)+' s'):''), col:'var(--ok)', snap:p.snapshot||''};
+    return {busy:false, text:'✗ '+(p.error||'no frame'), col:'var(--crit)', snap:''};
+  }
+  saveLiveSource(stream, rtsp){
+    stream=String(stream||'').trim(); rtsp=String(rtsp||'').trim();
+    if(!stream || !rtsp){ this.setState({lbMsg:'✗ Stream label and RTSP URL are required.'}); return; }
+    if(/\s/.test(rtsp) || !/^(rtsps?|rtmps?|https?|onvif|ffmpeg|isapi|dvrip|tapo|kasa|webrtc):/i.test(rtsp)){
+      this.setState({lbMsg:'✗ Not a supported source URL (rtsp://user:pass@host:554/…).'}); return; }
+    this.liveSourcePost({stream, rtsp}, 'Source saved', true);
+  }
+  removeLiveSource(stream){
+    if(!stream || !window.confirm('Remove the manual RTSP source "'+stream+'"? It is also removed from the bridge.')) return;
+    this.liveSourcePost({stream, remove:true}, 'Source removed', false);
+  }
+  liveSourcePost(body, okMsg, clear){
+    if(this.state.lbBusy) return;
+    this.setState({lbBusy:true, lbMsg: body.remove?'Removing source…':'Saving source and registering it on the bridge…'});
+    fetch(`${this.API}/live/source?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)})
+      .then(r=>r.json())
+      .then(d=>{ if(!d || !d.ok) throw new Error((d&&(d.error||d.msg))||'Save failed');
+        const b=d.bridge;
+        const note = b ? (b.ok ? (body.remove?' · removed from the bridge':' · registered on the bridge') : (' · bridge: '+(b.error||'failed'))) : ' · saved (bridge not configured)';
+        this.setState({lbBusy:false, lbMsg:'✓ '+okMsg+' ('+(d.stream||body.stream)+')'+note, ...(clear?{lbNewName:'', lbNewUrl:''}:{})});
+        this.loadLive(true, true); this.loadApp(); })
+      .catch(e=>this.setState({lbBusy:false, lbMsg:'✗ '+((e&&e.message)||'Network error')}));
+  }
+  // Settings → Live Video "Save": the browser base/token plus the server→bridge connection.
+  saveLive(){
+    const ad=this.state.appDraft||{}, ap=this.state.appCfg||{};
+    const v=(k)=>String(ad[k]!=null?ad[k]:(ap[k]!=null?ap[k]:'')).trim();
+    const secret=(k)=>(ad[k] && !String(ad[k]).includes('•')) ? String(ad[k]) : '';
+    const auto = ad.live_auto_sync!=null ? !!ad.live_auto_sync : (ap.live_auto_sync!=null ? !!ap.live_auto_sync : true);
+    const p=this.saveApp({live_stream_base:v('live_stream_base'), live_stream_token:secret('live_stream_token'),
+      live_bridge_api:v('live_bridge_api'), live_api_user:v('live_api_user'), live_api_pass:secret('live_api_pass'),
+      live_auto_sync:auto}, 'Live video config saved ✓');
+    if(p && p.then) p.then(()=>{ this.loadLive(true, true); this.fetchFeed(); });
+  }
+  // Camera create / update response → note about the bridge registration.
+  bridgeNote(d){ const b=d&&d.bridge; return b ? (b.ok?' · live bridge updated':(' · bridge: '+(b.error||'failed'))) : ''; }
+  // True when the bridge is known to be up but does not carry this stream.
+  notOnBridge(stream){ const st=this.state, lb=st.liveBridge;
+    return !!(lb && lb.reachable && Array.isArray(lb.streams) && stream && st.liveBase && lb.streams.indexOf(stream)<0); }
+  // Tile chip from the <video> element state (mountVideos); hidden when live / not a video tile.
+  vChip(key, show){
+    const s=show?this._vstate[key]:'live';
+    if(s==='live') return {has:false, text:'', col:''};
+    if(s==='error') return {has:true, text:'STREAM ERROR', col:'#FCA5A5'};
+    if(s==='buffering') return {has:true, text:'BUFFERING', col:'#FCD34D'};
+    return {has:true, text:'CONNECTING…', col:'#E2E8F0'};
+  }
+  // Overview / Camera Dashboard wall tile tag: not-on-bridge note, else the video state chip.
+  wallTag(key, stream, hasVideo, on){
+    if(on && this.notOnBridge(stream)) return {has:true, text:'NOT ON LIVE BRIDGE', col:'#FCD34D'};
+    return this.vChip(key, hasVideo && on && !this.state.demo);
+  }
+  bumpVTick(){
+    if(this._vtT) return;
+    const wait=Math.max(0, 1000-(Date.now()-(this._vtAt||0)));
+    this._vtT=setTimeout(()=>{ this._vtT=null; this._vtAt=Date.now(); this.setState(s=>({vTick:(s.vTick||0)+1})); }, wait);
   }
 
   // ── Demo mode ────────────────────────────────────────────
@@ -187,6 +309,14 @@ class Component extends DCLogic {
   mountVideos(){
     try{
       const play=(v)=>{ const p=v.play&&v.play(); if(p&&p.catch)p.catch(()=>{}); };
+      // Element state per tile (data-state + this._vstate[camKey]) → tile chips.
+      const setVs=(v,state)=>{ const k=v.getAttribute('data-cam')||''; v.dataset.state=state;
+        if(!k || k.indexOf('{{')>=0) return;
+        if(this._vstate[k]!==state){ this._vstate[k]=state; this.bumpVTick(); } };
+      const bind=(v)=>{ if(v._lbBound) return; v._lbBound=true;
+        v.addEventListener('playing', ()=>{ v._lbErr=false; setVs(v,'live'); });
+        v.addEventListener('waiting', ()=>{ if(!v._lbErr) setVs(v,'buffering'); });
+        v.addEventListener('error', ()=>{ if(!v.getAttribute('src') && !v.srcObject) return; v._lbErr=true; setVs(v,'error'); }); };
       // Tiles that other tiles mirror must be fetched in CORS mode, or
       // captureStream() throws SecurityError on the cross-origin bridge.
       // (go2rtc answers with Access-Control-Allow-Origin: *.)
@@ -196,6 +326,7 @@ class Component extends DCLogic {
         if(m && m.indexOf('{{')<0) sources[m]=1;
       });
       document.querySelectorAll('video[data-src]').forEach(v=>{
+        bind(v);
         const cam=v.getAttribute('data-cam')||'';
         if(sources[cam] && v.crossOrigin!=='anonymous'){
           v.crossOrigin='anonymous';                 // must precede src assignment
@@ -215,7 +346,7 @@ class Component extends DCLogic {
             if(!live && src.readyState>=2){
               try{
                 if(v.src){ v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
-                v.srcObject=src.captureStream(); v._mirror=mid; play(v);
+                v.srcObject=src.captureStream(); v._mirror=mid; v._lbErr=false; setVs(v,'connecting'); play(v);
               }catch(e){ v._mirror=''; }
             }
             if(v._mirror===mid) return;              // mirrored — nothing else to do
@@ -224,14 +355,14 @@ class Component extends DCLogic {
           v.srcObject=null; v._mirror='';
         }
         if(visible){
-          if(v._src!==s){ v._src=s; v._stall=0; v._lastCt=-1; v.src=s; play(v); return; }
+          if(v._src!==s){ v._src=s; v._stall=0; v._lastCt=-1; v._lbErr=false; setVs(v,'connecting'); v.src=s; play(v); return; }
           if(document.hidden) return;
           // Stall watchdog: mp4-over-http streams die silently — the element
           // keeps showing the last frame while currentTime stops advancing.
           // Reconnect after ~6s of no progress.
           const ct=v.currentTime||0;
           if(ct===v._lastCt){ v._stall=(v._stall||0)+1; } else { v._stall=0; v._lastCt=ct; }
-          if(v._stall>=6){ v._stall=0; v._lastCt=-1;
+          if(v._stall>=6){ v._stall=0; v._lastCt=-1; v._lbErr=true; setVs(v,'error');   // until the next 'playing'
             v.src=s+(s.indexOf('?')>=0?'&':'?')+'_r='+Date.now(); play(v); }
         }
         else if(v.src){ v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
@@ -416,7 +547,7 @@ class Component extends DCLogic {
           trend: Array.isArray(d.trend)?d.trend:[],
           byType: d.byType || {}, byCam: d.byCam || {}, ai: d.ai || null,
           ppe: d.ppe || null, gpu: Array.isArray(d.gpu)?d.gpu:[],
-          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '',
+          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null,
           // Don't clobber an in-flight local toggle with a stale poll response.
           liveHidden: this._hidePending ? this.state.liveHidden : (Array.isArray(d.liveHidden)?d.liveHidden:[]),
           policies: Array.isArray(d.policies)?d.policies:[],
@@ -482,7 +613,8 @@ class Component extends DCLogic {
     if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
     if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
     if(p==='rules') this.loadAlerts();
-    if(p==='settings'){ this.loadApp(); this.loadAlerts(); }
+    if(p==='settings'){ this.loadApp(); this.loadAlerts(); this.loadLive(true); }
+    if(p==='camera') this.loadLive(true);               // live-bridge readiness on the camera page
     if(p==='forecast') this.loadForecast();
     if(p==='users'){ this.loadUsers(); this.loadRoles(); } }
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
@@ -493,8 +625,9 @@ class Component extends DCLogic {
   // Open a camera's detail page (live stream + VisionAI config + edit).
   openCamera(stream){ if(!stream) return;
     const f=(this.state.fleet||[]).find(x=>x.stream===stream)||{};
-    this.setState({page:'camera', camSel:stream, camMsg:'', camEdit:{name:f.name||'', rtsp:f.rtsp||'', tag:'', desc:''}});
-    try{ history.pushState({page:'camera'}, '', '#camera/'+encodeURIComponent(stream)); }catch(e){} }
+    this.setState({page:'camera', camSel:stream, camMsg:'', lbMsg:'', camEdit:{name:f.name||'', rtsp:f.rtsp||'', tag:'', desc:''}});
+    try{ history.pushState({page:'camera'}, '', '#camera/'+encodeURIComponent(stream)); }catch(e){}
+    this.loadLive(true); }
   setCamEdit(patch){ this.setState(s=>({camEdit:{...s.camEdit, ...patch}})); }
   saveCamera(){ const stream=this.state.camSel;
     const f=(this.state.fleet||[]).find(x=>x.stream===stream);
@@ -502,8 +635,8 @@ class Component extends DCLogic {
     const e=this.state.camEdit||{}; this.setState({camMsg:'Saving to VisionAI…'});
     fetch(`${this.API}/cameras/${encodeURIComponent(f.did)}?token=${this.TOK}`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:e.name, rtsp:e.rtsp, tag:e.tag, desc:e.desc})})
-      .then(r=>r.json()).then(d=>{ this.setState({camMsg: d&&d.ok?'✓ Updated in VisionAI':'✗ '+((d&&(d.msg||d.error))||'Update failed')});
-        if(d&&d.ok) this.fetchFeed(); })
+      .then(r=>r.json()).then(d=>{ this.setState({camMsg: d&&d.ok?('✓ Updated in VisionAI'+this.bridgeNote(d)):'✗ '+((d&&(d.msg||d.error))||'Update failed')});
+        if(d&&d.ok){ this.fetchFeed(); if(d.bridge) this.loadLive(true, true); } })
       .catch(()=>this.setState({camMsg:'✗ Network error'})); }
   setIncFilter(f){ this.setState({incFilter:f, incPage:0}); }
   setIncSev(s){ this.setState({incSev:s, incPage:0}); }
@@ -999,7 +1132,7 @@ class Component extends DCLogic {
     fetch(`${this.API}/cameras?token=${this.TOK}`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:a.name, rtsp:a.rtsp})})
       .then(r=>r.json()).then(d=>{
-        if(d && d.ok){ this.setState({addCam:{name:'',rtsp:'',busy:false,msg:'✓ Camera onboarded (device '+(d.data||'created')+'). It will appear once VisionAI activates it.'}}); }
+        if(d && d.ok){ this.setState({addCam:{name:'',rtsp:'',busy:false,msg:'✓ Camera onboarded (device '+(d.data||'created')+')'+this.bridgeNote(d)+'. It will appear once VisionAI activates it.'}}); if(d.bridge) this.loadLive(true, true); }
         else { this.setState(s=>({addCam:{...s.addCam,busy:false,msg:'✗ '+((d&&(d.msg||d.error))||'Failed')}})); }
       }).catch(()=>this.setState(s=>({addCam:{...s.addCam,busy:false,msg:'✗ Network error'}})));
   }
@@ -1492,7 +1625,7 @@ class Component extends DCLogic {
   setDraft(k,v){ this.setState(s=>({appDraft:{...s.appDraft, [k]:v}})); }
   saveApp(patch, okMsg){
     this.setState({appMsg:'Saving…'});
-    fetch(`${this.API}/settings?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)})
+    return fetch(`${this.API}/settings?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)})
       .then(r=>r.json()).then(d=>{
         if(d&&d.ok){
           if(d.rotated&&d.rotated.read_token){ this.setState({appMsg:'Read token rotated — reloading…'}); setTimeout(()=>location.reload(), 1200); return; }
@@ -1629,14 +1762,16 @@ class Component extends DCLogic {
       }
       const match=(st.filter==='all'||st.filter===c.mod);
       const dim = match?(on?1:0.62):0.34;
+      const vch=this.vChip(c.stream || String(c.id).toLowerCase(), !!vsrc);   // CONNECTING… / BUFFERING / STREAM ERROR
       return {
         id:c.id, name:c.name, zone:c.zone, res:c.res, fps:c.fps, scene:c.scene, dim,
         liveLabel: on?'LIVE':'OFFLINE', liveCol: on?'var(--crit)':'var(--text3)',
         liveAnim: on?'blink 1.6s infinite':'none',
         hasVideo: !!vsrc, videoUrl: vsrc,
         camKey: c.stream || String(c.id).toLowerCase(), mirrorOf,
+        hasLbChip: vch.has, lbChip: vch.text, lbChipCol: vch.col,
         showPlaceholder: !c.img,
-        placeholder: !on ? 'CAMERA OFFLINE' : (vsrc?'CONNECTING TO STREAM…':'NO STREAM BRIDGE CONFIGURED'),
+        placeholder: !on ? 'CAMERA OFFLINE' : (this.notOnBridge(c.stream) ? 'NOT ON LIVE BRIDGE' : (vsrc?'CONNECTING TO STREAM…':'NO STREAM BRIDGE CONFIGURED')),
         tag:m.tag, tagBg:m.tagBg, canExpand: !!c.img,
         onOpen: ()=>this.openCamera(c.stream||String(c.id).toLowerCase()),
         showMeta: !compact, showBoxLabel: cols<=3, nameSize: compact?'11px':'12px',
@@ -2170,6 +2305,46 @@ class Component extends DCLogic {
     const spAiChips = chipRow([['weststar','weststar-ai'],['anthropic','Anthropic API'],['off','Off']], spAiCur, v=>{ this.setDraft('ai_source',v); this.saveApp({ai_source:v}); });
     const spFreq = chipRow([['off','Off'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly'],['yearly','Yearly']], spV('report_frequency')||'off', v=>{ this.setDraft('report_frequency',v); this.saveApp({report_frequency:v}); });
     const spHour = chipRow([[7,'07:00'],[8,'08:00'],[12,'12:00'],[18,'18:00'],[20,'20:00']], spV('report_hour')===''?8:spV('report_hour'), v=>{ this.setDraft('report_hour',v); this.saveApp({report_hour:v}); });
+
+    // ===== SETTINGS → LIVE VIDEO (go2rtc bridge · /api/live/*) =====
+    const lb=st.lb, lbB=(lb&&lb.bridge)||{}, lbC=(lb&&lb.counts)||{};
+    const lbN=(x)=>Number(x)||0;
+    const lbCfg = (lb&&lb.ok) ? !!lb.configured : !!((ap&&ap.live_stream_base)||st.liveBase);
+    const lbRegLine = lbN(lbC.registered)+' of '+lbN(lbC.desired)+' sources registered';
+    const lbCountsLine = (lb&&lb.ok&&lb.configured)
+      ? (lbRegLine+' · '+lbN(lbC.missing)+' missing · '+lbN(lbC.mismatch)+' mismatch'+(lbN(lbC.orphan)?(' · '+lbN(lbC.orphan)+' orphan'):'')) : '';
+    let lbStatusText, lbStatusCol;
+    if(!lbCfg){ lbStatusText='Not configured — tiles show detection frames'; lbStatusCol='var(--text3)'; }
+    else if(!lb){ lbStatusText='Checking the bridge…'; lbStatusCol='var(--text3)'; }
+    else if(!lb.ok){ lbStatusText='Bridge status unavailable: '+(lb.error||'unknown error'); lbStatusCol='var(--crit)'; }
+    else if(lbB.reachable){ lbStatusText='Bridge reachable · go2rtc '+(lbB.version||'?')+' · '+lbRegLine;
+      lbStatusCol=(lbN(lbC.missing)||lbN(lbC.mismatch))?'var(--gold)':'var(--ok)'; }
+    else if(lbB.reachable===false){ lbStatusText='Bridge unreachable: '+(lbB.error||'no response'); lbStatusCol='var(--crit)'; }
+    else { lbStatusText='Bridge not checked yet — press Test bridge'; lbStatusCol='var(--text3)'; }
+    const lbMask=(u)=>String(u||'').replace(/\/\/([^:]+):[^@]+@/, '//$1:••••@');
+    const LB_PILL={registered:['Registered','var(--ok)','var(--tint-green)'], missing:['Missing','var(--high)','var(--tint-orange)'],
+      mismatch:['Mismatch','#B45309','var(--tint-amber)'], orphan:['Orphan','var(--text3)','var(--bg4)']};
+    const lbSrc = (lb&&lb.ok&&Array.isArray(lb.streams)) ? lb.streams
+      : Object.entries((ap&&ap.live_rtsp&&typeof ap.live_rtsp==='object')?ap.live_rtsp:{}).map(([name,source])=>({name, source, origin:'manual', state:''}));
+    const lbRows=lbSrc.filter(r=>r&&r.name).map(r=>{ const name=String(r.name);
+      const pill=LB_PILL[r.state]||['Unknown','var(--text3)','var(--bg4)'];
+      const pv=this.probeView((st.lbProbe||{})[name]);
+      return {name, cam:r.fleetName||'—', source:lbMask(r.source)||'— (source unknown)',
+        origin:r.origin==='fleet'?'VisionAI':(r.origin==='manual'?'Manual':'Bridge only'),
+        pill:pill[0], pillCol:pill[1], pillBg:pill[2],
+        probeLabel:pv.busy?'Probing…':'Probe', probeBusy:pv.busy, probeText:pv.text, probeCol:pv.col,
+        hasSnap:!!pv.snap, snapBg:pv.snap?`url('${pv.snap}') center/cover no-repeat`:'',
+        onSnap:()=>{ if(pv.snap) this.openLightbox(pv.snap, name+' · bridge snapshot'); },
+        onProbe:()=>this.probeLive(name),
+        canRemove:r.origin==='manual', onRemove:()=>this.removeLiveSource(name)}; });
+    const lbAutoV = ad.live_auto_sync!=null ? !!ad.live_auto_sync
+      : ((ap&&ap.live_auto_sync!=null) ? !!ap.live_auto_sync : ((lb&&lb.ok&&lb.autoSync!=null) ? !!lb.autoSync : true));
+    const lbAutoChips = chipRow([[1,'On'],[0,'Off']], lbAutoV?1:0, v=>{ this.setDraft('live_auto_sync', !!v);
+      this.saveApp({live_auto_sync:!!v}, v?'Auto-register on ✓':'Auto-register off ✓'); });
+    const lbLast = lb&&lb.lastSync&&lb.lastSync.at ? String(lb.lastSync.at) : '';
+    const lbSyncLine = lbLast ? ('last sync '+lbLast.replace('T',' ').slice(0,16)) : 'not synced yet';
+    const lbEmptyText = !lbCfg ? 'Set the public base URL above, save, then test the bridge.'
+      : (lb ? 'No RTSP sources yet — cameras with an RTSP URL in VisionAI appear here automatically, or add a manual source below.' : 'Loading…');
     const spRepTo = st.spRepDraft!=null ? st.spRepDraft : (ap? (ap.report_recipients||[]).join(', ') : '');
     const spEp = (ap&&ap.endpoints)||{};
 
@@ -2250,6 +2425,25 @@ class Component extends DCLogic {
       const _tokq = st.liveToken ? ('&token='+encodeURIComponent(st.liveToken)) : '';
       const live = !!st.liveBase && !!stream && !st.demo;
       const ed=st.camEdit||{};
+      // Live-bridge readiness for this camera (st.lb from /api/live/status)
+      const lbRow=(st.lb&&Array.isArray(st.lb.streams))?(st.lb.streams.find(r=>r&&r.name===stream)||null):null;
+      const lbBr=(st.lb&&st.lb.bridge)||{};
+      const fRtsp=f?String(f.rtsp||'').trim():'';
+      let lbSt;
+      if(!st.liveBase) lbSt='nocfg';
+      else if(!st.lb) lbSt='loading';
+      else if(!st.lb.ok || !lbBr.reachable) lbSt='unreach';
+      else if(lbRow && (lbRow.state==='registered'||lbRow.state==='orphan')) lbSt='reg';
+      else lbSt='missing';                               // missing / mismatch / not a desired source yet
+      const lbErr=st.lb ? (st.lb.ok ? (lbBr.error||'') : (st.lb.error||'')) : '';
+      const lbLineV={
+        nocfg:['Live bridge not configured','var(--text3)'],
+        loading:['Live bridge: checking…','var(--text3)'],
+        unreach:['Live bridge: Bridge unreachable'+(lbErr?(' ('+lbErr+')'):''),'var(--crit)'],
+        reg:['Live bridge: Registered ✓','var(--ok)'],
+        missing:['Live bridge: Not registered'+((lbRow&&lbRow.state==='mismatch')?' (bridge has a different source)':''),'var(--high)'],
+      }[lbSt];
+      const lbPv=this.probeView((st.lbProbe||{})[stream]);
       camDetail={
         name: (f&&f.name) || (cam&&cam.name) || key || 'Camera',
         stream, did: f?f.did:'', serial: (f&&f.serial) || (cam&&cam.serial) || '',
@@ -2269,6 +2463,19 @@ class Component extends DCLogic {
         onEditRtsp:(e)=>this.setCamEdit({rtsp:e&&e.target?e.target.value:''}),
         onEditTag:(e)=>this.setCamEdit({tag:e&&e.target?e.target.value:''}),
         onEditDesc:(e)=>this.setCamEdit({desc:e&&e.target?e.target.value:''}),
+        lbLine:lbLineV[0], lbLineCol:lbLineV[1],
+        lbShowSettings:lbSt==='nocfg', lbShowRegister:lbSt==='missing', lbShowTest:lbSt==='reg'||lbSt==='unreach',
+        lbRegisterDisabled:!fRtsp||!!st.lbBusy,
+        lbRegisterHint:fRtsp?'Register this camera\'s VisionAI RTSP URL on the bridge (also registers any other missing source)':'No RTSP URL on this camera — set one in the edit form, or add a manual source in Settings › Live Video.',
+        lbHasHint:lbSt==='missing'&&!fRtsp,
+        lbTestLabel:lbPv.busy?'Testing…':'Test source', lbTestBusy:lbPv.busy,
+        lbHasProbe:!!lbPv.text, lbProbeText:lbPv.text, lbProbeCol:lbPv.col,
+        lbHasSnap:!!lbPv.snap, lbSnapBg:lbPv.snap?`url('${lbPv.snap}') center/cover no-repeat`:'',
+        onLbSnap:()=>{ if(lbPv.snap) this.openLightbox(lbPv.snap, stream+' · bridge snapshot'); },
+        lbMsg:st.lbMsg||'', lbHasMsg:!!st.lbMsg,
+        onLbSettings:()=>{ this.setState({spTab:'live'}); this.setPage('settings'); },
+        onLbRegister:()=>this.syncLive(),
+        onLbTest:()=>this.probeLive(stream),
         onSave:()=>this.saveCamera(),
         onBack:()=>this.setPage('cameras'), onExpand:()=> (cam&&cam.img)?this.openLightbox(cam.img, (f?f.name:key)):null,
       };
@@ -3192,7 +3399,8 @@ class Component extends DCLogic {
     const ovCams=ovPool.filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||ovSeen[k]) return !k; ovSeen[k]=1; return true; })
       .slice(0,3).map(c=>{ const on=c.online!==false;
         const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
-        return {name:c.name||c.stream||c.id, hasVideo:!!vsrc, videoUrl:vsrc, camKey:'ov-'+(c.stream||String(c.id).toLowerCase()),
+        const tg=this.wallTag('ov-'+(c.stream||String(c.id).toLowerCase()), c.stream, !!vsrc, on);
+        return {hasLbTag:tg.has, lbTag:tg.text, lbTagCol:tg.col, name:c.name||c.stream||c.id, hasVideo:!!vsrc, videoUrl:vsrc, camKey:'ov-'+(c.stream||String(c.id).toLowerCase()),
           bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
           liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
           onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
@@ -3265,7 +3473,8 @@ class Component extends DCLogic {
       .filter(c=>{ const k=String(c.rtsp||c.stream||c.id||'').trim().toLowerCase(); if(!k||cxSeen[k]) return !k; cxSeen[k]=1; return true; })
       .slice(0,8).map(c=>{ const on=c.online!==false; const key=String(c.stream||c.id||'').toUpperCase();
         const vsrc=(st.liveBase && c.stream && on && !st.demo) ? (st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(c.stream)+_liveTok) : '';
-        return {name:c.name||c.stream||c.id, sub:[cxLocOf(c.stream||c.id)||c.zone, N(cxByCamRaw[key])+' det / 24 h'].filter(Boolean).join(' · '),
+        const tg=this.wallTag('cx-'+(c.stream||String(c.id).toLowerCase()), c.stream, !!vsrc, on);
+        return {hasLbTag:tg.has, lbTag:tg.text, lbTagCol:tg.col, name:c.name||c.stream||c.id, sub:[cxLocOf(c.stream||c.id)||c.zone, N(cxByCamRaw[key])+' det / 24 h'].filter(Boolean).join(' · '),
           hasVideo:!!vsrc, videoUrl:vsrc, camKey:'cx-'+(c.stream||String(c.id).toLowerCase()),
           bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
           liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
@@ -3623,10 +3832,10 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['live','Live Video'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
-      spTabSense:st.spTab==='sense', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',
+      spTabSense:st.spTab==='sense', spTabLive:st.spTab==='live', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',
       spTabAi:st.spTab==='ai', spTabReports:st.spTab==='reports', spTabModels:st.spTab==='models',
       spTmforce:spV('email_tmforce'), onSpTmforce:spIn('email_tmforce'),
       spSoc:spV('email_soc'), onSpSoc:spIn('email_soc'),
@@ -3650,8 +3859,18 @@ class Component extends DCLogic {
       spLiveToken: ad.live_stream_token!=null?ad.live_stream_token:'', onSpLiveToken:spIn('live_stream_token'),
       liveStatus: spV('live_stream_base') ? 'configured' : 'not set — using frames',
       saveSense:()=>this.saveApp({sense_api_base:spV('sense_api_base'), sense_account:spV('sense_account'),
-        sense_password:ad.sense_password||'', image_base:spV('image_base'),
-        live_stream_base:spV('live_stream_base'), live_stream_token:ad.live_stream_token||''}),
+        sense_password:ad.sense_password||'', image_base:spV('image_base')}),
+      // Settings → Live Video (go2rtc bridge)
+      spLiveApi:spV('live_bridge_api'), onSpLiveApi:spIn('live_bridge_api'),
+      spLiveUser:spV('live_api_user'), onSpLiveUser:spIn('live_api_user'),
+      spLivePass:ad.live_api_pass!=null?ad.live_api_pass:'', onSpLivePass:spIn('live_api_pass'),
+      lbStatusText, lbStatusCol, lbCountsLine, lbAutoChips, lbSyncLine, lbEmptyText,
+      lbRows, lbHasRows:lbRows.length>0, lbRowsEmpty:lbRows.length===0,
+      lbBusy:!!st.lbBusy, lbSyncDisabled:!!st.lbBusy||!lbCfg, lbMsg:st.lbMsg||'',
+      saveLive:()=>this.saveLive(), testLive:()=>this.testLive(), syncLive:()=>this.syncLive(),
+      lbNewName:st.lbNewName||'', onLbNewName:(e)=>this.setState({lbNewName:e&&e.target?e.target.value:''}),
+      lbNewUrl:st.lbNewUrl||'', onLbNewUrl:(e)=>this.setState({lbNewUrl:e&&e.target?e.target.value:''}),
+      addLiveSource:()=>this.saveLiveSource(st.lbNewName, st.lbNewUrl),
       spFleetLine:(st.fleet&&st.fleet.length)?(st.fleet.filter(c=>c.online).length+'/'+st.fleet.length+' devices online'):'—',
       spPushUrl:spEp.push||'—', spEventsUrl:spEp.events||'—',
       spPushFaceUrl:spEp.push_face||'—', spPushBodyUrl:spEp.push_body||'—',

@@ -634,6 +634,7 @@
                       <video class="ov-cam-video" data-src="{{ c.videoUrl }}" data-cam="{{ c.camKey }}" autoplay muted playsinline></video>
                     </sc-if>
                     <span class="ov-cam-live" style="background:{{ c.liveBg }}">{{ c.liveLabel }}</span>
+                    <sc-if value="{{ c.hasLbTag }}" hint-placeholder-val="{{ false }}"><span class="lb-chip lb-wall-tag" style="color:{{ c.lbTagCol }}">{{ c.lbTag }}</span></sc-if>
                   </div>
                   <div class="ov-cam-name">{{ c.name }}</div>
                 </div>
@@ -792,6 +793,9 @@
                   <span class="c119" style="background:{{ cam.liveCol }}; box-shadow:0 0 6px {{ cam.liveCol }}; animation:{{ cam.liveAnim }}"></span>{{ cam.liveLabel }}
                 </span>
                 <span class="c120">{{ cam.id }}</span>
+                <sc-if value="{{ cam.hasLbChip }}" hint-placeholder-val="{{ false }}">
+                  <span class="lb-chip" style="color:{{ cam.lbChipCol }}">{{ cam.lbChip }}</span>
+                </sc-if>
                 <span class="c121" style="background:{{ cam.tagBg }}; box-shadow:0 0 6px {{ cam.tagBg }}"></span>
               </div>
 
@@ -1171,6 +1175,7 @@
                       <video class="ov-cam-video" data-src="{{ c.videoUrl }}" data-cam="{{ c.camKey }}" autoplay muted playsinline></video>
                     </sc-if>
                     <span class="ov-cam-live" style="background:{{ c.liveBg }}">{{ c.liveLabel }}</span>
+                    <sc-if value="{{ c.hasLbTag }}" hint-placeholder-val="{{ false }}"><span class="lb-chip lb-wall-tag" style="color:{{ c.lbTagCol }}">{{ c.lbTag }}</span></sc-if>
                   </div>
                   <div class="ov-cam-name"><b>{{ c.name }}</b><br><span class="cx-sub">{{ c.sub }}</span></div>
                 </div>
@@ -2568,9 +2573,25 @@
               <sc-if value="{{ camDetail.noFrame }}" hint-placeholder-val="{{ true }}">
               <div class="c356"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg><div class="c357">Live video not connected</div></div>
               </sc-if>
-              <div class="c358">Set LIVE VIDEO BASE in Settings (go2rtc bridge) to stream this camera live.</div>
+              <div class="c358">Set the public base URL in Settings › Live Video (go2rtc bridge) to stream this camera live.</div>
             </div>
             </sc-if>
+            <!-- live-bridge readiness (/api/live/status · probe) -->
+            <div class="lb-ready">
+              <span class="lb-dot" style="background:{{ camDetail.lbLineCol }}"></span>
+              <span>{{ camDetail.lbLine }}</span>
+              <sc-if value="{{ camDetail.lbShowSettings }}" hint-placeholder-val="{{ false }}"><button class="lb-btn" onClick="{{ camDetail.onLbSettings }}">Settings › Live Video →</button></sc-if>
+              <sc-if value="{{ camDetail.lbShowRegister }}" hint-placeholder-val="{{ false }}"><button class="lb-btn" onClick="{{ camDetail.onLbRegister }}" disabled="{{ camDetail.lbRegisterDisabled }}" title="{{ camDetail.lbRegisterHint }}">Register now</button></sc-if>
+              <sc-if value="{{ camDetail.lbShowTest }}" hint-placeholder-val="{{ false }}"><button class="lb-btn" onClick="{{ camDetail.onLbTest }}" disabled="{{ camDetail.lbTestBusy }}">{{ camDetail.lbTestLabel }}</button></sc-if>
+            </div>
+            <sc-if value="{{ camDetail.lbHasHint }}" hint-placeholder-val="{{ false }}"><div class="c428 lb-hint">{{ camDetail.lbRegisterHint }}</div></sc-if>
+            <sc-if value="{{ camDetail.lbHasProbe }}" hint-placeholder-val="{{ false }}">
+            <div class="lb-probe">
+              <span style="color:{{ camDetail.lbProbeCol }}">{{ camDetail.lbProbeText }}</span>
+              <sc-if value="{{ camDetail.lbHasSnap }}" hint-placeholder-val="{{ false }}"><div class="lb-thumb" onClick="{{ camDetail.onLbSnap }}" title="Bridge snapshot" style="background:{{ camDetail.lbSnapBg }}"></div></sc-if>
+            </div>
+            </sc-if>
+            <sc-if value="{{ camDetail.lbHasMsg }}" hint-placeholder-val="{{ false }}"><div class="c100 lb-msg">{{ camDetail.lbMsg }}</div></sc-if>
           </div>
 
           <!-- DEVICE CONFIG + EDIT (VisionAI device/update) -->
@@ -2860,14 +2881,85 @@
             </div>
             <div><div class="c426">IMAGE HOST BASE (trigger frames)</div>
               <input class="c427" value="{{ spImageBase }}" onInput="{{ onSpImageBase }}"></div>
+            <div><button class="c429" onClick="{{ saveSense }}">Save SenseTime config</button></div>
+          </div>
+          </sc-if>
+
+          <!-- Live video bridge (go2rtc · RTSP → browser) -->
+          <sc-if value="{{ spTabLive }}" hint-placeholder-val="{{ false }}">
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">Live video bridge (go2rtc)</h3><span class="c351">{{ lbCountsLine }}</span></div>
+            <div class="lb-status" style="border-left-color:{{ lbStatusCol }}"><span class="lb-dot" style="background:{{ lbStatusCol }}"></span><span>{{ lbStatusText }}</span></div>
             <div class="c370">
-              <div><div class="c426">LIVE VIDEO BASE (go2rtc · {{ liveStatus }})</div>
-                <input class="c427" value="{{ spLiveBase }}" onInput="{{ onSpLiveBase }}" placeholder="https://live.weststar-ai.com"></div>
-              <div><div class="c426">LIVE VIDEO TOKEN (if gated)</div>
+              <div><div class="c426">PUBLIC BASE URL (browser · {{ liveStatus }})</div>
+                <input class="c427" value="{{ spLiveBase }}" onInput="{{ onSpLiveBase }}" placeholder="https://live.example.com"></div>
+              <div><div class="c426">TOKEN (if gated)</div>
                 <input class="c427" value="{{ spLiveToken }}" onInput="{{ onSpLiveToken }}" placeholder="unchanged"></div>
             </div>
-            <div class="c428">HTTPS URL + token of the go2rtc bridge. "▶ Live" opens {base}/stream.html?src={stream}&token=… (blank base = detection frames).</div>
-            <div><button class="c429" onClick="{{ saveSense }}">Save SenseTime config</button></div>
+            <div class="c370">
+              <div><div class="c426">INTERNAL API URL (optional · server → bridge)</div>
+                <input class="c427" value="{{ spLiveApi }}" onInput="{{ onSpLiveApi }}" placeholder="http://127.0.0.1:1984"></div>
+              <div class="c370">
+                <div><div class="c426">API USER (optional)</div>
+                  <input class="c427" value="{{ spLiveUser }}" onInput="{{ onSpLiveUser }}" placeholder="go2rtc api.username"></div>
+                <div><div class="c426">API PASSWORD (optional)</div>
+                  <input class="c427" value="{{ spLivePass }}" onInput="{{ onSpLivePass }}" placeholder="unchanged"></div>
+              </div>
+            </div>
+            <div class="c428">The browser plays {base}/api/stream.mp4?src={stream}&amp;token=… — the base must be HTTPS. The server talks to the internal API URL when set (else the public base) to register sources. Blank base = tiles show detection frames.</div>
+            <div><div class="c426">AUTO-REGISTER FLEET RTSP SOURCES</div>
+              <div class="poc-chips">
+                <sc-for list="{{ lbAutoChips }}" as="t" hint-placeholder-count="2">
+                  <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
+                </sc-for>
+              </div>
+              <div class="c428">On: every camera RTSP URL known to VisionAI is registered on the bridge automatically — on the fleet refresh (at most every 5 minutes) and when a camera is added or edited.</div>
+            </div>
+            <div class="lb-actions">
+              <button class="c429" onClick="{{ saveLive }}" disabled="{{ lbBusy }}">Save live video config</button>
+              <button class="c185 chip" onClick="{{ testLive }}" disabled="{{ lbBusy }}">Test bridge</button>
+              <button class="c185 chip" onClick="{{ syncLive }}" disabled="{{ lbSyncDisabled }}">Register all RTSP sources</button>
+              <span class="c47">{{ lbMsg }}</span>
+            </div>
+          </div>
+
+          <div class="c425">
+            <div class="c332"><span class="c360"></span><h3 class="c129">RTSP sources</h3><span class="c351">{{ lbSyncLine }}</span></div>
+            <sc-if value="{{ lbRowsEmpty }}" hint-placeholder-val="{{ false }}"><div class="c431">{{ lbEmptyText }}</div></sc-if>
+            <sc-if value="{{ lbHasRows }}" hint-placeholder-val="{{ true }}">
+            <div style="overflow-x:auto">
+              <table class="ov-table lb-table">
+                <thead><tr><th>STREAM</th><th>CAMERA</th><th>SOURCE</th><th>ORIGIN</th><th>STATE</th><th>PROBE</th><th></th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ lbRows }}" as="r" hint-placeholder-count="4">
+                    <tr>
+                      <td class="lb-mono">{{ r.name }}</td>
+                      <td>{{ r.cam }}</td>
+                      <td class="lb-src">{{ r.source }}</td>
+                      <td>{{ r.origin }}</td>
+                      <td><span class="ov-pill" style="color:{{ r.pillCol }}; background:{{ r.pillBg }}">{{ r.pill }}</span></td>
+                      <td>
+                        <div class="lb-probe">
+                          <button class="c185 chip" onClick="{{ r.onProbe }}" disabled="{{ r.probeBusy }}">{{ r.probeLabel }}</button>
+                          <span style="color:{{ r.probeCol }}">{{ r.probeText }}</span>
+                          <sc-if value="{{ r.hasSnap }}" hint-placeholder-val="{{ false }}"><div class="lb-thumb" onClick="{{ r.onSnap }}" title="Bridge snapshot" style="background:{{ r.snapBg }}"></div></sc-if>
+                        </div>
+                      </td>
+                      <td><sc-if value="{{ r.canRemove }}" hint-placeholder-val="{{ false }}"><button class="lb-x" onClick="{{ r.onRemove }}" title="Remove manual source">✕</button></sc-if></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            </sc-if>
+            <div><div class="c426">ADD MANUAL RTSP SOURCE</div>
+              <div class="lb-add">
+                <input class="c427" value="{{ lbNewName }}" onInput="{{ onLbNewName }}" placeholder="stream label, e.g. gate1">
+                <input class="c427" value="{{ lbNewUrl }}" onInput="{{ onLbNewUrl }}" placeholder="rtsp://user:pass@10.0.0.21:554/Streaming/Channels/102">
+                <button class="c429" onClick="{{ addLiveSource }}" disabled="{{ lbBusy }}">Add</button>
+              </div>
+            </div>
+            <div class="c428 lb-help">Hikvision: rtsp://user:pass@IP:554/Streaming/Channels/101 (main) · …/102 (sub-stream, lighter for walls). Dahua: rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;subtype=0 (main) · subtype=1 (sub). Browsers need H.264 — for H.265 cameras use an ffmpeg: source. The label must match the camera's stream label (serial, lower-case, letters and digits only). Bridge setup: live-bridge/README.md in the repository.</div>
           </div>
           </sc-if>
 

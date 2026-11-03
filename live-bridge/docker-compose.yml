@@ -1,0 +1,48 @@
+# Kian Joo VisionAI — live bridge: go2rtc (RTSP -> browser) behind Caddy
+# (HTTPS + token gate). Run from this folder:  docker compose up -d
+#
+# Networking: both services share the default compose network, so Caddy
+# reaches go2rtc as `go2rtc:1984` (see Caddyfile). go2rtc still reaches the
+# cameras on the LAN / VPN through Docker's outbound NAT.
+# Port 1984 is published on 127.0.0.1 only: for local curl tests and for a
+# dashboard running on this same host (LIVE_BRIDGE_API=http://127.0.0.1:1984).
+# It is NOT exposed publicly; the public path is Caddy on 443.
+# (If you switch go2rtc to `network_mode: host`, drop its `ports:` list and
+# point both reverse_proxy lines in the Caddyfile at 127.0.0.1:1984.)
+
+services:
+  go2rtc:
+    image: alexxit/go2rtc:1.9.9
+    container_name: kj-go2rtc
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1984:1984"   # API (local only; public access goes through Caddy)
+      - "8554:8554"             # RTSP restream (optional; firewall it if unused)
+      - "8555:8555/tcp"         # WebRTC media (optional; the dashboard uses MP4)
+    volumes:
+      # Read-write: go2rtc writes the sources registered by the dashboard here.
+      - ./go2rtc.yaml:/config/go2rtc.yaml
+    environment:
+      - TZ=Asia/Kuala_Lumpur
+
+  caddy:
+    image: caddy:2
+    container_name: kj-live-caddy
+    restart: unless-stopped
+    depends_on:
+      - go2rtc
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LIVE_DOMAIN: ${LIVE_DOMAIN:?set LIVE_DOMAIN in .env}
+      LIVE_TOKEN: ${LIVE_TOKEN:?set LIVE_TOKEN in .env (openssl rand -hex 24)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

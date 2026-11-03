@@ -15,6 +15,12 @@
  *   GET  /forklift/summary|export        -> forklift zone KPIs, incidents / CSV     [read token]
  *   POST /forklift/review                -> confirm / clear a forklift detection    [signed in]
  *   POST /simulate                       -> generate / remove simulated detections  [signed in, settings]
+ *   GET  /live/status[?net=0]            -> go2rtc bridge readiness per RTSP stream  [read token]
+ *   POST /live/sync                      -> register missing / changed RTSP sources  [signed in, settings]
+ *   POST /live/probe {stream}            -> grab one frame through the bridge        [read token]
+ *   GET  /live/snapshot?stream=          -> that frame as image/jpeg (15 s cache)    [read token]
+ *   POST /live/source {stream, rtsp|remove} -> save a manual RTSP source + register [signed in, settings]
+ *   GET|POST /cameras[/{did}]            -> SenseStudio device registry (+ bridge registration) [read token]
  *
  * Auth token may be passed as ?token=, X-Ingest-Token / X-Read-Token header,
  * or Authorization: Bearer <token>.
@@ -1427,7 +1433,7 @@ try {
             $cur = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
             $out = [];
 
-            foreach (['sense_api_base' => 512, 'sense_account' => 128, 'image_base' => 512, 'live_stream_base' => 512, 'anthropic_model' => 128, 'gemini_model' => 128, 'openai_model' => 128,
+            foreach (['sense_api_base' => 512, 'sense_account' => 128, 'image_base' => 512, 'live_stream_base' => 512, 'live_bridge_api' => 512, 'live_api_user' => 128, 'anthropic_model' => 128, 'gemini_model' => 128, 'openai_model' => 128,
                       'email_tmforce' => 400, 'email_soc' => 400, 'email_supervisor' => 400, 'email_admin' => 400] as $k => $len) {
                 if (array_key_exists($k, $in)) {
                     $out[$k] = substr(trim((string) $in[$k]), 0, $len);
@@ -1438,11 +1444,34 @@ try {
                 $out['llm_provider'] = $in['llm_provider'];
             }
             // Secrets: only overwrite when a non-empty value is supplied.
-            foreach (['sense_password', 'anthropic_key', 'live_stream_token',
+            foreach (['sense_password', 'anthropic_key', 'live_stream_token', 'live_api_pass',
                       'agent_key', 'gemini_key', 'openai_key'] as $k) {
                 if (!empty($in[$k]) && !str_contains((string) $in[$k], '•')) {
                     $out[$k] = trim((string) $in[$k]);
                 }
+            }
+            if (array_key_exists('live_auto_sync', $in)) {
+                $out['live_auto_sync'] = filter_var($in['live_auto_sync'], FILTER_VALIDATE_BOOLEAN);
+            }
+            // Manual RTSP sources for the live bridge: {label → url}. '' removes,
+            // a masked value ('•') keeps the stored url, anything else must be a
+            // go2rtc source URL.
+            if (isset($in['live_rtsp']) && is_array($in['live_rtsp'])) {
+                require_once APP_ROOT . '/lib/LiveBridge.php';
+                $env = LiveBridge::envSources();
+                $map = is_array($cur['live_rtsp'] ?? null) ? $cur['live_rtsp'] : [];
+                foreach (array_slice($in['live_rtsp'], 0, 200, true) as $k => $v) {
+                    $k = LiveBridge::label(substr((string) $k, 0, 64));
+                    $v = trim((string) (is_scalar($v) ? $v : ''));
+                    if ($k === '' || str_contains($v, '•')) {
+                        continue;
+                    }
+                    if ($v !== '' && !LiveBridge::validSource($v)) {
+                        Response::error('Invalid stream source for "' . $k . '" — use rtsp://user:pass@host:554/path (or another go2rtc source).', 422);
+                    }
+                    $map = LiveBridge::patchSources($map, $k, $v, $env);
+                }
+                $out['live_rtsp'] = (object) $map;
             }
             // Cameras hidden from the Live Monitoring grid — list of stream keys.
             if (isset($in['live_hidden'])) {
@@ -1622,6 +1651,11 @@ try {
             'live_stream_base'=> $config['live']['stream_base'] ?? '',
             'live_stream_token'=> $mask((string) ($config['live']['stream_token'] ?? '')),
             'live_hidden'     => array_values($config['live']['hidden'] ?? []),
+            'live_bridge_api' => $config['live']['api_base'] ?? '',
+            'live_api_user'   => $config['live']['api_user'] ?? '',
+            'live_api_pass'   => $mask((string) ($config['live']['api_pass'] ?? '')),
+            'live_auto_sync'  => (bool) ($config['live']['auto_sync'] ?? true),
+            'live_rtsp'       => (object) array_map(static fn ($u) => LiveBridge::mask((string) $u), $config['live']['rtsp'] ?? []),
             'ai_source'       => $config['ai']['source'] ?? 'weststar',
             'ai_base'         => $config['ai']['base'] ?? '',
             'anthropic_key'   => $mask((string) ($config['ai']['anthropic_key'] ?? '')),
@@ -1867,11 +1901,175 @@ try {
                         'error' => $sent ? null : 'SMTP send failed — check error_log'], $sent ? 200 : 502);
     }
 
+    // ── Live video bridge (go2rtc) ───────────────────────────
+    // Registers the fleet's / manual RTSP sources on the go2rtc bridge so the
+    // dashboard's <video> tiles can play them, and reports readiness.
+    if (($seg[0] ?? '') === 'live') {
+        require_once APP_ROOT . '/lib/LiveBridge.php';
+        $requireToken($config['auth']['read_token']);
+        $lb  = new LiveBridge($config['live']);
+        $sub = (string) ($seg[1] ?? '');
+        $in  = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: $_POST) : [];
+        $needSettings = static function (string $what): array {
+            require_once APP_ROOT . '/lib/Auth.php';
+            $me = Auth::user();
+            if ($me === null) {
+                Response::error('Sign in to ' . $what . '.', 401);
+            }
+            if (!Auth::can('settings')) {
+                Response::error('Forbidden: ' . $what . ' needs the settings permission.', 403);
+            }
+            return $me;
+        };
+        $streamName = static function ($v): string {
+            $v = trim((string) (is_scalar($v) ? $v : ''));
+            return preg_match('/^[a-z0-9_.-]{1,64}$/i', $v) ? $v : '';
+        };
+
+        // GET /live/status[?net=0]
+        if ($sub === 'status' && $method === 'GET') {
+            $net = !in_array((string) ($_GET['net'] ?? '1'), ['0', 'false', 'no'], true);
+            Response::json($lb->status($config, $net));
+        }
+
+        // POST /live/sync → register missing + mismatched sources
+        if ($sub === 'sync' && $method === 'POST') {
+            $me = $needSettings('sync the live bridge');
+            @set_time_limit(120);
+            $res = $lb->sync($config, (string) ($me['name'] ?? $me['username'] ?? 'operator'));
+            Response::json($res + ['status' => $lb->status($config, true)]);
+        }
+
+        // POST /live/probe {stream} → one frame through the bridge
+        if ($sub === 'probe' && $method === 'POST') {
+            $name = $streamName($in['stream'] ?? '');
+            if ($name === '') {
+                Response::error('stream is required.', 422);
+            }
+            if (!$lb->configured()) {
+                Response::ok(['stream' => $name, 'ready' => false, 'ms' => 0, 'bytes' => 0,
+                              'error' => 'Live bridge not configured', 'snapshot' => null]);
+            }
+            @set_time_limit(30);
+            $p = $lb->probe($name, 10);
+            if ($p['ok']) {
+                $dir = LiveBridge::snapDir($config);
+                if (!is_dir($dir)) {
+                    @mkdir($dir, 0775, true);
+                }
+                @file_put_contents($dir . '/' . $name . '.jpg', $p['image'], LOCK_EX);
+            }
+            Response::ok([
+                'stream'   => $name,
+                'ready'    => $p['ok'],
+                'ms'       => $p['ms'],
+                'bytes'    => $p['bytes'],
+                'error'    => $p['error'],
+                'snapshot' => $p['ok'] ? '/api/live/snapshot?stream=' . rawurlencode($name) . '&t=' . time() : null,
+            ]);
+        }
+
+        // GET /live/snapshot?stream= → image/jpeg (cached ≤ 15 s, else probed)
+        if ($sub === 'snapshot' && $method === 'GET') {
+            $name = $streamName($_GET['stream'] ?? '');
+            if ($name === '') {
+                Response::error('stream is required.', 422);
+            }
+            $file = LiveBridge::snapDir($config) . '/' . $name . '.jpg';
+            $img  = null;
+            if (is_file($file) && time() - (int) filemtime($file) < 15) {
+                $img = (string) file_get_contents($file);
+            } elseif ($lb->configured()) {
+                @set_time_limit(30);
+                $p = $lb->probe($name, 10);
+                if ($p['ok']) {
+                    $img = (string) $p['image'];
+                    if (!is_dir(dirname($file))) {
+                        @mkdir(dirname($file), 0775, true);
+                    }
+                    @file_put_contents($file, $img, LOCK_EX);
+                }
+            }
+            if ($img === null || $img === '') {
+                Response::error('No frame available for ' . $name . '.', 404);
+            }
+            http_response_code(200);
+            header('Content-Type: image/jpeg');
+            header('Cache-Control: no-store');
+            header('Content-Length: ' . strlen($img));
+            echo $img;
+            exit;
+        }
+
+        // POST /live/source {stream, rtsp} | {stream, remove:true}
+        if ($sub === 'source' && $method === 'POST') {
+            $needSettings('change live sources');
+            $name   = LiveBridge::label(substr((string) (is_scalar($in['stream'] ?? null) ? $in['stream'] : ''), 0, 64));
+            $remove = !empty($in['remove']);
+            $url    = $remove ? '' : trim((string) (is_scalar($in['rtsp'] ?? null) ? $in['rtsp'] : ''));
+            if ($name === '') {
+                Response::error('stream label is required (letters and digits).', 422);
+            }
+            if (!$remove && !LiveBridge::validSource($url)) {
+                Response::error('Invalid stream source — use rtsp://user:pass@host:554/path (or another go2rtc source).', 422);
+            }
+            $file = APP_ROOT . '/storage/app_settings.json';
+            $cur  = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
+            $map  = LiveBridge::patchSources(is_array($cur['live_rtsp'] ?? null) ? $cur['live_rtsp'] : [], $name, $url, LiveBridge::envSources());
+            $cur['live_rtsp'] = (object) $map;
+            if (!is_dir(dirname($file))) {
+                @mkdir(dirname($file), 0775, true);
+            }
+            file_put_contents($file, json_encode($cur, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+
+            $bridge = ['ok' => false, 'error' => 'Live bridge not configured'];
+            if ($lb->configured()) {
+                if ($remove) {
+                    // A fleet camera with the same label falls back to its own RTSP url.
+                    $cfg = $config;
+                    $cfg['live']['rtsp'] = LiveBridge::mergeSources(LiveBridge::envSources(), $map);
+                    $want = LiveBridge::desired($cfg, LiveBridge::fleetRows($cfg, false))[$name]['src'] ?? '';
+                    $bridge = $want !== '' ? $lb->register($name, $want) : $lb->remove($name);
+                } else {
+                    $bridge = $lb->register($name, $url);
+                }
+            }
+            Response::ok(['saved' => true, 'stream' => $name, 'bridge' => ['ok' => $bridge['ok'], 'error' => $bridge['error']]]);
+        }
+
+        Response::error('Not found: ' . $route, 404);
+    }
+
     // ── Cameras (SenseStudio device registry) ────────────────
     if (($seg[0] ?? '') === 'cameras') {
         require_once APP_ROOT . '/lib/SenseApi.php';
+        require_once APP_ROOT . '/lib/LiveBridge.php';
         $sense = new SenseApi($config['sense_api'], dirname($config['storage']['raw_log']));
         $did = (string) ($seg[1] ?? '');
+        // After a successful create / update with an RTSP url: register it on the
+        // go2rtc bridge under the camera's stream label. Never fails the request.
+        $bridgeHook = static function (string $label, string $rtsp) use ($config): array {
+            @unlink(LiveBridge::camsCacheFile($config));   // fleet changed → refresh on next feed
+            $lb = new LiveBridge($config['live']);
+            if (!$lb->configured()) {
+                return ['ok' => false, 'name' => $label, 'error' => 'Live bridge not configured'];
+            }
+            if ($label === '') {
+                return ['ok' => false, 'name' => '', 'error' => 'Stream label unknown — use Settings › Live Video › Register all'];
+            }
+            if (isset($config['live']['rtsp'][$label])) {
+                return ['ok' => true, 'name' => $label, 'error' => '', 'skipped' => 'manual source overrides this camera'];
+            }
+            if (!LiveBridge::validSource($rtsp)) {
+                return ['ok' => false, 'name' => $label, 'error' => 'Unsupported stream source'];
+            }
+            try {
+                $r = $lb->register($label, $rtsp);
+            } catch (Throwable $e) {
+                $r = ['ok' => false, 'error' => $e->getMessage()];
+            }
+            return ['ok' => $r['ok'], 'name' => $label, 'error' => $r['error']];
+        };
 
         // POST /cameras/{did} — update a device's config via SenseStudio (§3.3.3)
         if ($did !== '' && $method === 'POST') {
@@ -1886,6 +2084,26 @@ try {
                 'sts'    => $in['sts']    ?? null,
                 'serial' => $in['serial'] ?? null,
             ]);
+            $rtsp = trim((string) ($in['rtsp'] ?? ''));
+            if (!empty($res['ok']) && $rtsp !== '') {
+                // Stream label: the new serial if given, else the cached fleet row, else a fresh device list.
+                $serial = trim((string) ($in['serial'] ?? ''));
+                if ($serial === '') {
+                    $rows = LiveBridge::fleetRows($config, false);
+                    if (!array_filter($rows, static fn ($r) => ($r['did'] ?? '') === $did)) {
+                        $l = $sense->listDevices(1, 100);
+                        $rows = !empty($l['ok']) && is_array($l['data'] ?? null) ? LiveBridge::mapDevices($l['data'], $config['live']['rtsp'] ?? []) : [];
+                    }
+                    foreach ($rows as $r) {
+                        if (($r['did'] ?? '') === $did) {
+                            $serial = (string) ($r['serial'] ?? '');
+                            break;
+                        }
+                    }
+                }
+                $label = LiveBridge::streamFor($serial, $rtsp, $config['live']['rtsp'] ?? []);
+                $res['bridge'] = $bridgeHook($label, $rtsp);
+            }
             Response::json($res, $res['ok'] ? 200 : 502);
         }
 
@@ -1896,14 +2114,25 @@ try {
             if (empty($in['rtsp']) || empty($in['name'])) {
                 Response::error('name and rtsp are required.', 422);
             }
+            // Serial decided here (same format SenseApi would generate) so the
+            // stream label is known for the bridge registration.
+            $serial = trim((string) ($in['serial'] ?? ''));
+            if ($serial === '') {
+                $serial = 'CAM-' . substr(md5((string) microtime(true)), 0, 6);
+            }
             $res = $sense->createDevice([
                 'name'   => $in['name'],
-                'serial' => $in['serial'] ?? null,
+                'serial' => $serial,
                 'rtsp'   => $in['rtsp'],
                 'fps'    => $in['fps'] ?? '25',
                 'tag'    => $in['tag'] ?? 'tm-next-series',
                 'desc'   => $in['desc'] ?? null,
             ]);
+            if (!empty($res['ok'])) {
+                $rtsp = trim((string) $in['rtsp']);
+                $res['serial'] = $serial;
+                $res['bridge'] = $bridgeHook(LiveBridge::streamFor($serial, $rtsp, $config['live']['rtsp'] ?? []), $rtsp);
+            }
             Response::json($res, $res['ok'] ? 200 : 502);
         }
 

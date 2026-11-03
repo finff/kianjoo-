@@ -11,6 +11,7 @@ if (!defined('APP_ROOT')) {
 }
 
 require_once APP_ROOT . '/lib/Env.php';
+require_once APP_ROOT . '/lib/LiveBridge.php';
 
 Env::load(APP_ROOT . '/.env');
 
@@ -81,12 +82,20 @@ $config = [
     ],
     'live' => [
         // Monitored RTSP sources keyed by stream label + optional go2rtc base.
-        'rtsp'         => json_decode(Env::get('RTSP_STREAMS', '{}') ?: '{}', true) ?: [],
+        'rtsp'         => LiveBridge::envSources(),
+        // PUBLIC go2rtc base the browser loads /api/stream.mp4 from.
         'stream_base'  => rtrim(Env::get('LIVE_STREAM_BASE', ''), '/'),
         // Stream keys hidden from the Live Monitoring grid (Cameras page toggle).
         'hidden'       => [],
         // Token for a gated go2rtc bridge (appended to the player URL as ?token=).
         'stream_token' => Env::get('LIVE_STREAM_TOKEN', ''),
+        // Optional internal URL for server→bridge REST calls (e.g. http://127.0.0.1:1984);
+        // blank = use stream_base. Basic auth = go2rtc api.username/password.
+        'api_base'     => rtrim(Env::get('LIVE_BRIDGE_API', ''), '/'),
+        'api_user'     => Env::get('LIVE_BRIDGE_USER', ''),
+        'api_pass'     => Env::get('LIVE_BRIDGE_PASS', ''),
+        // Register fleet RTSP sources on the bridge automatically (every 5 min on fleet refresh).
+        'auto_sync'    => Env::bool('LIVE_AUTO_SYNC', true),
     ],
     'alerts' => [
         // Minimum incident severity that triggers an email: low|medium|high|critical|off.
@@ -160,6 +169,18 @@ if ($app) {
     if (isset($app['live_stream_token'])) {
         $config['live']['stream_token'] = (string) $app['live_stream_token'];
     }
+    if (isset($app['live_bridge_api'])) {
+        $config['live']['api_base'] = rtrim((string) $app['live_bridge_api'], '/');
+    }
+    if (isset($app['live_api_user'])) {
+        $config['live']['api_user'] = (string) $app['live_api_user'];
+    }
+    if (!empty($app['live_api_pass'])) {
+        $config['live']['api_pass'] = (string) $app['live_api_pass'];
+    }
+    if (isset($app['live_auto_sync'])) {
+        $config['live']['auto_sync'] = (bool) $app['live_auto_sync'];
+    }
     if (isset($app['live_hidden']) && is_array($app['live_hidden'])) {
         $config['live']['hidden'] = array_values(array_filter(array_map(
             static fn ($s) => strtolower(trim((string) $s)),
@@ -173,6 +194,12 @@ if ($app) {
         $config['auth']['read_token'] = (string) $app['read_token'];
     }
 }
+// Manual RTSP sources: Settings › Live Video entries (label → url) merged over
+// RTSP_STREAMS; a '' value hides an .env entry.
+$config['live']['rtsp'] = LiveBridge::mergeSources(
+    $config['live']['rtsp'],
+    is_array($app['live_rtsp'] ?? null) ? $app['live_rtsp'] : []
+);
 // AI source: 'weststar' (default, api.weststar-ai.com middleware) or 'anthropic'
 // (direct Claude API — needs anthropic_key) or 'off'.
 $config['ai']['source']          = in_array($app['ai_source'] ?? '', ['weststar', 'anthropic', 'off'], true)

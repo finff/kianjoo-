@@ -1,0 +1,56 @@
+# Kian Joo VisionAI — live bridge reverse proxy (Caddy 2).
+#
+# Serves https://{$LIVE_DOMAIN} with an automatic Let's Encrypt certificate
+# and forwards to go2rtc (compose service `go2rtc`, port 1984). If you run
+# go2rtc with host networking instead, change both `reverse_proxy` targets
+# to 127.0.0.1:1984.
+#
+# Token gate: a request is let through when EITHER
+#   * the query string carries ?token=<LIVE_TOKEN> (what the dashboard sends on
+#     every <video> src, pop-out link and server-to-bridge call), or
+#   * the browser sends the cookie lt=<LIVE_TOKEN> (set below on the first
+#     token request, so go2rtc's own stream.html pop-out page, whose JS calls
+#     /api/ws?src=... WITHOUT the token, keeps working).
+# Everything else gets 403. LIVE_TOKEN must be non-empty (docker compose
+# refuses to start without it).
+
+{$LIVE_DOMAIN} {
+	# CORS for the dashboard origin. ">" defers the header so it replaces the
+	# copy go2rtc already sends (api.origin "*") instead of duplicating it.
+	header >Access-Control-Allow-Origin "*"
+	header >Access-Control-Allow-Methods "GET, PUT, DELETE, OPTIONS"
+	header >Access-Control-Allow-Headers "Authorization, Content-Type"
+
+	# Preflights carry no token or cookie; answer them without proxying.
+	@preflight method OPTIONS
+	handle @preflight {
+		respond 204
+	}
+
+	# 1) Authorised by query token: proxy, and remember it in a cookie.
+	@querytoken query token={$LIVE_TOKEN}
+	handle @querytoken {
+		header Set-Cookie "lt={$LIVE_TOKEN}; Path=/; Secure; HttpOnly; SameSite=None"
+		reverse_proxy go2rtc:1984 {
+			flush_interval -1
+		}
+	}
+
+	# 2) Authorised by the lt cookie (stream.html and its /api/ws socket).
+	@cookietoken header_regexp lt Cookie `(^|;\s*)lt={$LIVE_TOKEN}(;|$)`
+	handle @cookietoken {
+		reverse_proxy go2rtc:1984 {
+			flush_interval -1
+		}
+	}
+
+	# 3) Anything else.
+	handle {
+		respond "Forbidden" 403
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
