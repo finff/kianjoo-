@@ -521,6 +521,7 @@ try {
         // Manual HLS (.m3u8) sources the browser plays directly, label → url.
         'liveDirect' => (object) LiveBridge::directSources($config),
         'liveStill'  => LiveBridge::stillSources($config, LiveBridge::fleetRows($config, false)),
+        'liveRelay'  => LiveBridge::relaySources($config, LiveBridge::fleetRows($config, false)),
         // Policies observed per camera → Settings shows how many are enabled
         // on the cameras currently displayed on Live Monitoring.
         'policies'   => $store->policyMatrix(30),

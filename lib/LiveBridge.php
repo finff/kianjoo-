@@ -335,6 +335,21 @@ final class LiveBridge
         ];
     }
 
+    /** Stream labels the server can relay as live video itself (plain rtsp:// sources). */
+    public static function relaySources(array $config, array $fleet = []): array
+    {
+        if (empty($config['live']['relay'] ?? true)) {
+            return [];
+        }
+        $out = [];
+        foreach (self::desired($config, $fleet) as $name => $d) {
+            if (empty($d['direct']) && preg_match('~^rtsp://~i', (string) $d['src'])) {
+                $out[] = (string) $name;
+            }
+        }
+        return $out;
+    }
+
     /** Stream labels whose source supports an HTTP snapshot (direct HLS excluded). */
     public static function stillSources(array $config, array $fleet = []): array
     {

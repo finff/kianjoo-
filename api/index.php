@@ -2570,6 +2570,45 @@ try {
             exit;
         }
 
+        // GET /live/relay?stream= → live H.264 frames straight from the camera's
+        // RTSP feed (no bridge, no transcoding), as length-prefixed records the
+        // dashboard plays through Media Source Extensions. One RTSP session per
+        // viewer; the connection ends after a few minutes and the player
+        // reconnects, which keeps shared-hosting execution limits happy.
+        if ($sub === 'relay' && $method === 'GET') {
+            require_once APP_ROOT . '/lib/RtspRelay.php';
+            $name = $streamName($_GET['stream'] ?? '');
+            $want = $name !== '' ? (LiveBridge::desired($config, LiveBridge::fleetRows($config, false))[$name] ?? null) : null;
+            $src  = is_array($want) ? (string) $want['src'] : '';
+            if ($src === '' || !preg_match('~^rtsp://~i', $src)) {
+                Response::error('No RTSP source for this stream.', 404);
+            }
+            @set_time_limit(0);
+            @ini_set('zlib.output_compression', '0');
+            @ini_set('output_buffering', '0');
+            @ini_set('implicit_flush', '1');
+            ignore_user_abort(false);
+            while (ob_get_level() > 0) {
+                @ob_end_clean();
+            }
+            if (function_exists('apache_setenv')) {
+                @apache_setenv('no-gzip', '1');
+            }
+            http_response_code(200);
+            header('Content-Type: application/octet-stream');
+            header('Cache-Control: no-cache, no-store, no-transform');
+            header('X-Accel-Buffering: no');
+            header('X-LiteSpeed-Cache-Control: no-cache');
+            header('Content-Encoding: identity');
+            $relay = new RtspRelay($src);
+            $relay->run(static function (string $au, int $dur): bool {
+                echo RtspRelay::record($au, $dur);
+                @flush();
+                return !connection_aborted();
+            }, max(30, min(600, (int) ($_GET['max'] ?? 240))));
+            exit;
+        }
+
         // GET /live/still?stream= → the camera's current JPEG over HTTP (no
         // bridge needed). Cached ~1 s so several viewers cost one camera hit.
         if ($sub === 'still' && $method === 'GET') {
