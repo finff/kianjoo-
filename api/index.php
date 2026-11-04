@@ -2042,8 +2042,11 @@ try {
             exit;
         };
         // Signed-in user (optionally with the settings permission).
-        $wsdUser = static function (bool $settings, string $what): array {
+        $wsdUser = static function (bool $settings, string $what) use ($provisionAdmin): array {
             require_once APP_ROOT . '/lib/Auth.php';
+            if (($pa = $provisionAdmin()) !== null) {
+                return $pa;
+            }
             $me = Auth::user();
             if ($me === null) {
                 Response::error('Sign in to ' . $what . '.', 401);
@@ -2467,7 +2470,9 @@ try {
     // dashboard's <video> tiles can play them, and reports readiness.
     if (($seg[0] ?? '') === 'live') {
         require_once APP_ROOT . '/lib/LiveBridge.php';
-        $requireToken($config['auth']['read_token']);
+        if ($provisionAdmin() === null) {
+            $requireToken($config['auth']['read_token']);
+        }
         $lb  = new LiveBridge($config['live']);
         $sub = (string) ($seg[1] ?? '');
         $in  = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: $_POST) : [];
