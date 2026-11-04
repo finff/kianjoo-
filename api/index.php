@@ -14,12 +14,12 @@
  *   GET  /overview?plant=                -> Overview page payload (30 s cache)      [read token]
  *   GET  /forklift/summary|export        -> forklift zone KPIs, incidents / CSV     [read token]
  *   POST /forklift/review                -> confirm / clear a forklift detection    [signed in]
- *   POST /simulate                       -> generate / remove simulated detections  [signed in, settings]
+ *   POST /simulate                       -> generate / remove simulated detections  [signed in + settings, or provision token]
  *   GET  /live/status[?net=0]            -> go2rtc bridge readiness per RTSP stream  [read token]
  *   POST /live/sync                      -> register missing / changed RTSP sources  [signed in, settings]
  *   POST /live/probe {stream}            -> grab one frame through the bridge        [read token]
  *   GET  /live/snapshot?stream=          -> that frame as image/jpeg (15 s cache)    [read token]
- *   POST /live/source {stream, rtsp|remove} -> save a manual RTSP source + register [signed in, settings]
+ *   POST /live/source {stream, rtsp|remove} -> save a manual RTSP source + register [signed in + settings, or provision token]
  *   GET|POST /cameras[/{did}]            -> SenseStudio device registry (+ bridge registration) [read token]
  *
  * Auth token may be passed as ?token=, X-Ingest-Token / X-Read-Token header,
@@ -68,6 +68,13 @@ $token = static function (): string {
         return trim(substr($auth, 7));
     }
     return '';
+};
+
+// Server-side admin actions (simulator reset, manual live sources) may also be
+// authorised with the provision token, for scripted maintenance without a session.
+$provisionAdmin = static function () use ($token, $config): ?array {
+    $p = (string) ($config['auth']['provision_token'] ?? '');
+    return ($p !== '' && hash_equals($p, $token())) ? ['name' => 'provision', 'username' => 'provision', 'role' => 'admin', '_provision' => true] : null;
 };
 
 $requireToken = static function (string $expected) use ($token): void {
@@ -1002,11 +1009,11 @@ try {
     if ($route === '/simulate') {
         require_once APP_ROOT . '/lib/Auth.php';
         require_once APP_ROOT . '/lib/Simulator.php';
-        $me = Auth::user();
+        $me = Auth::user() ?? $provisionAdmin();
         if ($me === null) {
             Response::error('Sign in to run the detection simulator.', 401);
         }
-        if (!Auth::can('settings')) {
+        if (empty($me['_provision']) && !Auth::can('settings')) {
             Response::error('Forbidden: the simulator needs the settings permission.', 403);
         }
         if ($method !== 'POST') {
@@ -2464,8 +2471,11 @@ try {
         $lb  = new LiveBridge($config['live']);
         $sub = (string) ($seg[1] ?? '');
         $in  = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: $_POST) : [];
-        $needSettings = static function (string $what): array {
+        $needSettings = static function (string $what) use ($provisionAdmin): array {
             require_once APP_ROOT . '/lib/Auth.php';
+            if (($pa = $provisionAdmin()) !== null) {
+                return $pa;
+            }
             $me = Auth::user();
             if ($me === null) {
                 Response::error('Sign in to ' . $what . '.', 401);
