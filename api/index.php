@@ -2583,29 +2583,44 @@ try {
             if ($src === '' || !preg_match('~^rtsp://~i', $src)) {
                 Response::error('No RTSP source for this stream.', 404);
             }
+            require_once APP_ROOT . '/lib/RelayHub.php';
             @set_time_limit(0);
             @ini_set('zlib.output_compression', '0');
             @ini_set('output_buffering', '0');
             @ini_set('implicit_flush', '1');
-            ignore_user_abort(false);
+            // Keep running after a viewer leaves: this request may be the one
+            // pulling the camera for everyone else (see RelayHub).
+            ignore_user_abort(true);
             while (ob_get_level() > 0) {
                 @ob_end_clean();
             }
             if (function_exists('apache_setenv')) {
                 @apache_setenv('no-gzip', '1');
             }
-            http_response_code(200);
-            header('Content-Type: application/octet-stream');
-            header('Cache-Control: no-cache, no-store, no-transform');
-            header('X-Accel-Buffering: no');
-            header('X-LiteSpeed-Cache-Control: no-cache');
-            header('Content-Encoding: identity');
-            $relay = new RtspRelay($src);
-            $relay->run(static function (string $au, int $dur): bool {
-                echo RtspRelay::record($au, $dur);
+            // Headers wait for the first frame, so a camera refusal can still
+            // be answered as a JSON error instead of an empty 200.
+            $started = false;
+            $hub = new RelayHub(LiveBridge::storageDir($config), $name, $src);
+            $err = $hub->serve(static function (string $rec) use (&$started): bool {
+                if (connection_aborted()) {
+                    return false;
+                }
+                if (!$started) {
+                    $started = true;
+                    http_response_code(200);
+                    header('Content-Type: application/octet-stream');
+                    header('Cache-Control: no-cache, no-store, no-transform');
+                    header('X-Accel-Buffering: no');
+                    header('X-LiteSpeed-Cache-Control: no-cache');
+                    header('Content-Encoding: identity');
+                }
+                echo $rec;
                 @flush();
                 return !connection_aborted();
             }, max(30, min(600, (int) ($_GET['max'] ?? 240))));
+            if (!$started) {
+                Response::error('Live relay: ' . ($err !== '' ? $err : 'no video from camera'), 502);
+            }
             exit;
         }
 

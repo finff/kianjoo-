@@ -49,7 +49,7 @@ final class RtspRelay
     }
 
     /**
-     * Stream frames to $emit(string $annexB, int $durationMs): bool until
+     * Stream frames to $emit(string $annexB, int $durationMs, bool $keyframe): bool until
      * $maxSeconds pass, the camera stops, or $emit returns false.
      *
      * @return array{frames:int,bytes:int,error:string}
@@ -158,7 +158,7 @@ final class RtspRelay
                         }
                     }
                     if ($haveIdr) {
-                        if (!$emit($au, $dur)) {
+                        if (!$emit($au, $dur, $isIdr)) {
                             break;
                         }
                         $frames++;

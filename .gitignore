@@ -52,3 +52,4 @@ storage/ai_missed.json
 storage/nettest_last.json
 storage/retention_state.json
 storage/poc_scorecard.json
+storage/live_relay/

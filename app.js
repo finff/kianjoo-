@@ -312,7 +312,8 @@ class Component extends DCLogic {
   isRelayStream(stream){ return String(this.videoSrc(stream)||'').indexOf('relay:')===0; }
   relayOk(stream){
     if(!stream || (this.state.liveRelay||[]).indexOf(stream)<0) return false;
-    if((this._relayFail||{})[stream]) return false;              // fell back to snapshots
+    const _f=(this._relayFail||{})[stream];
+    if(_f && Date.now()-_f<60000) return false;                  // snapshots for a minute, then retry live
     return typeof window!=='undefined' && !!(window.MediaSource || window.ManagedMediaSource) && typeof fetch==='function';
   }
   loadJmuxer(cb){
@@ -337,7 +338,7 @@ class Component extends DCLogic {
     const c={stopped:false, jm:null, ab:null, fails:0, frames:0}; v._relay=c;
     v.muted=true; v.playsInline=true;
     const giveUp=()=>{ if(c.stopped) return; this.relayStop(v);
-      (this._relayFail=this._relayFail||{})[stream]=1;              // tiles drop back to camera snapshots
+      (this._relayFail=this._relayFail||{})[stream]=Date.now();     // tiles drop back to camera snapshots
       onState('error'); this.bumpVTick(); };
     const jm=()=>{ if(!c.jm){
         c.jm=new window.JMuxer({node:v, mode:'video', flushingTime:0, fps:25, clearBuffer:true, debug:false,
@@ -360,8 +361,8 @@ class Component extends DCLogic {
                 const dv=new DataView(buf.buffer, buf.byteOffset+off, 8);
                 const len=dv.getUint32(0,true), dur=dv.getUint32(4,true);
                 if(buf.length-off-8<len) break;
-                jm().feed({video:buf.subarray(off+8, off+8+len), duration:dur||40});
-                off+=8+len; c.frames++; c.fails=0;
+                if(len) jm().feed({video:buf.subarray(off+8, off+8+len), duration:dur||40});   // len 0 = keep-alive
+                off+=8+len; if(len){ c.frames++; c.fails=0; }
               }
               if(off) buf=buf.slice(off);
               // Stay live: if playback lags the buffered edge, jump forward.
@@ -509,7 +510,7 @@ class Component extends DCLogic {
         }
         if(visible){
           if(v._src!==s){ v._src=s; v._stall=0; v._lastCt=-1; v._lbErr=false; setVs(v,'connecting'); load(v,s); return; }
-          if(document.hidden) return;
+          if(document.hidden || v._relay) return;      // the relay reconnects by itself
           // Stall watchdog: mp4-over-http streams die silently — the element
           // keeps showing the last frame while currentTime stops advancing.
           // Reconnect after ~6s of no progress.
