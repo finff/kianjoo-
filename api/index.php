@@ -2570,6 +2570,53 @@ try {
             exit;
         }
 
+        // GET /live/still?stream= → the camera's current JPEG over HTTP (no
+        // bridge needed). Cached ~1 s so several viewers cost one camera hit.
+        if ($sub === 'still' && $method === 'GET') {
+            $name = $streamName($_GET['stream'] ?? '');
+            $want = $name !== '' ? (LiveBridge::desired($config, LiveBridge::fleetRows($config, false))[$name] ?? null) : null;
+            $src  = is_array($want) ? (string) $want['src'] : '';
+            if ($src === '' || LiveBridge::stillUrl($src) === null) {
+                Response::error('No snapshot source for this stream.', 404);
+            }
+            $dir  = LiveBridge::snapDir($config);
+            $file = $dir . '/still_' . $name . '.jpg';
+            clearstatcache(true, $file);
+            $img = null;
+            if (is_file($file) && microtime(true) - (float) filemtime($file) < 1.0) {
+                $img = (string) file_get_contents($file);
+            } else {
+                if (!is_dir($dir)) {
+                    @mkdir($dir, 0775, true);
+                }
+                // One camera fetch at a time per stream; others reuse the last frame.
+                $lock = @fopen($file . '.lock', 'c');
+                if ($lock && flock($lock, LOCK_EX | LOCK_NB)) {
+                    $img = LiveBridge::fetchStill($src, 5);
+                    if ($img !== null) {
+                        @file_put_contents($file . '.tmp', $img);
+                        @rename($file . '.tmp', $file);
+                    }
+                    flock($lock, LOCK_UN);
+                }
+                if ($lock) {
+                    fclose($lock);
+                }
+                if ($img === null && is_file($file) && time() - (int) filemtime($file) < 30) {
+                    $img = (string) file_get_contents($file);
+                }
+            }
+            if ($img === null || $img === '') {
+                Response::error('Camera snapshot unavailable for ' . $name . '.', 502);
+            }
+            http_response_code(200);
+            header('Content-Type: image/jpeg');
+            header('Cache-Control: no-store');
+            header('Content-Length: ' . strlen($img));
+            echo $img;
+            exit;
+        }
+
         // POST /live/source {stream, rtsp} | {stream, remove:true}
         if ($sub === 'source' && $method === 'POST') {
             $needSettings('change live sources');

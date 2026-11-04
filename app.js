@@ -22,7 +22,8 @@ class Component extends DCLogic {
       simBusy: false, simMsg: '',   // Settings → Detection simulator
       lb: null, lbBusy: false, lbMsg: '', lbProbe: {},   // Settings → Live Video: /api/live/status payload · busy · message · per-stream probe results
       lbNewName: '', lbNewUrl: '',                     // Live Video → add-manual-source row
-      liveDirect: {},                                  // feed.liveDirect — HLS sources played directly {label: url}
+      liveDirect: {},
+      liveStill: [],                                   // feed.liveStill — streams with a server-proxied JPEG snapshot (no bridge needed)                                  // feed.liveDirect — HLS sources played directly {label: url}
       liveBridge: null,                                // feed.liveBridge — cached bridge summary {reachable, version, streams[], …}
       vTick: 0,                                        // bumped (throttled) when a <video> tile changes state
       navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
@@ -277,6 +278,33 @@ class Component extends DCLogic {
     const d=(st.liveDirect||{})[stream]; if(d) return d;
     if(!st.liveBase) return '';
     return st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(stream)+(st.liveToken?('&token='+encodeURIComponent(st.liveToken)):''); }
+  // Bridge-free near-live view: the server fetches the camera's own JPEG
+  // snapshot (credentials stay server-side). Frames are preloaded off-screen
+  // and swapped in only once decoded, so tiles never flash blank.
+  hasStill(stream){ return !!(stream && !this.state.demo && (this.state.liveStill||[]).indexOf(stream)>=0); }
+  stillSrc(stream){
+    if(!this.hasStill(stream) || this.videoSrc(stream)) return '';   // real video wins
+    const s=(this._still||{})[stream]; return (s&&s.cur)||''; }
+  tickStills(){
+    const st=this.state, names=st.liveStill||[];
+    if(st.demo || !names.length) return;
+    if(typeof document!=='undefined' && document.hidden) return;
+    const onWall=['overview','live','camdash','camera'].indexOf(st.page)>=0 || !!(st.modal&&st.modal.type==='video');
+    if(!onWall) return;
+    this._still=this._still||{};
+    const now=Date.now();
+    names.forEach(name=>{
+      if(this.videoSrc(name)) return;
+      const s=this._still[name]||(this._still[name]={cur:'', busy:false, next:0, fail:0});
+      if(s.busy || now<s.next) return;
+      s.busy=true; s.next=now+1000;
+      const url=this.liveApiUrl('/live/still?stream='+encodeURIComponent(name)+'&t='+now);
+      const im=new Image();
+      im.onload=()=>{ s.cur=url; s.busy=false; s.fail=0; };
+      im.onerror=()=>{ s.busy=false; s.fail++; s.next=Date.now()+Math.min(30000, 2000*s.fail); };
+      im.src=url;
+    });
+  }
   // hls.js (Chrome/Firefox/Edge have no native HLS); loaded once, on demand.
   loadHlsJs(cb){
     if(window.Hls){ cb(); return; }
@@ -513,6 +541,15 @@ class Component extends DCLogic {
       tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name, zone:'Direct HLS stream',
         mod:'intr', res:'HLS', fps:25, online:true, direct:true,
         scene:'linear-gradient(160deg,#0e1119,#151824 55%,#0a0d14)', img:null, boxes:[]}); });
+    (this.state.liveStill||[]).forEach(name=>{
+      if(have[name.toLowerCase()]) return;
+      have[name.toLowerCase()]=1;
+      tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name:name.toUpperCase(), zone:'Camera snapshot · ~1 fps',
+        mod:'intr', res:'JPEG', fps:1, online:true, still:true,
+        scene:'linear-gradient(160deg,#0e1119,#151824 55%,#0a0d14)', img:null, boxes:[]}); });
+    // Replace (never mutate) so camPool's own objects keep their detection frame.
+    tiles.forEach((t,i)=>{ const u=t.stream?this.stillSrc(t.stream):'';
+      if(u) tiles[i]=Object.assign({}, t, {img:u, scene:"url('"+u+"') center/cover no-repeat", boxes:[], still:true}); });
     return tiles;
   }
 
@@ -555,7 +592,7 @@ class Component extends DCLogic {
   }
 
   componentDidMount(){
-    this.clockT = setInterval(()=>{ this.setState({now:Date.now()}); this.mountVideos(); }, 1000);
+    this.clockT = setInterval(()=>{ this.tickStills(); this.setState({now:Date.now()}); this.mountVideos(); }, 1000);
     if(this.state.demo){ this.applyDemo(); } else { this.fetchFeed(); }
     this._tick = 0;
     this.pollT = setInterval(()=>{
@@ -610,7 +647,7 @@ class Component extends DCLogic {
           trend: Array.isArray(d.trend)?d.trend:[],
           byType: d.byType || {}, byCam: d.byCam || {}, ai: d.ai || null,
           ppe: d.ppe || null, gpu: Array.isArray(d.gpu)?d.gpu:[],
-          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null, liveDirect: (d.liveDirect && typeof d.liveDirect==='object') ? d.liveDirect : {},
+          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null, liveDirect: (d.liveDirect && typeof d.liveDirect==='object') ? d.liveDirect : {}, liveStill: Array.isArray(d.liveStill) ? d.liveStill : [],
           // Don't clobber an in-flight local toggle with a stale poll response.
           liveHidden: this._hidePending ? this.state.liveHidden : (Array.isArray(d.liveHidden)?d.liveHidden:[]),
           policies: Array.isArray(d.policies)?d.policies:[],
@@ -2425,7 +2462,7 @@ class Component extends DCLogic {
         camKey: c.stream || String(c.id).toLowerCase(), mirrorOf,
         hasLbChip: vch.has, lbChip: vch.text, lbChipCol: vch.col,
         showPlaceholder: !c.img,
-        placeholder: !on ? 'CAMERA OFFLINE' : (this.notOnBridge(c.stream) ? 'NOT ON LIVE BRIDGE' : (vsrc?'CONNECTING TO STREAM…':'NO STREAM BRIDGE CONFIGURED')),
+        placeholder: !on ? 'CAMERA OFFLINE' : (this.notOnBridge(c.stream) ? 'NOT ON LIVE BRIDGE' : (vsrc?'CONNECTING TO STREAM…':(this.hasStill(c.stream)?'LOADING CAMERA SNAPSHOT…':'NO STREAM BRIDGE CONFIGURED'))),
         tag:m.tag, tagBg:m.tagBg, canExpand: !!c.img,
         onOpen: ()=>this.openCamera(c.stream||String(c.id).toLowerCase()),
         showMeta: !compact, showBoxLabel: cols<=3, nameSize: compact?'11px':'12px',
@@ -3119,7 +3156,7 @@ class Component extends DCLogic {
         mp4Url: live ? this.videoSrc(stream) : '',
         streamUrl: (st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : '',
         popUrl: camDirect ? this.videoSrc(stream) : ((st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : ''),
-        frameBg: bgOf(cam?cam.img:null), noFrame: !(cam&&cam.img),
+        frameBg: bgOf(this.stillSrc(stream)||(cam?cam.img:null)), noFrame: !(this.stillSrc(stream)||(cam&&cam.img)),
         canEdit: !!(f&&f.did),
         editName: ed.name!=null?ed.name:(f?f.name:''), editRtsp: ed.rtsp!=null?ed.rtsp:(f?f.rtsp:''),
         editTag: ed.tag||'', editDesc: ed.desc||'', saveMsg: st.camMsg||'',
@@ -3343,7 +3380,7 @@ class Component extends DCLogic {
     const _mp4  = _live ? this.videoSrc(vc.stream) : '';
     const _vurl = !_live ? '' : (this.isDirectStream(vc.stream) ? this.videoSrc(vc.stream) : (st.liveBase+'/stream.html?src='+encodeURIComponent(vc.stream)+_tokq));
     const mVideo = vc ? { name:vc.name, stream:vc.stream||'', rtsp:vc.rtsp||'', rtspMask:maskRtsp(vc.rtsp)||'no RTSP', online:vc.online,
-      hasLive: !!_live, noLive: !_live, frameBg:bgOf(vc.image),
+      hasLive: !!_live, noLive: !_live, frameBg:bgOf((vc.stream&&this.stillSrc(vc.stream))||vc.image),
       noFrame: !vc.image, frameLabel: vc.image?'Latest detection frame':'No recent detection frame',
       mp4Url: _mp4, url: _vurl, onOpenTab: ()=>this.openLiveTab(_vurl) } : null;
 

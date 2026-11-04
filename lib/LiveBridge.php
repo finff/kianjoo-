@@ -294,6 +294,93 @@ final class LiveBridge
         return $out;
     }
 
+    // ── Bridge-free snapshots ("near-live" tiles) ──
+    // Without a go2rtc bridge the browser cannot play RTSP, but most IP cameras
+    // also serve a JPEG of the current frame over HTTP. The server fetches it
+    // with the RTSP credentials (never sent to the browser) and the tiles
+    // refresh it about once a second.
+
+    /**
+     * HTTP snapshot endpoint for an RTSP camera URL, or null when the vendor
+     * path is not recognised. Hikvision: /Streaming/Channels/101 →
+     * /ISAPI/Streaming/channels/101/picture. Dahua: /cam/realmonitor?channel=N
+     * → /cgi-bin/snapshot.cgi?channel=N.
+     *
+     * @return array{url:string,user:string,pass:string}|null
+     */
+    public static function stillUrl(string $src): ?array
+    {
+        $p = parse_url(trim($src));
+        if (!is_array($p) || !in_array(strtolower((string) ($p['scheme'] ?? '')), ['rtsp', 'rtsps'], true) || empty($p['host'])) {
+            return null;
+        }
+        $path  = (string) ($p['path'] ?? '');
+        $query = (string) ($p['query'] ?? '');
+        if (preg_match('~/Streaming/Channels/(\d+)~i', $path, $m)) {
+            $tail = '/ISAPI/Streaming/channels/' . $m[1] . '/picture';
+        } elseif (stripos($path, '/cam/realmonitor') === 0) {
+            parse_str($query, $q);
+            $tail = '/cgi-bin/snapshot.cgi?channel=' . max(1, (int) ($q['channel'] ?? 1));
+        } else {
+            return null;
+        }
+        $host = (string) $p['host'];
+        if (strpos($host, ':') !== false && $host[0] !== '[') {
+            $host = '[' . $host . ']';
+        }
+        return [
+            'url'  => 'http://' . $host . $tail,
+            'user' => rawurldecode((string) ($p['user'] ?? '')),
+            'pass' => rawurldecode((string) ($p['pass'] ?? '')),
+        ];
+    }
+
+    /** Stream labels whose source supports an HTTP snapshot (direct HLS excluded). */
+    public static function stillSources(array $config, array $fleet = []): array
+    {
+        $out = [];
+        foreach (self::desired($config, $fleet) as $name => $d) {
+            if (empty($d['direct']) && self::stillUrl((string) $d['src']) !== null) {
+                $out[] = (string) $name;
+            }
+        }
+        return $out;
+    }
+
+    /** Fetch one JPEG from the camera (digest or basic auth); null on any failure. */
+    public static function fetchStill(string $src, int $timeout = 5): ?string
+    {
+        $s = self::stillUrl($src);
+        if ($s === null || !function_exists('curl_init')) {
+            return null;
+        }
+        $ch = curl_init($s['url']);
+        $opt = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => min(3, $timeout),
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_HTTPHEADER     => ['Accept: image/jpeg'],
+        ];
+        if ($s['user'] !== '') {
+            $opt[CURLOPT_HTTPAUTH] = CURLAUTH_DIGEST | CURLAUTH_BASIC;
+            $opt[CURLOPT_USERPWD]  = $s['user'] . ':' . $s['pass'];
+        }
+        curl_setopt_array($ch, $opt);
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+        if (!is_string($body) || $code !== 200 || strlen($body) < 100) {
+            return null;
+        }
+        // JPEG magic bytes, whatever the camera claims in Content-Type.
+        if (substr($body, 0, 2) !== "\xFF\xD8" && stripos($type, 'image/') !== 0) {
+            return null;
+        }
+        return $body;
+    }
+
     // ── Manual source map (RTSP_STREAMS env + app_settings live_rtsp) ──
 
     /** RTSP_STREAMS from .env as [label => url] (string keys, non-empty values). */
