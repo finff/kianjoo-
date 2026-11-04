@@ -23,7 +23,8 @@ class Component extends DCLogic {
       lb: null, lbBusy: false, lbMsg: '', lbProbe: {},   // Settings → Live Video: /api/live/status payload · busy · message · per-stream probe results
       lbNewName: '', lbNewUrl: '',                     // Live Video → add-manual-source row
       liveDirect: {},
-      liveStill: [],                                   // feed.liveStill — streams with a server-proxied JPEG snapshot (no bridge needed)                                  // feed.liveDirect — HLS sources played directly {label: url}
+      liveStill: [],
+      liveRelay: [],                                   // feed.liveRelay — RTSP streams the server relays as live H.264 (no bridge)                                   // feed.liveStill — streams with a server-proxied JPEG snapshot (no bridge needed)                                  // feed.liveDirect — HLS sources played directly {label: url}
       liveBridge: null,                                // feed.liveBridge — cached bridge summary {reachable, version, streams[], …}
       vTick: 0,                                        // bumped (throttled) when a <video> tile changes state
       navSec: (()=>{ try{ const v=JSON.parse(localStorage.getItem('tmns-nav-sec')||'{}'); return (v&&typeof v==='object')?v:{}; }catch(e){ return {}; } })(),   // sidebar sections folded by the user
@@ -276,7 +277,7 @@ class Component extends DCLogic {
   videoSrc(stream){ const st=this.state;
     if(!stream || st.demo) return '';
     const d=(st.liveDirect||{})[stream]; if(d) return d;
-    if(!st.liveBase) return '';
+    if(!st.liveBase) return this.relayOk(stream) ? ('relay:'+stream) : '';
     return st.liveBase+'/api/stream.mp4?src='+encodeURIComponent(stream)+(st.liveToken?('&token='+encodeURIComponent(st.liveToken)):''); }
   // Bridge-free near-live view: the server fetches the camera's own JPEG
   // snapshot (credentials stay server-side). Frames are preloaded off-screen
@@ -304,6 +305,78 @@ class Component extends DCLogic {
       im.onerror=()=>{ s.busy=false; s.fail++; s.next=Date.now()+Math.min(30000, 2000*s.fail); };
       im.src=url;
     });
+  }
+  // ── Server RTSP relay (no bridge) ──
+  // /api/live/relay streams the camera's own H.264 frames as length-prefixed
+  // records; jmuxer wraps them into fragmented MP4 for Media Source Extensions.
+  isRelayStream(stream){ return String(this.videoSrc(stream)||'').indexOf('relay:')===0; }
+  relayOk(stream){
+    if(!stream || (this.state.liveRelay||[]).indexOf(stream)<0) return false;
+    if((this._relayFail||{})[stream]) return false;              // fell back to snapshots
+    return typeof window!=='undefined' && !!(window.MediaSource || window.ManagedMediaSource) && typeof fetch==='function';
+  }
+  loadJmuxer(cb){
+    if(window.JMuxer){ cb(); return; }
+    (this._jmCbs=this._jmCbs||[]).push(cb);
+    if(this._jmLoading) return;
+    this._jmLoading=true;
+    const sc=document.createElement('script');
+    sc.src='https://cdn.jsdelivr.net/npm/jmuxer@2.0.7/dist/jmuxer.min.js';
+    sc.onload=()=>{ const l=this._jmCbs||[]; this._jmCbs=[]; l.forEach(f=>{ try{ f(); }catch(e){} }); };
+    sc.onerror=()=>{ this._jmLoading=false; const l=this._jmCbs||[]; this._jmCbs=[]; l.forEach(f=>{ try{ f(new Error('player')); }catch(e){} }); };
+    document.head.appendChild(sc);
+  }
+  relayStop(v){
+    const c=v&&v._relay; if(!c) return;
+    c.stopped=true; v._relay=null;
+    try{ c.ab&&c.ab.abort(); }catch(e){}
+    try{ c.jm&&c.jm.destroy(); }catch(e){}
+  }
+  relayStart(v, stream, onState){
+    this.relayStop(v);
+    const c={stopped:false, jm:null, ab:null, fails:0, frames:0}; v._relay=c;
+    v.muted=true; v.playsInline=true;
+    const giveUp=()=>{ if(c.stopped) return; this.relayStop(v);
+      (this._relayFail=this._relayFail||{})[stream]=1;              // tiles drop back to camera snapshots
+      onState('error'); this.bumpVTick(); };
+    const jm=()=>{ if(!c.jm){
+        c.jm=new window.JMuxer({node:v, mode:'video', flushingTime:0, fps:25, clearBuffer:true, debug:false,
+          onError:()=>{ /* recoverable: next keyframe resets the decoder */ }});
+        const p=v.play&&v.play(); if(p&&p.catch) p.catch(()=>{}); }
+      return c.jm; };
+    const connect=()=>{
+      if(c.stopped) return;
+      c.ab=(typeof AbortController!=='undefined')?new AbortController():null;
+      fetch(this.liveApiUrl('/live/relay?stream='+encodeURIComponent(stream)), {cache:'no-store', signal:c.ab?c.ab.signal:undefined})
+        .then(r=>{
+          if(!r.ok || !r.body) throw new Error('HTTP '+r.status);
+          const rd=r.body.getReader(); let buf=new Uint8Array(0);
+          const pump=()=>rd.read().then(({done, value})=>{
+            if(done || c.stopped) return;
+            if(value && value.length){
+              const nb=new Uint8Array(buf.length+value.length); nb.set(buf); nb.set(value, buf.length); buf=nb;
+              let off=0;
+              while(buf.length-off>=8){
+                const dv=new DataView(buf.buffer, buf.byteOffset+off, 8);
+                const len=dv.getUint32(0,true), dur=dv.getUint32(4,true);
+                if(buf.length-off-8<len) break;
+                jm().feed({video:buf.subarray(off+8, off+8+len), duration:dur||40});
+                off+=8+len; c.frames++; c.fails=0;
+              }
+              if(off) buf=buf.slice(off);
+              // Stay live: if playback lags the buffered edge, jump forward.
+              try{ const b=v.buffered; if(b && b.length){ const end=b.end(b.length-1);
+                if(end-v.currentTime>1.2) v.currentTime=Math.max(0, end-0.15);
+                if(v.paused){ const p=v.play(); if(p&&p.catch) p.catch(()=>{}); } } }catch(e){}
+            }
+            return pump(); });
+          return pump();
+        })
+        .then(()=>{ if(!c.stopped) setTimeout(connect, 200); })      // server ends each session after a few minutes
+        .catch(()=>{ if(c.stopped) return; c.fails++;
+          if(c.fails>=4 && !c.frames) giveUp(); else setTimeout(connect, Math.min(8000, 1000*c.fails)); });
+    };
+    this.loadJmuxer(err=>{ if(err){ giveUp(); return; } connect(); });
   }
   // hls.js (Chrome/Firefox/Edge have no native HLS); loaded once, on demand.
   loadHlsJs(cb){
@@ -370,11 +443,12 @@ class Component extends DCLogic {
     try{
       const play=(v)=>{ const p=v.play&&v.play(); if(p&&p.catch)p.catch(()=>{}); };
       const isHls=(u)=>/\.m3u8(?:[?#]|$)/i.test(u);
-      const kill=(v)=>{ if(v._hls){ try{ v._hls.destroy(); }catch(e){} v._hls=null; } };
+      const kill=(v)=>{ if(v._hls){ try{ v._hls.destroy(); }catch(e){} v._hls=null; } if(v._relay) this.relayStop(v); };
       // Point a <video> at a URL: native for MP4 / Safari HLS, hls.js otherwise.
       // ngrok-free hosts may answer browsers with a warning page; on a fatal
       // load error the playlist is retried once with ngrok's skip header.
       const load=(v,u)=>{ kill(v);
+        if(String(u).indexOf('relay:')===0){ this.relayStart(v, String(u).slice(6).replace(/[?&].*$/,''), st=>setVs(v,st)); return; }
         if(!isHls(u) || (v.canPlayType && v.canPlayType('application/vnd.apple.mpegurl'))){ v.src=u; play(v); return; }
         const want=v._src;
         const go=(skip)=>{ const H=window.Hls;
@@ -444,7 +518,7 @@ class Component extends DCLogic {
           if(v._stall>=6){ v._stall=0; v._lastCt=-1; v._lbErr=true; setVs(v,'error');   // until the next 'playing'
             load(v, isHls(s) ? s : (s+(s.indexOf('?')>=0?'&':'?')+'_r='+Date.now())); }
         }
-        else if(v.src || v._hls){ kill(v); v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
+        else if(v.src || v._hls || v._relay){ kill(v); v._src=''; v.removeAttribute('src'); if(v.load)v.load(); }
       });
     }catch(e){}
   }
@@ -647,7 +721,7 @@ class Component extends DCLogic {
           trend: Array.isArray(d.trend)?d.trend:[],
           byType: d.byType || {}, byCam: d.byCam || {}, ai: d.ai || null,
           ppe: d.ppe || null, gpu: Array.isArray(d.gpu)?d.gpu:[],
-          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null, liveDirect: (d.liveDirect && typeof d.liveDirect==='object') ? d.liveDirect : {}, liveStill: Array.isArray(d.liveStill) ? d.liveStill : [],
+          fleet: Array.isArray(d.fleet)?d.fleet:[], liveBase: d.liveBase || '', liveToken: d.liveToken || '', liveBridge: d.liveBridge || null, liveDirect: (d.liveDirect && typeof d.liveDirect==='object') ? d.liveDirect : {}, liveStill: Array.isArray(d.liveStill) ? d.liveStill : [], liveRelay: Array.isArray(d.liveRelay) ? d.liveRelay : [],
           // Don't clobber an in-flight local toggle with a stale poll response.
           liveHidden: this._hidePending ? this.state.liveHidden : (Array.isArray(d.liveHidden)?d.liveHidden:[]),
           policies: Array.isArray(d.policies)?d.policies:[],
@@ -3156,6 +3230,8 @@ class Component extends DCLogic {
         mp4Url: live ? this.videoSrc(stream) : '',
         streamUrl: (st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : '',
         popUrl: camDirect ? this.videoSrc(stream) : ((st.liveBase&&stream) ? (st.liveBase+'/stream.html?src='+encodeURIComponent(stream)+_tokq) : ''),
+        hasPop: camDirect || !!(st.liveBase&&stream),
+        liveKind: camDirect ? 'HLS' : (st.liveBase ? 'go2rtc MP4' : 'RTSP relay'),
         frameBg: bgOf(this.stillSrc(stream)||(cam?cam.img:null)), noFrame: !(this.stillSrc(stream)||(cam&&cam.img)),
         canEdit: !!(f&&f.did),
         editName: ed.name!=null?ed.name:(f?f.name:''), editRtsp: ed.rtsp!=null?ed.rtsp:(f?f.rtsp:''),
@@ -3378,11 +3454,11 @@ class Component extends DCLogic {
     // Inline player uses go2rtc's fragmented-MP4 endpoint: token rides in the URL
     // (no cross-site cookie), so <video> plays natively on Chrome/Safari/Firefox.
     const _mp4  = _live ? this.videoSrc(vc.stream) : '';
-    const _vurl = !_live ? '' : (this.isDirectStream(vc.stream) ? this.videoSrc(vc.stream) : (st.liveBase+'/stream.html?src='+encodeURIComponent(vc.stream)+_tokq));
+    const _vurl = !_live ? '' : (this.isDirectStream(vc.stream) ? this.videoSrc(vc.stream) : (st.liveBase ? (st.liveBase+'/stream.html?src='+encodeURIComponent(vc.stream)+_tokq) : ''));
     const mVideo = vc ? { name:vc.name, stream:vc.stream||'', rtsp:vc.rtsp||'', rtspMask:maskRtsp(vc.rtsp)||'no RTSP', online:vc.online,
       hasLive: !!_live, noLive: !_live, frameBg:bgOf((vc.stream&&this.stillSrc(vc.stream))||vc.image),
       noFrame: !vc.image, frameLabel: vc.image?'Latest detection frame':'No recent detection frame',
-      mp4Url: _mp4, url: _vurl, onOpenTab: ()=>this.openLiveTab(_vurl) } : null;
+      mp4Url: _mp4, url: _vurl, hasUrl: !!_vurl, liveKind: this.isDirectStream(vc.stream) ? 'HLS' : (st.liveBase ? 'go2rtc MP4' : 'RTSP relay'), onOpenTab: ()=>this.openLiveTab(_vurl) } : null;
 
     // GPU utilization — detection-driven (bar chart; rises when detections occur)
     const gpu=(st.gpu&&st.gpu.length)?st.gpu:new Array(24).fill(38);

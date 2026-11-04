@@ -2854,7 +2854,7 @@
             <div class="c349"><span class="c350"></span><h3 class="c129">Live stream</h3><span class="c351">{{ camDetail.stream }}</span></div>
             <sc-if value="{{ camDetail.hasLive }}" hint-placeholder-val="{{ false }}">
             <video class="c352" data-src="{{ camDetail.mp4Url }}" autoplay muted playsinline controls></video>
-            <div class="c353"><span class="c206">● LIVE · go2rtc MP4</span><a class="c354" href="{{ camDetail.popUrl }}" target="_blank" rel="noopener">pop out ↗</a></div>
+            <div class="c353"><span class="c206">● LIVE · {{ camDetail.liveKind }}</span><sc-if value="{{ camDetail.hasPop }}" hint-placeholder-val="{{ true }}"><a class="c354" href="{{ camDetail.popUrl }}" target="_blank" rel="noopener">pop out ↗</a></sc-if></div>
             </sc-if>
             <sc-if value="{{ camDetail.noLive }}" hint-placeholder-val="{{ true }}">
             <div class="c355" onClick="{{ camDetail.onExpand }}" style="background:{{ camDetail.frameBg }}">
@@ -4808,8 +4808,8 @@
         <sc-if value="{{ mVideo.hasLive }}" hint-placeholder-val="{{ false }}">
         <video class="c352" data-src="{{ mVideo.mp4Url }}" autoplay muted playsinline controls></video>
         <div class="c353">
-          <span class="c206">● LIVE · go2rtc MP4 · {{ mVideo.stream }}</span>
-          <a class="c354" href="{{ mVideo.url }}" target="_blank" rel="noopener">pop out ↗</a>
+          <span class="c206">● LIVE · {{ mVideo.liveKind }} · {{ mVideo.stream }}</span>
+          <sc-if value="{{ mVideo.hasUrl }}" hint-placeholder-val="{{ true }}"><a class="c354" href="{{ mVideo.url }}" target="_blank" rel="noopener">pop out ↗</a></sc-if>
         </div>
         </sc-if>
         <sc-if value="{{ mVideo.noLive }}" hint-placeholder-val="{{ true }}">
