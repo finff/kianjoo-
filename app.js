@@ -2913,7 +2913,12 @@ class Component extends DCLogic {
             res:c.res, fps:c.fps, scene:c.scene, mod:c.mod, online:true, image:c.img}));
     const camAll=camSource.map((c,i)=>{
       const m=this.MODS[c.mod]||this.MODS.intr;
-      return {id:c.id, stream:c.stream, name:c.name, zone:c.zone, res:c.res, fps: c.online?c.fps:0, scene:c.scene,
+      // Thumbnail: the camera's own current frame when the server can fetch one
+      // (refreshed every 30 s), else the latest detection frame.
+      const _thumb=(c.stream && this.hasStill(c.stream))
+        ? `url('${this.liveApiUrl('/live/still?stream='+encodeURIComponent(c.stream)+'&t='+Math.floor((st.now||Date.now())/30000))}') center/cover no-repeat, ${c.scene}` : c.scene;
+      const _nm=String(c.name||c.id||'Camera'), _sub=[String(c.id||'')!==_nm?c.id:'', c.res].filter(Boolean).join(' · ');
+      return {id:c.id, stream:c.stream, name:_nm, sub:_sub, zone:c.zone||'—', res:c.res, fps: c.online?c.fps:0, scene:_thumb,
         tag:m.tag, tagBg:m.tagBg, modName:{fire:'Fire & Smoke',ppe:'PPE',intr:'Intrusion',face:'Face & Body'}[c.mod]||'—',
         online:c.online, statusLabel: c.online?'Online':'Offline', statusCol: c.online?'var(--ok)':'var(--text3)',
         health: c.online?(84+(i*7)%13):0, healthW:(c.online?(84+(i*7)%13):0)+'%', healthCol: c.online?'var(--ok)':'var(--text3)',
