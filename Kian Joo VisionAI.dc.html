@@ -1693,8 +1693,6 @@
             <sc-for list="{{ clItemSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
           </select>
           <button class="c185 chip" onClick="{{ reloadCl }}">⟳</button>
-          <button class="c185 chip on" onClick="{{ exportClSess }}">⇩ Sessions CSV</button>
-          <button class="c185 chip on" onClick="{{ exportClViol }}">⇩ Violations CSV</button>
           <span class="c100">{{ clStatus }}</span>
         </div>
 
@@ -1840,8 +1838,6 @@
               <sc-for list="{{ behVerdictSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadBeh }}">⟳</button>
-            <button class="c185 chip on" onClick="{{ exportBehExc }}">⇩ Exceptions CSV</button>
-            <button class="c185 chip on" onClick="{{ exportBehTrend }}">⇩ Trend CSV</button>
             <button class="c185 chip" onClick="{{ goSettingsBeh }}">⚙ Behaviour rules</button>
             <span class="c100">{{ behStatus }}</span>
           </div>
@@ -1961,8 +1957,6 @@
               <sc-for list="{{ raStatusSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadRa }}">⟳</button>
-            <button class="c185 chip on" onClick="{{ exportRaInc }}">⇩ Incidents CSV</button>
-            <button class="c185 chip on" onClick="{{ exportRaSum }}">⇩ Summary CSV</button>
             <button class="c185 chip" onClick="{{ goSettingsRa }}">⚙ Restricted zones</button>
             <span class="c100">{{ raStatus }}</span>
           </div>
@@ -2068,8 +2062,6 @@
               <sc-for list="{{ ppeItemSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadPpe }}">⟳</button>
-            <button class="c185 chip on" onClick="{{ exportPpeViol }}">⇩ Violations CSV</button>
-            <button class="c185 chip on" onClick="{{ exportPpeComp }}">⇩ Compliance CSV</button>
             <button class="c185 chip" onClick="{{ goSettingsPpe }}">⚙ PPE area rules</button>
             <span class="c100">{{ ppeStatus }}</span>
           </div>
@@ -2196,7 +2188,6 @@
           </select>
           <input class="c665 att-search" value="{{ regQ }}" onInput="{{ onRegQ }}" placeholder="Search name or staff ID…">
           <button class="c185 chip" onClick="{{ reloadReg }}">⟳</button>
-          <button class="c185 chip on" onClick="{{ exportDaily }}">⇩ Export CSV</button>
           <span class="c100">{{ regStatusLine }}</span>
         </div>
 
@@ -2258,35 +2249,6 @@
               <div class="c100 att-cap">No face recognitions on this date.</div>
             </sc-if>
           </div>
-        </div>
-        </sc-if>
-
-        <!-- ── Reports (CSV) ── -->
-        <sc-if value="{{ attViewReports }}" hint-placeholder-val="{{ false }}">
-        <div class="att-bar">
-          <span class="sel-lab">From</span>
-          <input class="c665 att-date" type="date" value="{{ repFrom }}" onChange="{{ onRepFrom }}">
-          <span class="sel-lab">To</span>
-          <input class="c665 att-date" type="date" value="{{ repTo }}" onChange="{{ onRepTo }}">
-          <select class="sel" value="{{ regPlantSel.value }}" onChange="{{ regPlantSel.onChange }}">
-            <sc-for list="{{ regPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <select class="sel" value="{{ regDeptSel.value }}" onChange="{{ regDeptSel.onChange }}">
-            <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <select class="sel" value="{{ repPersonSel.value }}" onChange="{{ repPersonSel.onChange }}">
-            <sc-for list="{{ repPersonSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-        </div>
-        <div class="att-rep-grid">
-          <sc-for list="{{ repCards }}" as="c" hint-placeholder-count="3">
-            <div class="att-panel att-rep">
-              <div class="c129">{{ c.title }}</div>
-              <div class="att-loc">{{ c.desc }}</div>
-              <div class="att-src">{{ c.scope }}</div>
-              <div><button class="c185 chip on" onClick="{{ c.onClick }}">⇩ Download CSV</button></div>
-            </div>
-          </sc-for>
         </div>
         </sc-if>
 
@@ -2552,8 +2514,6 @@
               <sc-for list="{{ fkKindSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadFk }}">⟳</button>
-            <button class="c185 chip on" onClick="{{ exportFkInc }}">⇩ Incidents CSV</button>
-            <button class="c185 chip on" onClick="{{ exportFkSum }}">⇩ Summary CSV</button>
             <button class="c185 chip" onClick="{{ goSettingsFk }}">⚙ Forklift zones</button>
             <span class="c100">{{ fkStatus }}</span>
           </div>
@@ -3071,8 +3031,6 @@
             <sc-for list="{{ aipPlantSel.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
           </select>
           <button class="c185 chip" onClick="{{ reloadAip }}">⟳</button>
-          <button class="c185 chip on" onClick="{{ exportAipMetrics }}">⇩ Metrics CSV</button>
-          <button class="c185 chip on" onClick="{{ exportAipTraining }}">⇩ Training samples CSV</button>
           <span class="c100">{{ aipStatus }}</span>
           <span class="c100 aip-msg">{{ aipMsg }}</span>
         </div>
@@ -3245,9 +3203,6 @@
         <div class="att-bar ppx-noprint">
           <sc-if value="{{ pocCanEdit }}" hint-placeholder-val="{{ true }}"><button class="c429" onClick="{{ pocSave }}">{{ pocSaveLabel }}</button></sc-if>
           <button class="c185 chip" onClick="{{ reloadPoc }}">⟳</button>
-          <button class="c185 chip on" onClick="{{ pocExportCrit }}">⇩ Criteria CSV</button>
-          <button class="c185 chip on" onClick="{{ pocExportTests }}">⇩ Test cases CSV</button>
-          <button class="c185 chip on" onClick="{{ pocExportAll }}">⇩ Full workbook CSV</button>
           <button class="c185 chip" onClick="{{ pocPrint }}">⎙ Print / PDF report</button>
           <span class="c100">{{ pocUpdated }}</span>
           <sc-if value="{{ pocReadOnly }}" hint-placeholder-val="{{ false }}"><span class="c100">· read-only (needs the settings permission to edit)</span></sc-if>
@@ -3950,11 +3905,8 @@
             </div>
             <div class="poc-chips">
               <button class="c429" onClick="{{ thSave }}">Save thresholds</button>
-              <button class="c185 chip on" onClick="{{ thExportFp }}">⇩ Training samples — FP + FN</button>
-              <button class="c185 chip" onClick="{{ thExportAll }}">⇩ Incl. confirmed TP</button>
               <button class="c185 chip" onClick="{{ goAiperf }}">AI Performance →</button>
             </div>
-            <div class="c428">The training-samples CSV lists every false positive (with its evidence image URL) and every logged missed detection for the selected period — import it as a labelled dataset in SenseStudio. Thresholds apply to new detections only; past events keep their verdicts.</div>
           </div>
           </sc-if>
 

@@ -3705,7 +3705,7 @@ class Component extends DCLogic {
     // ===== OFFICIAL ATTENDANCE — register · employees · reports =====
     const reg=st.reg, regD=reg.data||{};
     const hm=(t)=>t?String(t).slice(11,16):'—';
-    const attViews=[['register','Daily register'],['live','Live sightings'],['reports','Reports']]
+    const attViews=[['register','Daily register'],['live','Live sightings']]
       .map(([k,label])=>({label, cls:st.attView===k?'chip on':'chip', onClick:()=>this.setAttView(k)}));
     const optList=(list,blank)=>[{v:'',label:blank}, ...(list||[]).map(x=>({v:x,label:x}))];
     const regPlantSel={value:reg.plant, options:optList(regD.plants,'All plants'),
