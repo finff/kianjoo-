@@ -3998,7 +3998,8 @@ class Component extends DCLogic {
         return {label:CL_ITEMS[k], cls:on?'chip on':'chip', onClick:()=>this.clSet(i,{items:on?s.items.filter(x=>x!==k):[...(s.items||[]),k]})}; }),
       enabled:[[true,'Active'],[false,'Paused']].map(([v,label])=>({label, cls:(s.enabled!==false)===v?'chip on':'chip', onClick:()=>this.clSet(i,{enabled:v})})),
       onRemove:()=>this.clRemove(i),
-      warn:s.location&&clMapped.indexOf(s.location)<0?'No camera is mapped to this area (Settings → POC Camera Points), so nobody can be checked during it.':'',
+      warn:s.location&&clMapped.indexOf(s.location)<0?'No camera is linked to this area yet, so nobody can be checked during cleaning.':'',
+        hasWarn:!!(s.location&&clMapped.indexOf(s.location)<0),
     }));
     // ===== RESTRICTED AREA MONITORING (/api/restricted/summary) =====
     const rd=st.raD||{}, rf=st.raF, rk2=rd.kpi||{};

@@ -1706,39 +1706,51 @@
         <!-- ── Schedules ── -->
         <sc-if value="{{ clTabSchedules }}" hint-placeholder-val="{{ false }}">
         <div class="att-panel">
-          <div class="c129">Cleaning schedules <span class="c100">— where and when cleaning is expected, and the PPE required during it</span></div>
+          <div class="c129">Cleaning schedules</div>
+          <div class="cls-list">
           <sc-for list="{{ clEdit }}" as="s" hint-placeholder-count="2">
-            <div class="poc-cam">
-              <div class="cl-edit-grid">
-                <div><div class="c426">NAME</div><input class="c427" value="{{ s.name }}" onInput="{{ s.onName }}" placeholder="e.g. Line 5 deep clean"></div>
-                <div><div class="c426">CLEANING AREA</div>
-                  <select class="sel pfm-sel" value="{{ s.locSel.value }}" onChange="{{ s.locSel.onChange }}">
-                    <sc-for list="{{ s.locSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-                  </select></div>
-                <div><div class="c426">START</div><input class="c427" type="time" value="{{ s.start }}" onInput="{{ s.onStart }}"></div>
-                <div><div class="c426">END</div><input class="c427" type="time" value="{{ s.end }}" onInput="{{ s.onEnd }}"></div>
+            <div class="cls-card">
+              <div class="cls-top">
+                <div class="cls-fields">
+                  <div><div class="c426">NAME</div><input class="c427" value="{{ s.name }}" onInput="{{ s.onName }}" placeholder="e.g. Line 5 deep clean"></div>
+                  <div><div class="c426">CLEANING AREA</div>
+                    <select class="sel pfm-sel" value="{{ s.locSel.value }}" onChange="{{ s.locSel.onChange }}">
+                      <sc-for list="{{ s.locSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                    </select></div>
+                  <div><div class="c426">START</div><input class="c427" type="time" value="{{ s.start }}" onInput="{{ s.onStart }}"></div>
+                  <div><div class="c426">END</div><input class="c427" type="time" value="{{ s.end }}" onInput="{{ s.onEnd }}"></div>
+                </div>
+                <div class="cls-state">
+                  <sc-for list="{{ s.enabled }}" as="d" hint-placeholder-count="2">
+                    <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                  </sc-for>
+                  <button class="c185 chip att-shift-rm" onClick="{{ s.onRemove }}" title="Remove this schedule">✕</button>
+                </div>
               </div>
-              <div class="c426">REPEATS ON</div>
-              <div class="poc-chips">
-                <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
-                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
-                </sc-for>
+              <div class="cls-sec">
+                <div class="c426">REPEATS ON</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
+                    <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                  </sc-for>
+                </div>
+                <div class="cls-dates"><div class="c426">OR ON SPECIFIC DATES</div>
+                  <input class="c427" value="{{ s.dates }}" onInput="{{ s.onDates }}" placeholder="e.g. 2026-10-20, 2026-10-27 (overrides the weekdays)"></div>
               </div>
-              <div><div class="c426">OR ON SPECIFIC DATES (YYYY-MM-DD, comma-separated — overrides the weekdays)</div>
-                <input class="c427" value="{{ s.dates }}" onInput="{{ s.onDates }}" placeholder="e.g. 2026-10-20, 2026-10-27"></div>
-              <div class="c426">PPE REQUIRED DURING CLEANING</div>
-              <div class="poc-chips">
-                <sc-for list="{{ s.items }}" as="d" hint-placeholder-count="4">
-                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
-                </sc-for>
-                <sc-for list="{{ s.enabled }}" as="d" hint-placeholder-count="2">
-                  <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
-                </sc-for>
-                <button class="c185 chip att-shift-rm" onClick="{{ s.onRemove }}">✕ Remove</button>
+              <div class="cls-sec">
+                <div class="c426">PPE REQUIRED DURING CLEANING</div>
+                <div class="poc-chips">
+                  <sc-for list="{{ s.items }}" as="d" hint-placeholder-count="4">
+                    <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
+                  </sc-for>
+                </div>
               </div>
-              <div class="c428" style="color:var(--high)">{{ s.warn }}</div>
+              <sc-if value="{{ s.hasWarn }}" hint-placeholder-val="{{ false }}">
+                <div class="cls-warn">{{ s.warn }}</div>
+              </sc-if>
             </div>
           </sc-for>
+          </div>
           <div class="poc-chips">
             <button class="c185 chip" onClick="{{ clAdd }}">＋ Add schedule</button>
             <button class="c429" onClick="{{ clSave }}">Save schedules</button>
