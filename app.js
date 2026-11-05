@@ -3050,9 +3050,20 @@ class Component extends DCLogic {
     let det=null;
     if(isDet){
       const key=st.page;
-      const cams=this.camPool.filter(c=>c.mod===key).map(c=>({id:c.id, name:c.name, zone:c.zone, scene:c.scene,
-        canExpand:!!c.img, onExpand:()=>this.openLightbox(c.img, c.name+' · '+c.id)}));
       const modEvents=st.events.filter(e=>e.mod===key);
+      // Cameras running this model = cameras that produced its detections
+      // (else the live cameras), with a live snapshot or the latest frame.
+      const _pool=this.livePool(), _byKey={};
+      _pool.forEach(c=>{ [c.stream,c.id,c.serial].forEach(k=>{ if(k) _byKey[String(k).toUpperCase()]=c; }); });
+      const _camKeys=[...new Set(modEvents.map(e=>String(e.camera||'').toUpperCase()).filter(Boolean))];
+      const _live=[...new Set([...(st.liveRelay||[]), ...(st.liveStill||[]), ...Object.keys(st.liveDirect||{})])].map(k=>String(k).toUpperCase());
+      const _src=_camKeys.length?_camKeys:_live;
+      const cams=_src.map(k=>{ const c=_byKey[k]||{}; const ev=modEvents.find(e=>String(e.camera||'').toUpperCase()===k);
+        const img=c.img||(ev&&ev.image)||null; const _f=(st.fleet||[]).find(f=>String(f.stream||'').toUpperCase()===k);
+        const name=(_f&&_f.name)||(ev&&ev.device)||c.name||k;
+        return {id:k, name, zone:c.zone||'', scene:img?`url('${img}') center/cover no-repeat`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
+          canExpand:!!img, onExpand:()=>{ if(img) this.openLightbox(img, name+' · '+k); },
+          onOpen:()=>this.openCamera(String(c.stream||k).toLowerCase())}; });
       const thumbOf=(img)=> img?`url('${img}') center/cover no-repeat`:'linear-gradient(160deg,var(--bg4),var(--bg2))';
       let recent=modEvents.map(e=>({title:e.title, camera:e.camera, ago:this.ago(e.ts), sevColor:this.SEV[e.sev], sev:e.sev,
         conf:(e.conf!=null?Number(e.conf).toFixed(2):'—'), image:e.image, canExpand:!!e.image,

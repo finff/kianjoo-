@@ -1536,7 +1536,7 @@
               <h3 class="c298">Cameras running this model</h3>
               <div class="c299">
                 <sc-for list="{{ det.cams }}" as="c" hint-placeholder-count="4">
-                  <div class="c300" style="background:{{ c.scene }}">
+                  <div class="c300" style="background:{{ c.scene }}; cursor:pointer" onClick="{{ c.onOpen }}" title="Open camera">
                     <div class="c301"></div>
                     <div class="c302">{{ c.id }}</div>
                     <div class="c303">{{ c.name }}</div>
