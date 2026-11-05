@@ -311,6 +311,9 @@ $config['attendance'] = [
     'kiosk_clock'  => ($app['att_kiosk_clock'] ?? true) !== false,
     'dedupe_s'     => 60,
     'ss_group_prefix' => 'Kian Joo',
+    // Every employee pushed from the dashboard goes into this SenseStudio
+    // person group (88 = "Kianjoo"). Empty = old per-plant groups.
+    'ss_group_id'     => (string) Env::get('SENSE_PERSON_GROUP_ID', '88'),
 ];
 
 // PPE area rules (Settings → PPE Area Rules): camera point → required PPE.

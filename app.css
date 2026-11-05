@@ -1850,3 +1850,6 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 
 /* Employees table without the plant column */
 .att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1.1fr 1.3fr .7fr auto}
+
+/* Employees table: SenseStudio push status column */
+.att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1.1fr 1.3fr .7fr .9fr auto}

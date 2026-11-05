@@ -1046,7 +1046,10 @@ class Component extends DCLogic {
         this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}, modal:null, pf:null}));
         this.loadPeople(); this.fetchFeed();
         if(this.state.page==='attendance'||this.state.page==='employees') this.loadRegister();
- })
+        // Push the employee to SenseStudio person group 88 when there is a staff
+        // ID and a photo (or when deactivating an already-pushed person).
+        const prof=(d.profiles||{})[d.person_id]||{};
+        if(this.PERMS.settings && (prof.ssUid || (prof.staffId && prof.photo))) this.syncEmployee(d.person_id); })
       .catch(e=>this.setState(st=>({pf:{...st.pf, saving:false, msg:(e&&e.message&&e.message!=='bad')?e.message:'Save failed'}})));
   }
 

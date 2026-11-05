@@ -410,7 +410,13 @@ final class Attendance
         }
         $up = $api->uploadPersonImage($raw, 'emp-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $emp['staffId']) . '.jpg');
         if (!$up['ok'] || !is_string($up['data'] ?? null)) {
-            return $fail('Photo rejected by SenseStudio: ' . ($up['msg'] ?? $up['error'] ?? 'upload failed'));
+            $why = (string) ($up['msg'] ?? $up['error'] ?? 'upload failed');
+            if (preg_match('/未发现人脸|no face/i', $why)) {
+                $why = 'no face found — use a clear, front-facing photo';
+            } elseif (preg_match('/图片质量|quality/i', $why)) {
+                $why = 'photo quality too low — use a sharper, closer face photo';
+            }
+            return $fail('Photo rejected by SenseStudio: ' . $why);
         }
         $img  = (string) $up['data'];
         $desc = trim(($emp['department'] ?? '') . ' · ' . ($emp['plant'] ?? ''), ' ·');
@@ -433,7 +439,15 @@ final class Attendance
         $group = null;
         $warn  = null;
         $plant = trim((string) ($emp['plant'] ?? ''));
-        if ($plant !== '') {
+        $fixed = trim((string) ($this->cfg['ss_group_id'] ?? ''));
+        if ($fixed !== '') {
+            // One configured SenseStudio group for every dashboard employee.
+            $group = $fixed;
+            $r = $api->addGroupMembers($group, [$uid]);
+            if (!$r['ok'] && !preg_match('/exist|already/i', (string) ($r['msg'] ?? ''))) {
+                $warn = 'Person saved, but adding to SenseStudio group ' . $group . ' failed: ' . ($r['msg'] ?? $r['error'] ?? 'error');
+            }
+        } elseif ($plant !== '') {
             $group = $this->groupId($api, ($this->cfg['ss_group_prefix'] ?? 'Kian Joo') . ' ' . $plant, $appRoot);
             if ($group === null) {
                 $warn = 'Person saved, but the plant group could not be created.';

@@ -2294,7 +2294,7 @@
         <div class="c100 att-cap">{{ empCount }}</div>
         <div class="att-panel">
           <div class="att-thead emp-cols">
-            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>SHIFT</span><span>STATUS</span><span></span>
+            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>SHIFT</span><span>STATUS</span><span>SENSESTUDIO</span><span></span>
           </div>
           <sc-for list="{{ empRows }}" as="r" hint-placeholder-count="6">
             <div class="att-row emp-cols">
@@ -2305,6 +2305,7 @@
               <div class="att-loc">{{ r.dept }}</div>
               <div class="att-loc">{{ r.shift }}</div>
               <div class="att-status" style="color:{{ r.activeCol }}">{{ r.active }}</div>
+              <div class="att-status" style="color:{{ r.syncCol }}" title="{{ r.syncTip }}">{{ r.sync }}</div>
               <div class="att-unk-btns">
                 <button class="c185 chip on" onClick="{{ r.onEdit }}">Edit</button>
                 <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">

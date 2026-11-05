@@ -1081,15 +1081,14 @@ try {
     // ── Employee sync to the SenseStudio person library ─────
     // POST /employees/sync {person_id} | {all:true}  (settings permission)
     if ($route === '/employees/sync') {
-        // SenseStudio is pull-only: employees are never pushed to its person library.
-        Response::error('SenseStudio is read-only from this dashboard: make this change in SenseStudio.', 403);
         require_once APP_ROOT . '/lib/Auth.php';
         require_once APP_ROOT . '/lib/Attendance.php';
         require_once APP_ROOT . '/lib/Kiosk.php';
-        if (Auth::user() === null) {
+        $viaProvision = $provisionAdmin() !== null;
+        if (!$viaProvision && Auth::user() === null) {
             Response::error('Sign in to sync employees.', 401);
         }
-        if (!Auth::can('settings')) {
+        if (!$viaProvision && !Auth::can('settings')) {
             Response::error('Forbidden: syncing employees needs the settings permission.', 403);
         }
         if ($method !== 'POST') {
