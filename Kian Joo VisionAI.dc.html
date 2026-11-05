@@ -3678,10 +3678,13 @@
           <sc-if value="{{ spTabFk }}" hint-placeholder-val="{{ false }}">
           <div class="c425">
             <div class="c332"><span class="c360"></span><h3 class="c129">Forklift Zones</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Draw the forklift zone on the camera in <b>SenseStudio</b> (a vehicle / non-motor-vehicle structuring or zone policy — or name the policy "forklift"), then mark the camera as a forklift zone here and choose its rule. <b>Prohibited</b> — forklifts must not enter: every forklift detection inside the hours set (blank = 24 h) is a <b>zone violation</b> (High alert). <b>Restricted hours</b> — forklifts may operate outside the hours set; detections inside them are violations, detections outside are only <b>logged</b>. Reviewers can confirm a logged event as a violation or clear any event as a false alarm on the Forklift Monitoring page.</div>
-            <div class="c431">{{ fkModelNote }}</div>
-            <div class="c431"><b>Forklift only — pedestrians not allowed</b> (e.g. waste area during collection): forklift detections are permitted and logged; any person detection inside the hours is a <b>Pedestrian in forklift-only zone</b> alert (High). <b>Operator PPE</b>: people detected on the same camera within the window below of a forklift detection are treated as its operator / crew and checked against the zone's operator PPE — a missing item raises a <b>Forklift operator PPE violation</b> (High). {{ fkSafetyNote }}</div>
-            <div class="c426">OPERATOR / CREW WINDOW — seconds either side of a forklift detection</div>
+            <div class="c431">Turn a camera into a forklift zone, choose its rule, then save.</div>
+            <div class="fkz-rules">
+              <div><b>Prohibited</b><span>No forklifts allowed</span></div>
+              <div><b>Restricted hours</b><span>Forklifts only outside the set hours</span></div>
+              <div><b>Forklift only</b><span>No pedestrians allowed</span></div>
+            </div>
+            <div class="c426">OPERATOR WINDOW (seconds)</div>
             <div class="poc-chips">
               <sc-for list="{{ fkOpWinChips }}" as="l" hint-placeholder-count="4">
                 <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
@@ -3689,8 +3692,7 @@
             </div>
             <sc-for list="{{ fkZoneRows }}" as="z" hint-placeholder-count="4">
               <div class="poc-cam">
-                <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="c100">{{ z.loc }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
-                <div class="c428" style="color:{{ z.polsCol }}">{{ z.pols }}</div>
+                <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
                 <div class="poc-chips">
                   <sc-for list="{{ z.enableChips }}" as="l" hint-placeholder-count="2">
                     <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
@@ -3699,7 +3701,7 @@
                     <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
                   </sc-for>
                 </div>
-                <div class="c426">OPERATOR PPE — required of people seen with a forklift on this camera</div>
+                <div class="c426">OPERATOR PPE</div>
                 <div class="poc-chips">
                   <sc-for list="{{ z.opChips }}" as="l" hint-placeholder-count="7">
                     <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
@@ -3707,7 +3709,7 @@
                 </div>
                 <div class="fk-zone-grid">
                   <div><div class="c426">ZONE NAME</div><input class="c427" value="{{ z.name }}" onInput="{{ z.onName }}" placeholder="e.g. Warehouse aisle 3"></div>
-                  <div><div class="c426">HOURS (HH:MM-HH:MM, blank = 24 h)</div><input class="c427" value="{{ z.hours }}" onInput="{{ z.onHours }}" placeholder="e.g. 07:00-19:00"></div>
+                  <div><div class="c426">HOURS (blank = all day)</div><input class="c427" value="{{ z.hours }}" onInput="{{ z.onHours }}" placeholder="e.g. 07:00-19:00"></div>
                   <div><div class="c426">NOTE</div><input class="c427" value="{{ z.note }}" onInput="{{ z.onNote }}" placeholder="e.g. Pedestrian walkway — no forklifts"></div>
                 </div>
                 <div class="poc-chips">

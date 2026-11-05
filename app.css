@@ -1826,3 +1826,10 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 .att-kpis{gap:14px}
 .att-kpi{padding:16px 18px}
 .c207{gap:18px}
+
+/* Forklift Zones: compact rule legend */
+.fkz-rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fkz-rules>div{background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.fkz-rules b{font-size:12px;color:var(--text)}
+.fkz-rules span{font-size:11px;color:var(--text3)}
+@media (max-width:760px){.fkz-rules{grid-template-columns:1fr}}
