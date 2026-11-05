@@ -616,10 +616,10 @@ class Component extends DCLogic {
       tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name, zone:'Direct HLS stream',
         mod:'intr', res:'HLS', fps:25, online:true, direct:true,
         scene:'linear-gradient(160deg,#0e1119,#151824 55%,#0a0d14)', img:null, boxes:[]}); });
-    (this.state.liveStill||[]).forEach(name=>{
+    [...new Set([...(this.state.liveRelay||[]), ...(this.state.liveStill||[])])].forEach(name=>{
       if(have[name.toLowerCase()]) return;
       have[name.toLowerCase()]=1;
-      tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name:name.toUpperCase(), zone:'Camera snapshot · ~1 fps',
+      tiles.push({id:name.toUpperCase(), stream:name, serial:'', rtsp:'', name:name.toUpperCase(), zone:'Live stream',
         mod:'intr', res:'JPEG', fps:1, online:true, still:true,
         scene:'linear-gradient(160deg,#0e1119,#151824 55%,#0a0d14)', img:null, boxes:[]}); });
     // Replace (never mutate) so camPool's own objects keep their detection frame.
@@ -2910,7 +2910,7 @@ class Component extends DCLogic {
       ? _fleet.map(f=>{ const cp=this.camPool.find(c=>c.stream===f.stream)||null;
           return {id:(f.stream||f.serial||'CAM').toUpperCase(), stream:f.stream||'', name:f.name, zone:f.zone||f.type||'', serial:f.serial||'',
             res:'1440p', fps:25, scene: cp?cp.scene:_scene(f.image), mod: cp?cp.mod:'intr', online:!!f.online, image:f.image}; })
-      : this.camPool.map(c=>({id:c.id, stream:c.stream||'', name:c.name, zone:c.zone, serial:c.serial||'',
+      : this.withDirectTiles(this.camPool.slice()).map(c=>({id:c.id, stream:c.stream||'', name:c.name, zone:c.zone, serial:c.serial||'',
             res:c.res, fps:c.fps, scene:c.scene, mod:c.mod, online:true, image:c.img}));
     const camAll=camSource.map((c,i)=>{
       const m=this.MODS[c.mod]||this.MODS.intr;
