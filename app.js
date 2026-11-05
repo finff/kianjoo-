@@ -773,7 +773,8 @@ class Component extends DCLogic {
   setFilter(f){ this.setState({filter:f}); }
   setGrid(n){ this.setState({gridCols:n}); }
   // Switch page + run its side effects (no history push — used by nav & Back/Forward).
-  applyPage(p){ this.setState({page:p}); this.openNavSecFor(p);
+  applyPage(p){ if(p==='aiperf') p='overview';   // AI Performance is hidden
+    this.setState({page:p}); this.openNavSecFor(p);
     if(p==='camdash') this.loadApp();                // camera-point / plant mappings for the camera dashboard
     if(this.state.demo && (p==='fire'||p==='ppe'||p==='intr')){ this.setState({report:this.demoReport(p)}); }
     else if(p==='fire'||p==='ppe'||p==='intr'){ this._reportJson=null; this.fetchFeed(); }  // pull that module's report now
@@ -811,7 +812,7 @@ class Component extends DCLogic {
       .then(d=>{ if(seq!==this._mvSeq) return; this.setState({mv:(d&&d.ok)?d:null, mvBusy:false, mvErr:(d&&d.ok)?'':((d&&d.error)||'Could not load movements')}); })
       .catch(()=>{ if(seq===this._mvSeq) this.setState({mvBusy:false, mvErr:'Could not load movements'}); });
   }
-  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','aiperf','poc','movement'];
+  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','poc','movement'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).

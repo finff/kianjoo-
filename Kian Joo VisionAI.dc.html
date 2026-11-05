@@ -138,11 +138,7 @@
         </sc-for>
       </div>
       </sc-if>
-      <!-- Workstream D: AI Performance + POC Scorecard -->
-      <button class="c10 navbtn {{ nav.aiperf.cls }}" onClick="{{ nav.aiperf.go }}" title="AI Performance">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-        <span class="nav-lbl">AI Performance</span>
-      </button>
+      <!-- Workstream D: POC Scorecard (AI Performance hidden) -->
       <button class="c10 navbtn {{ nav.poc.cls }}" onClick="{{ nav.poc.go }}" title="POC Scorecard">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
         <span class="nav-lbl">POC Scorecard</span>
@@ -3834,7 +3830,6 @@
             </div>
             <div class="poc-chips">
               <button class="c429" onClick="{{ thSave }}">Save thresholds</button>
-              <button class="c185 chip" onClick="{{ goAiperf }}">AI Performance →</button>
             </div>
           </div>
           </sc-if>
