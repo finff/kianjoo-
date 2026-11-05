@@ -1794,3 +1794,35 @@ body{font-variant-numeric:tabular-nums}
 .ovs-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:2px}
 .ovs-key{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text2);font-weight:600}
 .ovs-key i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+/* ── Tidy pass: consistent spacing across pages and Settings forms ── */
+/* Settings cards: each labelled section gets its own band */
+.c425{gap:14px;padding:20px 22px}
+.c425 > div:has(> .c426:first-child):has(> .poc-cam, > .poc-chips){border-top:1px solid var(--line);padding-top:16px;margin-top:2px}
+.c425 > .c129 + div:has(> .c426:first-child){border-top:none;padding-top:0;margin-top:0}
+.c426{font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
+.c425 > div > .c426:first-child{color:var(--text2);font-size:11px;font-weight:700}
+/* help text: readable, never glued to the control above */
+.c428{margin-top:6px;line-height:1.5;font-size:11px}
+.c426 + .c428{margin:-2px 0 12px}
+.poc-chips + .c428{margin-top:8px}
+.c431{margin-bottom:2px}
+/* button rows */
+.poc-chips{gap:8px;align-items:center}
+.c425 .poc-chips + .poc-chips{margin-top:4px}
+/* repeated camera / point rows: compact two-column grid */
+div:has(> .poc-cam){display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;align-items:start}
+div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
+.poc-cam{margin-bottom:0;background:var(--bg3);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+.poc-cam-head{margin-bottom:10px;min-width:0}
+.poc-cam-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* form grids */
+.c370{gap:12px 16px}
+@media (max-width:760px){.c370{grid-template-columns:1fr}}
+/* module pages: panels, toolbars, KPI rows */
+.att-panel{padding:18px 20px}
+.att-panel > .c129:first-child{margin-bottom:12px}
+.att-bar{gap:10px;margin-bottom:14px}
+.att-kpis{gap:14px}
+.att-kpi{padding:16px 18px}
+.c207{gap:18px}
