@@ -481,7 +481,7 @@ try {
     $avgAck  = $store->avgAckSeconds();
     $ppe     = $store->ppeStats(120);
     $face    = $store->faceReport();
-    $fleet   = senseCameras($config, $incidents);
+    $fleet   = LiveBridge::allowedFleet($config, senseCameras($config, $incidents));   // only cameras with a live source
     $metrics = $store->responseMetrics();
     // Sidebar plant list: cameras online / total per configured plant.
     try {

@@ -257,6 +257,7 @@ final class LiveBridge
     public static function desired(array $config, array $fleet): array
     {
         $out = [];
+        $fleet = self::allowedFleet($config, $fleet);
         foreach ($fleet as $r) {
             if (!is_array($r)) {
                 continue;
@@ -333,6 +334,35 @@ final class LiveBridge
             'user' => rawurldecode((string) ($p['user'] ?? '')),
             'pass' => rawurldecode((string) ($p['pass'] ?? '')),
         ];
+    }
+
+    /**
+     * When manual live sources exist (Settings → Live Video), they are the
+     * dashboard's camera allowlist: SenseStudio devices without one are
+     * ignored everywhere (fleet, tiles, relay, status). No manual sources =
+     * every SenseStudio device, as before.
+     */
+    public static function allowedFleet(array $config, array $fleet): array
+    {
+        $allow = [];
+        foreach (array_keys($config['live']['rtsp'] ?? []) as $k) {
+            $allow[strtolower((string) $k)] = true;
+        }
+        if (!$allow) {
+            return $fleet;
+        }
+        return array_values(array_filter($fleet, static function ($r) use ($allow): bool {
+            if (!is_array($r)) {
+                return false;
+            }
+            $keys = [strtolower((string) ($r['stream'] ?? '')), self::label((string) ($r['serial'] ?? ''))];
+            foreach ($keys as $k) {
+                if ($k !== '' && isset($allow[$k])) {
+                    return true;
+                }
+            }
+            return false;
+        }));
     }
 
     /** Stream labels the server can relay as live video itself (plain rtsp:// sources). */
