@@ -834,7 +834,22 @@ class Component extends DCLogic {
   setIncSev(s){ this.setState({incSev:s, incPage:0}); }
   selectInc(id){ this.setState({incSel:id}); }
   setCamFilter(f){ this.setState({camFilter:f}); }
-  setRange(r){ this.setState({aRange:r}); }
+  setRange(r){
+    this.setState({aRange:r});
+    const days={'7d':7,'30d':30}[r];
+    if(!days){ this.setState({aRangeD:null, aRangeBusy:false}); return; }
+    this.setState({aRangeBusy:true});
+    const seq=(this._arSeq=(this._arSeq||0)+1);
+    const one=(mod)=>fetch(`${this.API}/behaviour/heatmap?days=${days}&module=${mod}&token=${this.TOK}`, {cache:'no-store'})
+      .then(x=>x.json()).then(d=>{ const hours=Array(24).fill(0);
+        ((d&&d.cam)||[]).forEach(c=>(c.cells||[]).forEach((n,h)=>{ if(h<24) hours[h]+=Number(n)||0; }));
+        return {mod, total:Number(d&&d.total)||0, hours}; });
+    Promise.all(['fire','ppe','intr','face'].map(one))
+      .then(rs=>{ if(seq!==this._arSeq) return; const byMod={}, hourly=Array.from({length:24},()=>({fire:0,ppe:0,intr:0,face:0}));
+        rs.forEach(r=>{ byMod[r.mod]=r.total; r.hours.forEach((n,h)=>{ hourly[h][r.mod]=n; }); });
+        this.setState({aRangeD:{days, byMod, hourly}, aRangeBusy:false}); })
+      .catch(()=>{ if(seq===this._arSeq) this.setState({aRangeD:null, aRangeBusy:false}); });
+  }
   togglePaused(){ this.setState(s=>({paused:!s.paused})); }
   select(id){ this.setState({selectedId:id}); }
   // Triage actions persist locally (this._over) so they survive the 5s refetch.
@@ -2631,7 +2646,8 @@ class Component extends DCLogic {
     });
 
     // Chart bars — 24 stacked, from the live hourly trend (fire/ppe/intr/face)
-    const trend = (st.trend && st.trend.length===24) ? st.trend
+    const _ar = (st.aRange!=='24h' && st.aRangeD) ? st.aRangeD : null;   // Analytics 7 / 30 day range
+    const trend = _ar ? _ar.hourly : (st.trend && st.trend.length===24) ? st.trend
                 : Array.from({length:24},()=>({fire:0,ppe:0,intr:0,face:0}));
     const totals = trend.map(b=>(b.fire||0)+(b.ppe||0)+(b.intr||0)+(b.face||0));
     const maxT = Math.max(1, ...totals);
@@ -2989,9 +3005,10 @@ class Component extends DCLogic {
     const rangeTabs=[['24h','24 hours'],['7d','7 days'],['30d','30 days']].map(([k,label])=>{
       const a=st.aRange===k; return {label, onClick:()=>this.setRange(k), cls:a?'chip on':'chip'};
     });
-    const bt=st.byType||{}; const totalDet=(bt.fire||0)+(bt.ppe||0)+(bt.intr||0)+(bt.face||0);
+    const bt=(_ar?_ar.byMod:st.byType)||{}; const totalDet=(bt.fire||0)+(bt.ppe||0)+(bt.intr||0)+(bt.face||0);
+    const _arLbl=st.aRangeBusy?'loading…':(_ar?('last '+_ar.days+' days'):'live · 24h window');
     const aKpis=[
-      {label:'Total detections', value:totalDet.toLocaleString(), delta:'live · 24h window', tone:'var(--ok)'},
+      {label:'Total detections', value:totalDet.toLocaleString(), delta:_arLbl, tone:'var(--ok)'},
       {label:'Incidents raised', value:String(openCount), delta:openCount+' open now', tone:'var(--crit)'},
       {label:'Avg time to ack', value:'1:48', delta:'rolling avg', tone:'var(--ok)'},
       {label:'PPE compliance', value:(st.live.ppePct!=null?st.live.ppePct:100)+'%', delta:(st.live.ppeOpen||0)+' violations', tone:'var(--ok)'},
@@ -4453,7 +4470,8 @@ class Component extends DCLogic {
       ['AWAITING REVIEW', N(bhk.unreviewed), N(bhk.unreviewed)?'var(--high)':'var(--ok)', N(bhk.confirmed)+' confirmed · '+N(bhk.falseAlarm)+' false alarms'],
       ['TODAY', N(bhk.today), N(bhk.today)?'var(--high)':'var(--ok)', 'exceptions since midnight'],
     ].map(([label,value,tone,sub])=>({label, value:String(value), tone, sub}));
-    const behSpan=(bhd.from&&bhd.to)?Math.round((new Date(bhd.to)-new Date(bhd.from))/86400000)+1:7;
+    const _bf=st.behF||{}, _bFrom=_bf.from||bhd.from, _bTo=_bf.to||bhd.to;
+    const behSpan=(_bFrom&&_bTo)?Math.round((new Date(_bTo)-new Date(_bFrom))/86400000)+1:7;
     const behRangeTabs=[[7,'7 days'],[30,'30 days']].map(([n,label])=>({label, cls:behSpan===n?'chip on':'chip', onClick:()=>this.setBehRange(n)}));
     const behStack=(m, max)=>{ const h=(v)=>Math.round(100*N(v)/Math.max(1,max))+'%';
       return {nH:h(m.normal), lH:h(m.loiter), cH:h(m.cleaning), aH:h(m.abnormal)}; };
