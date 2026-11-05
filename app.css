@@ -1717,3 +1717,35 @@ body{font-variant-numeric:tabular-nums}
   .c215{grid-template-columns:1fr auto;row-gap:8px}
   .c215 .c219,.c215 .c222,.c215 .c165{display:none}
 }
+
+/* ── Tidy-up: layout guards, KPI labels, plant cards, card headers ── */
+/* A bare 1fr track never shrinks below its widest child, which pushed the
+   right-hand cards and the user menu off screen. */
+.c1{grid-template-columns:248px minmax(0,1fr)}
+.c1[data-side="collapsed"]{grid-template-columns:68px minmax(0,1fr)}
+.c207{padding-bottom:96px}                         /* clear the floating assistant */
+
+/* KPI cards: full labels on up to two lines instead of "Pres…" */
+.ov-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (min-width:1760px){.ov-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media (max-width:900px){.ov-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.ov-kpis{grid-template-columns:1fr}}
+.ov-kpi{padding:16px;gap:12px}
+.ov-kpi-ico{width:44px;height:44px}
+.ov-kpi-label{white-space:normal;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ov-kpi-delta{white-space:normal;line-height:1.3}
+.ov-kpi-ring{width:40px;height:40px}
+.ov-kpi-ring::after{width:28px;height:28px}
+
+/* Card headers: title truncates, link and badges keep their size */
+.ov-head .ov-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-head .ov-link,.ov-head .ov-live,.ov-head .ov-sel{flex-shrink:0}
+
+/* Multi-plant summary: cards size to the space, sub-line stays on one line */
+.ov-plants{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.ov-plant{padding:14px 16px}
+.ov-plant-head{align-items:flex-start}
+.ov-plant-head>div:first-child{min-width:0}
+.ov-plant-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.ov-plant-img{width:44px;height:32px;border-radius:7px}
+.ov-plant-rows{gap:7px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}

@@ -4131,7 +4131,10 @@ class Component extends DCLogic {
     const PEND_COL='#C9D1E0';
     const week=Array.isArray(ov.week)?ov.week:[];
     const wkMax=Math.max(1, ...week.map(w=>N(w.present)+N(w.late)+N(w.absent)+N(w.pending)));
-    const yMax=(()=>{ const p=Math.pow(10, Math.floor(Math.log10(wkMax))); for(const m of [1,2,2.5,5,10]) if(m*p>=wkMax) return m*p; return 10*p; })();
+    // Four equal integer steps: 0 · s · 2s · 3s · 4s (s ≥ 1), so ticks never repeat.
+    const ySteps=(()=>{ const raw=wkMax/4; if(raw<=1) return 1; const p=Math.pow(10, Math.floor(Math.log10(raw)));
+      for(const m of [1,2,2.5,5,10]) if(m*p>=raw) return Math.ceil(m*p); return Math.ceil(10*p); })();
+    const yMax=ySteps*4;
     const ovYAxis=[1,0.75,0.5,0.25,0].map(f=>({label:fmtN(Math.round(yMax*f))}));
     const hPct=(v)=>(Math.round(1000*N(v)/yMax)/10)+'%';
     const ovWeek=week.map(w=>({label:w.label||'', day:w.day||String(w.date||'').slice(5),
@@ -4908,7 +4911,7 @@ class Component extends DCLogic {
       rangeTabs, aKpis, byType, byCam, donut, donutLegend, compTrend,
       // notifications (bell)
       notifOpen:st.notifOpen, toggleNotif:()=>this.toggleNotif(), markAllRead:()=>this.markAllRead(),
-      notifItems, notifBadge:String(notifCount), notifBadgeBg:notifCount>0?'var(--crit)':'var(--brand)',
+      notifItems, notifBadge:notifCount>99?'99+':String(notifCount), notifBadgeBg:notifCount>0?'var(--crit)':'var(--brand)',
       mailLine, mailDot,
       // face & body report + find-people
       fbTotal:String(fbTotal), findGroups, findResults, findStatus,
