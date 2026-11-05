@@ -3857,11 +3857,22 @@ class Component extends DCLogic {
     const locPlantsCur=(ap&&ap.att_loc_plants)||{};
     const locNames=[...new Set([...spLocOpts, ...Object.values(spCamLocCur)])];
     const guessPlant=(L)=>{ const m=/\bplant\s*([a-z0-9]+)/i.exec(L); return m?('Plant '+m[1].toUpperCase()):''; };
-    const attLocRows=locNames.map(L=>{ const cur=locPlantsCur[L]||'';
-      return {name:L, cur:cur||(guessPlant(L)?('auto: '+guessPlant(L)):'No plant'), curCol:cur?'var(--ok)':'var(--text3)',
+    // Camera point → plant: only cameras that actually stream (Settings → Live
+    // Video sources). An unmapped streaming camera is its own camera point,
+    // named after the camera; picking a plant maps it.
+    const _lpStreamKeys=[...new Set([...(st.liveRelay||[]), ...(st.liveStill||[]), ...Object.keys(st.liveDirect||{}),
+      ...(st.liveBase?(st.fleet||[]).filter(f=>f.rtsp).map(f=>f.stream):[])].map(k=>String(k||'').toLowerCase()).filter(Boolean))];
+    const _lpCamName=(k)=>{ const f=(st.fleet||[]).find(x=>String(x.stream||'').toLowerCase()===k);
+      const e=(st.events||[]).find(x=>String(x.camera||'').toLowerCase()===k);
+      return (f&&f.name)||(e&&e.device)||k.toUpperCase(); };
+    const attLocRows=_lpStreamKeys.map(k=>{ const mapped=spCamLocCur[k]||''; const L=mapped||_lpCamName(k);
+      const cur=locPlantsCur[L]||'';
+      return {name:L+(mapped?(' · '+_lpCamName(k)):''), cur:cur||(guessPlant(L)?('auto: '+guessPlant(L)):'No plant'), curCol:cur?'var(--ok)':'var(--text3)',
         chips:attPlantsCur.map(P=>({label:P, cls:cur===P?'chip on':'chip',
           onClick:()=>{ const next={...locPlantsCur}; if(cur===P) delete next[L]; else next[L]=P;
-            this.saveApp({att_loc_plants:next}, 'Location plant saved ✓'); }}))}; });
+            const patch={att_loc_plants:next};
+            if(!mapped){ const cl={...spCamLocCur, [k]:L}; patch.cam_locations=cl; this.setDraft('cam_locations', cl); }
+            this.saveApp(patch, 'Camera plant saved ✓'); }}))}; });
     const attKioskChips=chipRow([[1,'Kiosk check-ins count as clock-in / out'],[0,'Kiosk = movement only']],
       (ap&&ap.att_kiosk_clock===false)?0:1, v=>this.saveApp({att_kiosk_clock:!!v}, 'Kiosk rule saved ✓'));
 
