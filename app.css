@@ -1749,3 +1749,14 @@ body{font-variant-numeric:tabular-nums}
 .ov-plant-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .ov-plant-img{width:44px;height:32px;border-radius:7px}
 .ov-plant-rows{gap:7px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+
+/* ── Fit the frame: the content column must never be wider than the window ──
+   .c24's implicit grid column was `auto`, so it grew to the top bar's natural
+   width (non-shrinking title + long subtitle) and the page was clipped. */
+.c24{grid-template-columns:minmax(0,1fr)}
+.c25,.c73{min-width:0}
+.c25 .c26{flex-shrink:1;min-width:0;overflow:hidden}
+.c25 .tb-title,.c25 .tb-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c25 .tb-ctl,.c25 .tb-user{flex-shrink:0}
+@media (max-width:1500px){.c25 .tb-sub{display:none}}
+.c207>*{min-width:0;max-width:100%}
