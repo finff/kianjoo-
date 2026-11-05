@@ -150,6 +150,18 @@ final class Overview
             'newThisMonth' => $newMonth,
         ];
 
+        // Summary counts for the Overview analytics card.
+        $unknownIds = [];
+        $sightings  = 0;
+        foreach (($allReg['recent'] ?? []) as $s) {
+            $sightings++;
+            if (empty($s['known'])) {
+                $unknownIds[(string) ($s['personId'] ?? '')] = true;
+            }
+        }
+        $employees['unknownToday']   = count(array_filter(array_keys($unknownIds), static fn ($k) => $k !== ''));
+        $employees['sightingsToday'] = $sightings;
+
         // Recognitions today: newest known faces, filtered by employee plant.
         $statusOf = [];
         foreach (($allReg['rows'] ?? []) as $r) {
@@ -215,9 +227,24 @@ final class Overview
                     break;
                 }
             }
+            $todayBy = ['violation' => 0, 'review' => 0, 'authorized' => 0, 'outside_hours' => 0];
+            foreach ($r['daily'] as $d) {
+                if ($d['date'] === $today) {
+                    $todayBy = array_intersect_key($d, $todayBy) + $todayBy;
+                }
+            }
+            $zones = [];
+            foreach ($r['byZone'] as $z) {
+                $n = (int) ($z['violation'] ?? 0) + (int) ($z['review'] ?? 0);
+                if ($n > 0) {
+                    $zones[] = ['zone' => (string) $z['zone'], 'n' => $n];
+                }
+            }
+            usort($zones, static fn ($a, $b) => $b['n'] <=> $a['n']);
             return ['today' => (int) ($byDay[$today] ?? 0), 'yesterday' => (int) ($byDay[$yesterday] ?? 0),
-                    'open' => (int) $r['kpi']['open'], 'recent' => $recent];
-        }, ['today' => 0, 'yesterday' => 0, 'open' => 0, 'recent' => []]);
+                    'open' => (int) $r['kpi']['open'], 'recent' => $recent,
+                    'todayBy' => $todayBy, 'zones' => array_slice($zones, 0, 4)];
+        }, ['today' => 0, 'yesterday' => 0, 'open' => 0, 'recent' => [], 'todayBy' => [], 'zones' => []]);
 
         // ── Cleaning ──
         $cleaning = $this->safe('cleaning', function () use ($f7, $today, $plant) {
@@ -268,7 +295,13 @@ final class Overview
                     'violationsToday' => (int) ($byDay[$today]['violations'] ?? 0),
                     'yesterday' => (int) ($byDay[$yesterday]['detections'] ?? 0),
                     'violationsYesterday' => (int) ($byDay[$yesterday]['violations'] ?? 0),
-                    'open' => (int) $r['kpi']['open'], 'recent' => $recent, 'modelNote' => Forklift::MODEL_NOTE];
+                    'open' => (int) $r['kpi']['open'], 'recent' => $recent, 'modelNote' => Forklift::MODEL_NOTE,
+                    'week' => [
+                        'forklifts' => (int) ($r['kpi']['forklifts'] ?? 0), 'pedIntrusions' => (int) ($r['kpi']['pedIntrusions'] ?? 0),
+                        'opViolations' => (int) ($r['kpi']['opViolations'] ?? 0),
+                    ],
+                    'zones' => array_slice(array_map(static fn ($z) => ['zone' => (string) $z['zone'], 'n' => (int) $z['detections'], 'v' => (int) $z['violations']],
+                        (static function (array $zs): array { usort($zs, static fn ($a, $b) => $b['detections'] <=> $a['detections']); return $zs; })($r['byZone'])), 0, 4)];
         }, ['today' => 0, 'violationsToday' => 0, 'yesterday' => 0, 'violationsYesterday' => 0, 'open' => 0,
             'recent' => [], 'modelNote' => '']);
 

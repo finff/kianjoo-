@@ -466,32 +466,38 @@
 
         <!-- Row: recognised faces · PPE · restricted -->
         <div class="ov-grid">
-          <div class="ov-card ov-span-3">
+          <div class="ov-card ov-span-3 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-blue); color:var(--brand)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
               </div>
-              <div class="ov-title">Recent Recognized Employees</div>
+              <div class="ov-title">Face Recognition</div>
               <span class="ov-live">● Live</span>
               <button class="ov-link" onClick="{{ goAttendance }}">View All</button>
             </div>
-            <sc-if value="{{ ovFacesEmpty }}" hint-placeholder-val="{{ false }}">
-              <div class="ov-empty">No employees recognised yet today.</div>
-            </sc-if>
-            <div class="ov-faces">
-              <sc-for list="{{ ovFaces }}" as="f" hint-placeholder-count="5">
-                <div class="ov-face">
-                  <div class="ov-face-img" onClick="{{ f.onOpen }}" style="background:{{ f.bg }}; border-color:{{ f.statusCol }}"></div>
-                  <div class="ov-face-time">{{ f.time }}</div>
-                  <div class="ov-face-name">{{ f.name }}</div>
-                  <div class="ov-face-loc">{{ f.loc }}</div>
-                  <span class="ov-face-status" style="color:{{ f.statusCol }}; background:{{ f.statusBg }}">{{ f.status }}</span>
-                </div>
+            <div class="ovs-hero" onClick="{{ ovSum.att.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.att.bigCol }}">{{ ovSum.att.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.att.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.att.deltaCol }}">{{ ovSum.att.delta }}</div></div>
+            </div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.att.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
               </sc-for>
             </div>
+            <sc-if value="{{ ovSum.att.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.att.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ovSum.att.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.att.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.att.go }}">{{ ovSum.att.more }} →</button>
           </div>
 
-          <div class="ov-card ov-span-3">
+          <div class="ov-card ov-span-3 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-amber); color:var(--gold)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>
@@ -499,55 +505,29 @@
               <div class="ov-title">PPE Compliance</div>
               <button class="ov-link" onClick="{{ goPpe }}">View Details</button>
             </div>
-            <div class="ov-ppe">
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-amber); color:var(--gold)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Helmet</div><div class="ov-ppe-val" style="color:{{ ovPpe.helmetCol }}">{{ ovPpe.helmet }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-orange); color:var(--high)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 6v15h16V6l-4-3"/><path d="M8 3l4 5 4-5"/><path d="M12 8v13"/><path d="M4 13h4"/><path d="M16 13h4"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Safety Vest</div><div class="ov-ppe-val" style="color:{{ ovPpe.vestCol }}">{{ ovPpe.vest }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-blue); color:var(--brand)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4"/><path d="M3 14V9l2-3"/><path d="M21 14V9l-2-3"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Goggles</div><div class="ov-ppe-val" style="color:{{ ovPpe.gogglesCol }}">{{ ovPpe.goggles }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-purple); color:var(--purple)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Gloves</div><div class="ov-ppe-val" style="color:{{ ovPpe.glovesCol }}">{{ ovPpe.gloves }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <!-- Workstream B: safety boots / hair net / ear protection -->
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-amber); color:var(--gold)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h5v9l7 3a2 2 0 0 1 1.5 2V20H4V3z"/><path d="M4 16h16.5"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Safety Boots</div><div class="ov-ppe-val" style="color:{{ ovPpe.bootsCol }}">{{ ovPpe.boots }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-blue); color:var(--brand)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M3 13h18"/><path d="M8 9l2 4"/><path d="M12 6v7"/><path d="M16 9l-2 4"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Hair Net</div><div class="ov-ppe-val" style="color:{{ ovPpe.hairnetCol }}">{{ ovPpe.hairnet }}</div><div class="ov-ppe-sub">violations today</div></div>
-              </div>
-              <div class="ov-ppe-item" onClick="{{ goPpe }}">
-                <div class="ov-ppe-ico" style="background:var(--tint-purple); color:var(--purple)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2"/><rect x="17" y="14" width="5" height="7" rx="2"/></svg>
-                </div>
-                <div><div class="ov-ppe-name">Ear Protection</div><div class="ov-ppe-val" style="color:{{ ovPpe.earCol }}">{{ ovPpe.ear }}</div><div class="ov-ppe-sub">custom model</div></div>
-              </div>
+            <div class="ovs-hero" onClick="{{ ovSum.ppe.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.ppe.bigCol }}">{{ ovSum.ppe.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ppe.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ppe.deltaCol }}">{{ ovSum.ppe.delta }}</div></div>
             </div>
-            <div class="c100">{{ ovPpe.note }}</div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.ppe.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ ovSum.ppe.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.ppe.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ovSum.ppe.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.ppe.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.ppe.go }}">{{ ovSum.ppe.more }} →</button>
           </div>
 
-          <div class="ov-card ov-span-3">
+          <div class="ov-card ov-span-3 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-red); color:var(--crit)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
@@ -555,27 +535,29 @@
               <div class="ov-title">Restricted Area Alerts</div>
               <button class="ov-link" onClick="{{ goIntr }}">View All</button>
             </div>
-            <sc-if value="{{ ovRaEmpty }}" hint-placeholder-val="{{ false }}">
-              <div class="ov-empty">No restricted-area alerts today.</div>
-            </sc-if>
-            <div class="ov-list">
-              <sc-for list="{{ ovRa }}" as="r" hint-placeholder-count="3">
-                <div class="ov-row" onClick="{{ r.onOpen }}">
-                  <div class="ov-thumb" style="background:{{ r.thumb }}"></div>
-                  <div class="ov-row-body">
-                    <div class="ov-row-title">{{ r.title }}</div>
-                    <div class="ov-row-sub">{{ r.sub }}</div>
-                    <div class="ov-row-sub">{{ r.time }}</div>
-                  </div>
-                  <span class="ov-pill" style="color:{{ r.pillCol }}; background:{{ r.pillBg }}">{{ r.pill }}</span>
-                </div>
+            <div class="ovs-hero" onClick="{{ ovSum.ra.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.ra.bigCol }}">{{ ovSum.ra.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ra.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ra.deltaCol }}">{{ ovSum.ra.delta }}</div></div>
+            </div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.ra.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
               </sc-for>
             </div>
+            <sc-if value="{{ ovSum.ra.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.ra.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ovSum.ra.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.ra.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.ra.go }}">{{ ovSum.ra.more }} →</button>
           </div>
 
-
-          <!-- cleaning · forklift · live cameras (same 12-col grid: 4 + 3 + 5) -->
-          <div class="ov-card ov-span-3">
+          <div class="ov-card ov-span-3 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-green); color:var(--ok)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>
@@ -583,28 +565,29 @@
               <div class="ov-title">Cleaning Monitoring</div>
               <button class="ov-link" onClick="{{ goCleaning }}">View Details</button>
             </div>
-            <div class="ov-clean">
-              <div class="ov-ring-wrap">
-                <div class="ov-ring" style="background:{{ ovClean.ring }}"><div class="ov-ring-center">{{ ovClean.pct }}</div></div>
-                <div class="ov-ring-cap">Cleaning Compliance<br>(Tasks Completed)</div>
-              </div>
-              <div>
-                <div class="ov-sub-title">Today's Schedule</div>
-                <div class="ov-sched">
-                  <div class="ov-sched-n"><div class="ov-sched-v" style="color:var(--text)">{{ ovClean.total }}</div><div class="ov-sched-l">Total</div></div>
-                  <div class="ov-sched-n"><div class="ov-sched-v" style="color:var(--ok)">{{ ovClean.done }}</div><div class="ov-sched-l">Completed</div></div>
-                  <div class="ov-sched-n"><div class="ov-sched-v" style="color:var(--gold)">{{ ovClean.pending }}</div><div class="ov-sched-l">Pending</div></div>
-                </div>
-                <div class="ov-sub-title">Cleaning PPE Compliance <span class="c100">{{ ovClean.ppeLine }}</span></div>
-                <div class="ov-cl-ppe">
-                  <sc-for list="{{ ovClean.items }}" as="i" hint-placeholder-count="4">
-                    <div class="ov-cl-row"><span>{{ i.label }}</span><b style="color:{{ i.col }}">{{ i.val }}</b></div>
-                  </sc-for>
-                </div>
-              </div>
+            <div class="ovs-hero" onClick="{{ ovSum.cl.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.cl.bigCol }}">{{ ovSum.cl.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.cl.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.cl.deltaCol }}">{{ ovSum.cl.delta }}</div></div>
             </div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.cl.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ ovSum.cl.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.cl.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ovSum.cl.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.cl.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.cl.go }}">{{ ovSum.cl.more }} →</button>
           </div>
-          <div class="ov-card ov-span-4">
+
+          <div class="ov-card ov-span-4 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-orange); color:var(--high)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H5a2 2 0 0 0-2 2v5"/><circle cx="13" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><path d="M8 19h3"/><path d="M16 2v17h6"/><path d="M6 12V7a2 2 0 0 1 2-2h3l5 5"/></svg>
@@ -613,38 +596,26 @@
               <span class="ov-live">● Live</span>
               <button class="ov-link" onClick="{{ goForklift }}">View All</button>
             </div>
-            <div class="ov-fk">
-              <div class="ov-fk-stats">
-                <div class="ov-stat">
-                  <div class="ov-stat-ico" style="background:var(--tint-blue); color:var(--brand)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H5a2 2 0 0 0-2 2v5"/><circle cx="13" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><path d="M8 19h3"/><path d="M16 2v17h6"/><path d="M6 12V7a2 2 0 0 1 2-2h3l5 5"/></svg>
-                  </div>
-                  <div><div class="ov-stat-val" style="color:var(--text)">{{ ovFkStats.today }}</div><div class="ov-stat-lbl">Total Detections Today</div></div>
-                </div>
-                <div class="ov-stat">
-                  <div class="ov-stat-ico" style="background:var(--tint-red); color:var(--crit)">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a1.8 1.8 0 0 0 1.6 2.7h17.2a1.8 1.8 0 0 0 1.6-2.7L13.7 3.6a1.8 1.8 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                  </div>
-                  <div><div class="ov-stat-val" style="color:{{ ovFkStats.violCol }}">{{ ovFkStats.violations }}</div><div class="ov-stat-lbl">Safety Violations</div></div>
-                </div>
-              </div>
-              <div class="ov-list">
-                <sc-if value="{{ ovFkEmpty }}" hint-placeholder-val="{{ false }}">
-                  <div class="ov-empty">No forklift events today.</div>
-                </sc-if>
-                <sc-for list="{{ ovFk }}" as="r" hint-placeholder-count="3">
-                  <div class="ov-row" onClick="{{ r.onOpen }}">
-                    <div class="ov-thumb" style="background:{{ r.thumb }}"></div>
-                    <div class="ov-row-body">
-                      <div class="ov-row-title">{{ r.title }}</div>
-                      <div class="ov-row-sub">{{ r.sub }}</div>
-                      <div class="ov-row-sub">{{ r.time }}</div>
-                    </div>
-                    <span class="ov-pill" style="color:{{ r.pillCol }}; background:{{ r.pillBg }}">{{ r.pill }}</span>
-                  </div>
-                </sc-for>
-              </div>
+            <div class="ovs-hero" onClick="{{ ovSum.fk.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.fk.bigCol }}">{{ ovSum.fk.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.fk.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.fk.deltaCol }}">{{ ovSum.fk.delta }}</div></div>
             </div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.fk.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ ovSum.fk.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.fk.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ ovSum.fk.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.fk.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.fk.go }}">{{ ovSum.fk.more }} →</button>
           </div>
 
           <div class="ov-card ov-span-3">
@@ -676,35 +647,34 @@
 
 
           <!-- recent events -->
-          <div class="ov-card ov-span-5">
+          <div class="ov-card ov-span-5 ovs">
             <div class="ov-head">
               <div class="ov-head-ico" style="background:var(--tint-purple); color:var(--purple)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
               </div>
-              <div class="ov-title">Recent Events</div>
+              <div class="ov-title">Detections Today</div>
               <button class="ov-link" onClick="{{ goIncidents }}">View All</button>
             </div>
-            <sc-if value="{{ ovEventsEmpty }}" hint-placeholder-val="{{ false }}">
-              <div class="ov-empty">No events recorded yet.</div>
-            </sc-if>
-            <sc-if value="{{ ovEventsHas }}" hint-placeholder-val="{{ true }}">
-            <div style="overflow-x:auto">
-              <table class="ov-table">
-                <thead><tr><th>EVENT TYPE</th><th>EMPLOYEE / OBJECT</th><th>LOCATION</th><th>TIMESTAMP</th><th>STATUS</th></tr></thead>
-                <tbody>
-                  <sc-for list="{{ ovEvents }}" as="e" hint-placeholder-count="6">
-                    <tr onClick="{{ e.onOpen }}" style="cursor:pointer">
-                      <td><div class="ov-type"><span class="ov-type-ico" style="background:{{ e.typeBg }}; color:{{ e.typeCol }}">●</span>{{ e.type }}</div></td>
-                      <td>{{ e.who }}</td>
-                      <td>{{ e.location }}</td>
-                      <td>{{ e.time }}</td>
-                      <td><span class="ov-pill" style="color:{{ e.statusCol }}; background:{{ e.statusBg }}">{{ e.status }}</span></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
+            <div class="ovs-hero" onClick="{{ ovSum.ev.go }}">
+              <div class="ovs-big" style="color:{{ ovSum.ev.bigCol }}">{{ ovSum.ev.big }}</div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ev.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ev.deltaCol }}">{{ ovSum.ev.delta }}</div></div>
+            </div>
+            <div class="ovs-stats">
+              <sc-for list="{{ ovSum.ev.stats }}" as="s" hint-placeholder-count="3">
+                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ ovSum.ev.hasBars }}" hint-placeholder-val="{{ true }}">
+            <div class="ovs-bars">
+              <sc-for list="{{ ovSum.ev.bars }}" as="b" hint-placeholder-count="3">
+                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+              </sc-for>
             </div>
             </sc-if>
+            <sc-if value="{{ ovSum.ev.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div class="ovs-note">{{ ovSum.ev.note }}</div>
+            </sc-if>
+            <button class="ovs-more" onClick="{{ ovSum.ev.go }}">{{ ovSum.ev.more }} →</button>
           </div>
         </div>
 

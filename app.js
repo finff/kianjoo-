@@ -4196,6 +4196,59 @@ class Component extends DCLogic {
         const p=req?Math.round(100*(req-miss)/req):null;
         return {label, val:p==null?'—':(p+'%'), col:p==null?'var(--text3)':(p>=95?'var(--ok)':(p>=80?'var(--gold)':'var(--crit)'))}; }),
     };
+    // ── Overview analytics cards: headline + trend + 3 stats + small breakdown.
+    // Detail lives on each module's own page (left navigation).
+    const _pctCol=(p)=>p==null?'var(--text3)':(p>=95?'var(--ok)':(p>=80?'var(--gold)':'var(--crit)'));
+    const _bars=(rows, col)=>{ const mx=Math.max(1, ...rows.map(r=>N(r.n)));
+      return rows.map(r=>({label:r.label, val:r.val!=null?r.val:fmtN(r.n), w:Math.max(3, Math.round(100*N(r.n)/mx))+'%', col:r.col||col})); };
+    const _card=(o)=>Object.assign({bigCol:'var(--text)', deltaCol:'var(--text3)', stats:[], bars:[], note:''}, o,
+      {hasBars:!!(o.bars&&o.bars.length), hasNote:!(o.bars&&o.bars.length) && !!o.note});
+    const _last=(Array.isArray(ov.recognized)?ov.recognized:[])[0]||null;
+    const PPE_LBL={helmet:'Helmet', vest:'Safety vest', goggles:'Goggles', gloves:'Gloves', boots:'Safety boots', hairnet:'Hair net', ear:'Ear protection'};
+    const _ppeRows=Object.keys(PPE_LBL).map(k=>({label:PPE_LBL[k], n:N(pb[k])})).filter(r=>r.n>0).sort((a,b)=>b.n-a.n).slice(0,4);
+    const _raBy=ora.todayBy||{};
+    const _clRows=OV_CL_ITEMS.map(([k,label])=>{ const b=cb[k]||{}; const req=N(b.required), miss=N(b.missing);
+      if(!req) return null; const pc=Math.round(100*(req-miss)/req); return {label, n:pc, val:pc+'%', col:_pctCol(pc)}; }).filter(Boolean).slice(0,4);
+    const _fkW=ofk.week||{};
+    const _t0=new Date(); _t0.setHours(0,0,0,0);
+    const _evToday=(st.events||[]).filter(e=>N(e.ts)>=_t0.getTime());
+    const EV_MOD={face:['Face & Body','var(--brand)'], ppe:['PPE','var(--gold)'], intr:['Restricted / Intrusion','var(--crit)'],
+      forklift:['Forklift','var(--high)'], fire:['Fire & Smoke','#EA580C'], cleaning:['Cleaning','var(--ok)'], behaviour:['Behaviour','var(--purple)']};
+    const _evMods={}; _evToday.forEach(e=>{ _evMods[e.mod]=(_evMods[e.mod]||0)+1; });
+    const ovSum={
+      att:_card({big:fmtN(eIn), bigLbl:'employees recognised today', bigCol:'var(--brand)',
+        delta:_last?('Last: '+(_last.name||('#'+_last.personId))+' · '+hms(_last.time)+(_last.location?(' · '+_last.location):'')):'No recognitions yet today',
+        stats:[{k:'On time', v:fmtN(eOnTime), col:'var(--ok)'}, {k:'Late', v:fmtN(eLate), col:'var(--gold)'}, {k:'Unknown faces', v:fmtN(oe.unknownToday), col:N(oe.unknownToday)?'var(--crit)':'var(--text)'}],
+        note:fmtN(oe.sightingsToday)+' face sightings today at mapped camera points', go:()=>this.setPage('attendance'), more:'Open Attendance'}),
+      ppe:_card({big:opp.compliance!=null?(opp.compliance+'%'):'—', bigLbl:'PPE compliance · 7 days', bigCol:_pctCol(opp.compliance!=null?Number(opp.compliance):null),
+        delta:ppeD.delta+' (violations)', deltaCol:ppeD.col,
+        stats:[{k:'Violations today', v:fmtN(opp.today), col:N(opp.today)?'var(--crit)':'var(--text)'}, {k:'Yesterday', v:fmtN(opp.yesterday), col:'var(--text)'},
+          {k:'Items flagged', v:String(_ppeRows.length), col:_ppeRows.length?'var(--gold)':'var(--text)'}],
+        bars:_bars(_ppeRows, 'var(--crit)'), note:'No PPE violations today.', go:()=>this.setPage('ppe'), more:'Open PPE Compliance'}),
+      ra:_card({big:fmtN(ora.today), bigLbl:'restricted-area alerts today', bigCol:N(ora.today)?'var(--crit)':'var(--text)', delta:raD2.delta, deltaCol:raD2.col,
+        stats:[{k:'Unauthorized', v:fmtN(_raBy.violation), col:N(_raBy.violation)?'var(--crit)':'var(--text)'}, {k:'Needs review', v:fmtN(_raBy.review), col:N(_raBy.review)?'var(--gold)':'var(--text)'},
+          {k:'Authorized', v:fmtN(_raBy.authorized), col:'var(--ok)'}],
+        bars:_bars((ora.zones||[]).map(z=>({label:z.zone, n:z.n})), 'var(--crit)'), note:'No restricted-area alerts this week.',
+        go:()=>this.setPage('intr'), more:'Open Restricted Area'}),
+      cl:_card({big:clPct==null?'—':(clPct+'%'), bigLbl:'cleaning tasks completed today', bigCol:_pctCol(clPct),
+        delta:ocl.compliance!=null?('PPE during cleaning '+ocl.compliance+'% · 7 days'):'No cleaning PPE checks yet', deltaCol:_pctCol(ocl.compliance!=null?Number(ocl.compliance):null),
+        stats:[{k:'Scheduled', v:fmtN(clSess), col:'var(--text)'}, {k:'Done', v:fmtN(clDone), col:'var(--ok)'}, {k:'Pending', v:fmtN(ocl.pending), col:N(ocl.pending)?'var(--gold)':'var(--text)'}],
+        bars:_clRows.map(r=>({label:r.label, val:r.val, w:Math.max(3,r.n)+'%', col:r.col})), note:'No cleaning sessions scheduled today.',
+        go:()=>this.setPage('cleaning'), more:'Open Cleaning Monitoring'}),
+      fk:_card({big:fmtN(ofk.today), bigLbl:'forklift detections today', delta:fkD2.delta+' (violations)', deltaCol:fkD2.col,
+        stats:[{k:'Violations today', v:fmtN(ofk.violationsToday), col:N(ofk.violationsToday)?'var(--crit)':'var(--text)'}, {k:'Open', v:fmtN(ofk.open), col:N(ofk.open)?'var(--gold)':'var(--text)'},
+          {k:'Pedestrian intrusions · 7 d', v:fmtN(_fkW.pedIntrusions), col:N(_fkW.pedIntrusions)?'var(--crit)':'var(--text)'}],
+        bars:_bars((ofk.zones||[]).map(z=>({label:z.zone, n:z.n, val:fmtN(z.n)+(N(z.v)?(' · '+fmtN(z.v)+' viol.'):'')})), 'var(--high)'),
+        note:'No forklift activity this week.', go:()=>this.setPage('forklift'), more:'Open Forklift Monitoring'}),
+      ev:_card({big:fmtN(_evToday.length), bigLbl:'detections today · all modules',
+        delta:_evToday.filter(e=>e.sev==='critical'||e.sev==='high').length+' high / critical',
+        deltaCol:_evToday.some(e=>e.sev==='critical'||e.sev==='high')?'var(--crit)':'var(--text3)',
+        stats:[{k:'Open', v:fmtN(_evToday.filter(e=>e.status==='open').length), col:'var(--gold)'},
+          {k:'Critical', v:fmtN(_evToday.filter(e=>e.sev==='critical').length), col:'var(--crit)'},
+          {k:'Cameras', v:fmtN(new Set(_evToday.map(e=>e.camera)).size), col:'var(--text)'}],
+        bars:_bars(Object.keys(_evMods).map(k=>({label:(EV_MOD[k]||[k])[0], n:_evMods[k], col:(EV_MOD[k]||[0,'var(--brand)'])[1]})).sort((a,b)=>b.n-a.n).slice(0,5), 'var(--brand)'),
+        note:'No detections yet today.', go:()=>this.setPage('incidents'), more:'Open Incidents'}),
+    };
     // Live camera tiles — online first, one tile per physical feed
     const ovPool=livePool.slice().sort((a,b)=>(b.online!==false)-(a.online!==false));
     const ovSeen={};
@@ -4485,7 +4538,7 @@ class Component extends DCLogic {
       // overview
       isOverview:st.page==='overview', ovKpi, ovPresentRing, ovYAxis, ovWeek, ovDonut, ovDonutTotal:fmtN(eTot), ovDonutLegend,
       ovPlants, ovPlantsEmpty:!!st.ov && ovPlants.length===0, ovFaces, ovFacesEmpty:ovFaces.length===0,
-      ovPpe, ovRa, ovRaEmpty:ovRa.length===0, ovClean, ovFk, ovFkEmpty:ovFk.length===0, ovFkStats,
+      ovPpe, ovRa, ovRaEmpty:ovRa.length===0, ovClean, ovFk, ovFkEmpty:ovFk.length===0, ovFkStats, ovSum,
       ovCams, ovCamsEmpty:ovCams.length===0, ovCamsCount:String(livePool.length),
       ovEvents, ovEventsHas:ovEvents.length>0, ovEventsEmpty:ovEvents.length===0, ovUpdated,
       ovErr:st.ovErr||'', ovHasErr:!!st.ovErr, reloadOv:()=>this.loadOverview(),
