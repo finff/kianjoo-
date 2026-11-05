@@ -2511,6 +2511,7 @@ class Component extends DCLogic {
     };
   }
   renderVals(){
+    if(['sense','live','api','ai'].indexOf(this.state.spTab)<0) this.state.spTab='sense';   // only these Settings tabs exist
     const st=this.state;
     const showBoxes = this.props.showOverlays !== false;
     const d=new Date(st.now);
@@ -4907,7 +4908,7 @@ class Component extends DCLogic {
       arArmedState:arArmedActive?'● ARMED':'○ STANDBY',
       // settings page (live config)
       appMsg:st.appMsg,
-      spTabs:[['sense','SenseTime API'],['live','Live Video'],['api','Endpoints & Tokens'],['poc','POC Camera Points'],['att','Attendance Rules'],['ppe','PPE Area Rules'],['ra','Restricted Zones'],['fk','Forklift Zones'],['beh','Behaviour Rules'],['notify','Notifications'],['ai','AI Source'],['reports','Auto Reports'],['models','Models'],['integrations','Integrations'],['retention','Data Retention']].map(([k,label])=>{ const a=st.spTab===k;
+      spTabs:[['sense','SenseTime API'],['live','Live Video'],['api','Endpoints & Tokens'],['ai','AI Source']].map(([k,label])=>{ const a=st.spTab===k;
         return {label, onClick:()=>this.setState({spTab:k}),
           cls:a?'chip on':'chip'}; }),
       spTabSense:st.spTab==='sense', spTabLive:st.spTab==='live', spTabApi:st.spTab==='api', spTabNotify:st.spTab==='notify',

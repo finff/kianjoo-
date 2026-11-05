@@ -1833,15 +1833,9 @@
               <sc-for list="{{ behVerdictSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadBeh }}">⟳</button>
-            <button class="c185 chip" onClick="{{ goSettingsBeh }}">⚙ Behaviour rules</button>
             <span class="c100">{{ behStatus }}</span>
           </div>
 
-          <sc-if value="{{ behNoScope }}" hint-placeholder-val="{{ false }}">
-            <div class="att-note">No behaviour camera yet. Map the Line 5 camera to the "Line 5" camera point (Settings → POC Camera Points), or pick cameras in Settings → Behaviour Rules.
-              <button class="c185 chip on" onClick="{{ goSettingsBeh }}">Open Behaviour Rules</button>
-            </div>
-          </sc-if>
 
           <div class="att-kpis att-kpis-6">
             <sc-for list="{{ behKpis }}" as="k" hint-placeholder-count="6">
@@ -1952,15 +1946,9 @@
               <sc-for list="{{ raStatusSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadRa }}">⟳</button>
-            <button class="c185 chip" onClick="{{ goSettingsRa }}">⚙ Restricted zones</button>
             <span class="c100">{{ raStatus }}</span>
           </div>
 
-          <sc-if value="{{ raNoZones }}" hint-placeholder-val="{{ false }}">
-            <div class="att-note">No camera is set as a restricted zone yet. Draw the boundary or zone in SenseStudio, then mark that camera as restricted and set who may enter.
-              <button class="c185 chip on" onClick="{{ goSettingsRa }}">Open Restricted Zones</button>
-            </div>
-          </sc-if>
 
           <div class="att-kpis att-kpis-6">
             <sc-for list="{{ raKpis }}" as="k" hint-placeholder-count="6">
@@ -2057,15 +2045,9 @@
               <sc-for list="{{ ppeItemSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadPpe }}">⟳</button>
-            <button class="c185 chip" onClick="{{ goSettingsPpe }}">⚙ PPE area rules</button>
             <span class="c100">{{ ppeStatus }}</span>
           </div>
 
-          <sc-if value="{{ ppeNoRules }}" hint-placeholder-val="{{ false }}">
-            <div class="att-note">No area has a PPE rule yet, so nobody is being checked. Set the required PPE per camera point.
-              <button class="c185 chip on" onClick="{{ goSettingsPpe }}">Open PPE Area Rules</button>
-            </div>
-          </sc-if>
 
           <div class="att-kpis ppe-kpis">
             <sc-for list="{{ ppeKpis }}" as="k" hint-placeholder-count="5">
@@ -2196,11 +2178,6 @@
           </sc-for>
         </div>
 
-        <sc-if value="{{ regNoRoles }}" hint-placeholder-val="{{ false }}">
-          <div class="att-note">No clock cameras are set, so every face detection counts as a clock-in / clock-out point. Mark the entrance and guard-post cameras as clock cameras so only they decide attendance.
-            <button class="c185 chip on" onClick="{{ goSettingsAtt }}">Open Attendance Rules</button>
-          </div>
-        </sc-if>
         <div class="c100 att-cap">{{ regSummary }}</div>
 
         <div class="att-reg-grid">
@@ -2268,12 +2245,6 @@
           <span class="c100">{{ attStatus }}</span>
         </div>
 
-        <sc-if value="{{ attNeedsMap }}" hint-placeholder-val="{{ false }}">
-          <div class="att-note">Attendance comes from two sources: the browser check-in kiosk (open it on a tablet or PC with a webcam at an entrance) and SenseStudio CCTV cameras.
-            For CCTV, map Plant 1 / Plant 2 Guard Posts, Lobby Entrance, 8 Color Entrance and Conventional Entrance under Settings.
-            <button class="c185 chip on" onClick="{{ goSettingsPoc }}">Open POC Camera Points</button>
-          </div>
-        </sc-if>
         <div class="c100 att-cap">{{ attMappedLine }}</div>
 
         <div class="att-panel">
@@ -2561,15 +2532,9 @@
               <sc-for list="{{ fkKindSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
             </select>
             <button class="c185 chip" onClick="{{ reloadFk }}">⟳</button>
-            <button class="c185 chip" onClick="{{ goSettingsFk }}">⚙ Forklift zones</button>
             <span class="c100">{{ fkStatus }}</span>
           </div>
 
-          <sc-if value="{{ fkNoZones }}" hint-placeholder-val="{{ false }}">
-            <div class="att-note">No camera is set as a forklift zone yet. Draw the zone in SenseStudio on the camera covering the forklift area, then mark that camera as a forklift zone and choose its rule.
-              <button class="c185 chip on" onClick="{{ goSettingsFk }}">Open Forklift Zones</button>
-            </div>
-          </sc-if>
 
           <div class="att-kpis att-kpis-6 fk-kpis-8">
             <sc-for list="{{ fkKpis }}" as="k" hint-placeholder-count="6">
@@ -3129,7 +3094,7 @@
               </div>
             </sc-for>
             <div class="c428 aip-gap">{{ aipFaceLine }}</div>
-            <div class="c428">{{ aipThLine }} <button class="c185 chip" onClick="{{ goAipModels }}">Tune thresholds</button></div>
+            <div class="c428">{{ aipThLine }}</div>
           </div>
         </div>
 
