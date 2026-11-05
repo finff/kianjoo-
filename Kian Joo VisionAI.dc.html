@@ -1675,9 +1675,6 @@
           <span class="c100">{{ clMsg }}</span>
         </div>
 
-        <div class="att-note cl-note">
-          <div><b>Scheduled ≠ performed.</b> A schedule only says when cleaning is expected. During that window everyone detected at the area is checked for the required PPE. Each session shows separately what was <b>scheduled</b>, what the cameras <b>observed</b> (people detected) and what a supervisor <b>confirmed</b>. The PPE model cannot recognise cleaning itself.</div>
-        </div>
 
         <!-- ── Overview ── -->
         <sc-if value="{{ clTabOverview }}" hint-placeholder-val="{{ true }}">
@@ -1772,16 +1769,6 @@
           </div>
         </div>
 
-        <div class="att-panel">
-          <div class="c129">Recognising actual cleaning <span class="c100">— what would be needed beyond PPE detection</span></div>
-          <div class="cl-ai">
-            <div><b>Today</b><span>Cleaning is inferred from the schedule. People detected at the area during the window are evidence of presence, not of cleaning. A supervisor confirms each session.</span></div>
-            <div><b>Cleaning-tool detection</b><span>An object model trained on mops, brooms, scrubbers, hoses and buckets. A person with a tool in the zone suggests cleaning activity.</span></div>
-            <div><b>Action recognition</b><span>A pose or video-action model (sweeping, mopping, wiping) running on short clips rather than single frames. This needs clips and GPU time per camera.</span></div>
-            <div><b>Zone dwell + uniform</b><span>Dwell time in the cleaning zone plus a cleaning-crew uniform or apron attribute. This is cheaper, but only a proxy.</span></div>
-          </div>
-          <div class="c428">None of these is available in the current SenseStudio models. If one is added, its detections can mark a session "activity detected" in place of, or alongside, supervisor confirmation.</div>
-        </div>
         </sc-if>
 
         <!-- ── Schedules ── -->
@@ -1825,7 +1812,6 @@
             <button class="c429" onClick="{{ clSave }}">Save schedules</button>
             <span class="c100">{{ clMsg }}</span>
           </div>
-          <div class="c428">An end time earlier than the start is an overnight session (it belongs to the start date). The PPE here is added to any standing PPE Area Rule for the same area while the session runs.</div>
         </div>
         </sc-if>
       </div>
@@ -1865,11 +1851,6 @@
               <button class="c185 chip on" onClick="{{ goSettingsBeh }}">Open Behaviour Rules</button>
             </div>
           </sc-if>
-          <div class="att-note beh-note">
-            <div><b>How it is detected.</b> {{ behModelNote }}</div>
-            <div class="c100">{{ behScopeLine }}</div>
-            <div class="c100">PPE worn during cleaning (gloves / goggles) is on <button class="ov-link" onClick="{{ goCleaningPpe }}">Cleaning Monitoring</button>.</div>
-          </div>
 
           <div class="att-kpis att-kpis-6">
             <sc-for list="{{ behKpis }}" as="k" hint-placeholder-count="6">
@@ -2130,7 +2111,7 @@
               <div class="att-kpi-label">MISSED BY PPE TYPE</div>
               <sc-for list="{{ ppeByItem }}" as="i" hint-placeholder-count="4">
                 <div class="ppe-meter">
-                  <div class="c247"><span>{{ i.label }} <span class="ppx-feas" style="color:{{ i.feasCol }}">{{ i.feas }}</span></span><span class="c243">{{ i.value }}</span></div>
+                  <div class="c247"><span>{{ i.label }}</span><span class="c243">{{ i.value }}</span></div>
                   <div class="c313"><div class="c245" style="width:{{ i.w }}; background:{{ i.col }}"></div></div>
                 </div>
               </sc-for>
@@ -2167,20 +2148,6 @@
           </sc-if>
         </div>
 
-        <!-- Workstream B: detection feasibility per PPE item -->
-        <div class="att-panel">
-          <div class="c129">Detection feasibility <span class="c100">— how each PPE item is detected with SenseStudio V2.13</span></div>
-          <div class="ppx-feas-grid">
-            <sc-for list="{{ ppeFeas }}" as="f" hint-placeholder-count="7">
-              <div class="ppx-feas-card">
-                <div class="ppx-feas-name">{{ f.label }}</div>
-                <div class="ppx-feas-level" style="color:{{ f.col }}">{{ f.level }}</div>
-                <div class="att-src">{{ f.how }}</div>
-              </div>
-            </sc-for>
-          </div>
-          <div class="c100">Items marked “custom model required” are still processed end-to-end: when a custom SenseStudio algorithm / policy with a matching name fires on a camera, the event is checked, recorded and alerted like any other PPE violation.</div>
-        </div>
 
         <div class="att-panel">
           <div class="c129">Area PPE rules <span class="c100">— what each camera point requires</span></div>
@@ -2321,7 +2288,6 @@
             </div>
           </sc-for>
         </div>
-        <div class="c100 att-cap">CSV files open in Excel. Attendance is calculated by this dashboard from clock-camera detections; it is not connected to the HRMS (out of POC scope).</div>
         </sc-if>
 
         <!-- ── Live sightings (raw detection log, existing view) ── -->
@@ -2416,7 +2382,7 @@
           </sc-if>
           <span class="c100">{{ empMsg }}</span>
         </div>
-        <div class="c100 att-cap">{{ empCount }} · saving an employee with a staff ID and face photo pushes them to SenseStudio (one person group per plant) so CCTV can recognise them.</div>
+        <div class="c100 att-cap">{{ empCount }}</div>
         <div class="att-panel">
           <div class="att-thead emp-cols">
             <span>EMPLOYEE</span><span>DEPARTMENT</span><span>PLANT</span><span>SHIFT</span><span>STATUS</span><span>SENSESTUDIO</span><span></span>
@@ -2457,7 +2423,6 @@
           </div>
           <div class="fr-hero-body">
             <div class="fr-hero-title">Face Registration</div>
-            <div class="fr-hero-sub">Enrol each employee once — a staff ID plus a clear face photo, captured at the check-in kiosk or attached in the profile form. Saving pushes the person to the SenseStudio person library (one person group per plant), so every CCTV camera running face recognition can identify them for attendance, restricted-area and PPE checks. Unknown faces the cameras have tracked are listed below and can be enrolled directly.</div>
           </div>
           <div class="fr-hero-btns">
             <a class="c185 chip on" href="/kiosk.php" target="_blank" rel="noopener">Open check-in kiosk</a>
@@ -2768,7 +2733,6 @@
         <div class="c425">
           <div class="c332"><span class="c440" style="background:var(--brand)"></span><h3 class="c129">Predefined condition rules</h3>
             <span class="c351">alert in real time when a detection matches · module · camera · severity · time window · keyword</span></div>
-          <div class="c431">A matching detection alerts immediately on the chosen channels — even below the minimum severity above or when its module switch is off. Example: any PPE detection on Line 5 during the night shift, or anything matching "smok" at the Waste Area.</div>
           <sc-if value="{{ wsA.condNone }}" hint-placeholder-val="{{ false }}"><div class="c458">No condition rules yet.</div></sc-if>
           <sc-if value="{{ wsA.condHas }}" hint-placeholder-val="{{ true }}">
             <div class="cond-list">
@@ -3091,22 +3055,6 @@
       <!-- ===== Workstream D: AI PERFORMANCE (/api/aiperf/*) ===== -->
       <sc-if value="{{ isAiperf }}" hint-placeholder-val="{{ false }}">
       <div class="c207">
-        <div class="att-note aip-note">
-          <div><b>POC-measured, not vendor claims.</b> Every figure on this page is computed from what reviewers recorded against real detections on site: confirmed / cleared reviews, ticket closures, the sampling queue below and missed detections logged by hand. A small sample is shown with a wide confidence interval.</div>
-          <button class="c185 chip" onClick="{{ toggleAipMethod }}">{{ aipMethodLabel }}</button>
-        </div>
-        <sc-if value="{{ aipMethodOpen }}" hint-placeholder-val="{{ false }}">
-        <div class="att-panel aip-method">
-          <div class="c129">Methodology</div>
-          <div class="aip-method-grid">
-            <div><b>True positive (TP)</b><span>A detection a reviewer confirmed: forklift / restricted / behaviour review "confirm", a ticket closed as Issue resolved / Fix scheduled / Under monitoring, a "Correct" verdict in the sampling queue, or a cleaning session with activity observed and confirmed "Cleaned".</span></div>
-            <div><b>False positive (FP)</b><span>A detection cleared as a false alarm: "Mark as false alarm", a ticket closed as False alarm, a restricted entry cleared as authorized, a forklift detection cleared, a "Wrong" verdict in the sampling queue, or activity observed in a cleaning window that was confirmed "Not done".</span></div>
-            <div><b>False negative (FN)</b><span>A missed detection: logged with the form below (module, camera, time, note) after a reviewer saw the situation on the recording, plus cleaning sessions confirmed "Cleaned" where no activity was observed.</span></div>
-            <div><b>Metrics</b><span>Precision = TP / (TP + FP) · Recall = TP / (TP + FN) · F1 = 2·P·R / (P + R). 95 % Wilson score intervals. Confidence: high ≥ 100 reviewed samples, medium ≥ 30, low below. Lighting period: day 07:00–18:59, night 19:00–06:59 (receive time).</span></div>
-          </div>
-          <div class="c428">Detections are bucketed by module from the SenseStudio policy / trigger type and the dashboard verdict tags (same rules as the incident list). The latest verdict on a detection wins. Unreviewed detections are not counted in precision — the review coverage column shows how representative each figure is.</div>
-        </div>
-        </sc-if>
 
         <div class="att-bar">
           <span class="sel-lab">From</span>
@@ -3182,7 +3130,6 @@
                 </tbody>
               </table>
             </div>
-            <div class="c428 aip-gap">Occlusion and camera angle show up per camera below: a camera with low recall (many logged misses) or low precision points at its mounting height, angle, backlight or obstruction.</div>
           </div>
           <div class="att-panel">
             <div class="c129">Face recognition <span class="c100">— similarity of matched faces</span></div>
@@ -3330,7 +3277,6 @@
                 <div class="c313"><div class="c245" style="width:{{ g.w }}; background:{{ g.col }}"></div></div>
               </div>
             </sc-for>
-            <div class="c428 aip-gap">Technical = criteria 1–28 and 43–45 · AI Accuracy 29–31 · Infrastructure 32–37 · Reporting 38–42 · Commercial 49–51. POC Execution and Vendor Capability count in the overall score. Interpretation of the average score: 4.0–5.0 strong candidate · 3.0–3.9 acceptable with conditions · 2.0–2.9 significant gaps · below 2.0 not recommended.</div>
           </div>
           <div class="att-panel">
             <div class="c129">By category</div>
@@ -3445,7 +3391,6 @@
         <sc-if value="{{ pocTabDocs }}" hint-placeholder-val="{{ false }}">
         <div class="att-panel">
           <div class="c129">POC methodology &amp; documents</div>
-          <div class="c431">The test plan sets the methodology, the 7–12 September 2026 schedule and, for each of the 21 test cases, the procedure, pass criteria and the evidence to capture. The architecture document covers criteria 32–37 (cameras, PoE, bandwidth, NVR / VMS coexistence, storage sizing, multi-plant scaling). The integration document is the HRMS / MES API reference.</div>
           <div class="poc-chips">
             <sc-for list="{{ pocDocs }}" as="d" hint-placeholder-count="3">
               <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
@@ -4978,7 +4923,6 @@
             </div>
           </sc-for>
         </div>
-        <div class="c100 jn-note">Movement is visible only where the person passed a mapped camera point — route segments without a selected camera are not captured (this is not continuous GPS-style tracking). The final point is the latest known location, not an automatic exit event.</div>
         </sc-if>
         <sc-if value="{{ jn.empty }}" hint-placeholder-val="{{ false }}">
           <div class="c100">No detections for this person in the selected window.</div>
