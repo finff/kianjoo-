@@ -1360,8 +1360,28 @@ try {
                 }
             }
             if ($route === '/persons/delete') {
+                require_once APP_ROOT . '/lib/Auth.php';
+                if ($provisionAdmin() === null && (Auth::user() === null || !Auth::can('settings'))) {
+                    Response::error('Deleting employees needs the settings permission.', 403);
+                }
+                // An employee pushed to SenseStudio is deactivated there too, so a
+                // deleted employee stops being recognised by the cameras.
+                $prev  = $store->personProfiles()[$pid] ?? null;
+                $ssUid = (string) ($prev['ssUid'] ?? '');
+                $ss    = ['uid' => $ssUid ?: null, 'deactivated' => false, 'error' => null];
+                if ($ssUid !== '') {
+                    require_once APP_ROOT . '/lib/SenseApi.php';
+                    $sense = new SenseApi($config['sense_api'] ?? [], APP_ROOT . '/storage');
+                    if ($sense->ready()) {
+                        $r = $sense->deactivatePerson($ssUid);
+                        $ss['deactivated'] = !empty($r['ok']);
+                        $ss['error'] = !empty($r['ok']) ? null : (string) ($r['msg'] ?? $r['error'] ?? 'SenseStudio error');
+                    } else {
+                        $ss['error'] = 'SenseStudio API not configured';
+                    }
+                }
                 $store->deletePersonProfile($pid);
-                Response::ok(['deleted' => $pid]);
+                Response::ok(['deleted' => $pid, 'sensestudio' => $ss]);
             }
             $name = trim((string) ($in['name'] ?? ''));
             if ($name === '') {

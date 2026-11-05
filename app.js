@@ -1078,11 +1078,21 @@ class Component extends DCLogic {
   }
 
   removeProfile(person){
-    if(!window.confirm('Remove the profile for '+(person.name||('#'+person.personId))+'?\n\nDetections stay; they just go back to showing as an unidentified person.')) return;
+    const who=person.name||('#'+person.personId);
+    const inSs=!!person.ssUid;
+    if(!window.confirm('Delete employee '+who+(person.staffId?(' ('+person.staffId+')'):'')+'?\n\n'
+      +(inSs?'They will also be deactivated in SenseStudio, so the cameras stop recognising them.\n':'')
+      +'Past detections stay; they just show as an unidentified person.')) return;
+    this.setState({empMsg:'Deleting '+who+'…'});
     fetch(`${this.API}/persons/delete?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({person_id:person.personId})})
-      .then(()=>{ this.loadPeople(); this.fetchFeed(); })
-      .catch(()=>{});
+      .then(r=>r.json())
+      .then(d=>{
+        if(!(d&&d.ok)) throw new Error((d&&d.error)||'Delete failed');
+        const ss=d.sensestudio||{};
+        this.setState({empMsg:'Deleted '+who+' ✓'+(ss.uid?(ss.deactivated?' · removed from SenseStudio':' · ⚠ SenseStudio: '+(ss.error||'not removed')):'')});
+        this.loadPeople(); this.fetchFeed(); if(this.state.page==='employees'||this.state.page==='attendance') this.loadRegister(); })
+      .catch(e=>this.setState({empMsg:'✗ '+((e&&e.message)||'Delete failed')}));
   }
 
   // Every stored capture of one tracked person (VisionAI personId — set even
@@ -3835,6 +3845,7 @@ class Component extends DCLogic {
           onEdit:()=>this.openProfile({personId:p.personId, image:p.photo}),
           onSync:()=>this.syncEmployee(p.personId),
           onJourney:()=>this.openJourney({personId:p.personId, name:p.name, staffId:p.staffId, photo:p.photo}),
+          onDelete:()=>this.removeProfile(p),
         }; });
     const empCount=profs.length+' employee'+(profs.length===1?'':'s');
 
