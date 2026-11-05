@@ -1876,3 +1876,32 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 /* Employees: delete button */
 .emp-del{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 35%,var(--line))}
 .emp-del:hover{background:color-mix(in srgb,var(--crit) 10%,transparent)}
+
+/* ── Stylish backdrop: soft brand glows + faint dot grid behind the pages ──
+   Painted on the fixed content frame (.c73) so it stays put while pages scroll. */
+:root,[data-theme="light"]{
+  --bg-glow1:rgba(47,107,255,.11); --bg-glow2:rgba(139,92,246,.09); --bg-glow3:rgba(14,165,233,.07);
+  --bg-dot:rgba(30,41,59,.075);
+}
+[data-theme="dark"]{
+  --bg-glow1:rgba(79,130,255,.17); --bg-glow2:rgba(139,92,246,.13); --bg-glow3:rgba(14,165,233,.09);
+  --bg-dot:rgba(148,163,184,.085);
+}
+.c73{
+  background-color:var(--bg);
+  background-image:
+    radial-gradient(1100px 620px at 108% -12%, var(--bg-glow1), transparent 62%),
+    radial-gradient(900px 640px at -12% 112%, var(--bg-glow2), transparent 60%),
+    radial-gradient(700px 420px at 55% 118%, var(--bg-glow3), transparent 65%);
+  background-repeat:no-repeat;
+}
+.c73::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle at 1px 1px, var(--bg-dot) 1px, transparent 1.4px);
+  background-size:24px 24px;
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.55) 45%,transparent 100%);
+          mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.55) 45%,transparent 100%);
+}
+.c73 > *{position:relative;z-index:1}
+/* topbar: frosted glass over the backdrop */
+.c25{background:color-mix(in srgb,var(--bg2) 82%,transparent);-webkit-backdrop-filter:blur(14px) saturate(140%);backdrop-filter:blur(14px) saturate(140%)}
