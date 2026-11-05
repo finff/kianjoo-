@@ -246,13 +246,37 @@ foreach ((is_array($app['cam_locations'] ?? null) ? $app['cam_locations'] : []) 
         $camLoc[$k] = $v;
     }
 }
+// Camera points = the cameras that actually stream (Settings → Live Video).
+// Each live camera is its own point (its mapped location, else its device
+// name) and is linked to it automatically, so cleaning / PPE / attendance can
+// match its detections. With no live cameras the original POC points apply.
+$pocLocations = [
+    'Plant 1 Guard Post', 'Plant 2 Guard Post', 'Lobby Entrance',
+    '8 Color Entrance', 'Conventional Entrance', 'Line 5', 'Waste Area — Spot 9',
+];
+$liveCams = array_map('strval', array_keys($config['live']['rtsp'] ?? []));
+if ($liveCams) {
+    $names = [];
+    foreach (LiveBridge::fleetRows($config, false) as $r) {
+        $k = strtolower((string) ($r['stream'] ?? ''));
+        if ($k !== '' && trim((string) ($r['name'] ?? '')) !== '') {
+            $names[$k] = trim((string) $r['name']);
+        }
+    }
+    $pocLocations = [];
+    foreach ($liveCams as $k) {
+        $lk = strtolower($k);
+        if (!isset($camLoc[$lk]) || $camLoc[$lk] === '') {
+            $camLoc[$lk] = $names[$lk] ?? strtoupper($k);
+        }
+        $pocLocations[] = $camLoc[$lk];
+    }
+    $pocLocations = array_values(array_unique($pocLocations));
+}
 $config['poc'] = [
     'cam_locations'  => $camLoc,
     'inactivity_min' => max(5, min(720, (int) ($app['poc_inactivity_min'] ?? 45))),
-    'locations'      => [
-        'Plant 1 Guard Post', 'Plant 2 Guard Post', 'Lobby Entrance',
-        '8 Color Entrance', 'Conventional Entrance', 'Line 5', 'Waste Area — Spot 9',
-    ],
+    'locations'      => $pocLocations,
 ];
 
 // Attendance rules (Settings → Attendance, stored in app_settings.json).

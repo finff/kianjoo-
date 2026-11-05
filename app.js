@@ -3991,7 +3991,8 @@ class Component extends DCLogic {
       onEnd:(e)=>this.clSet(i,{end:(e&&e.target)?e.target.value:''}),
       onDates:(e)=>this.clSet(i,{dates:(e&&e.target)?e.target.value:''}),
       locSel:{value:s.location||'', onChange:(e)=>this.clSet(i,{location:(e&&e.target)?e.target.value:''}),
-        options:[{v:'',label:'— Cleaning area —'}, ...clLocOpts.map(L=>({v:L, label:L+(clMapped.indexOf(L)>=0?'':' (no camera mapped)')}))]},
+        options:[{v:'',label:'— Cleaning area —'}, ...clLocOpts.map(L=>({v:L, label:L+(clMapped.indexOf(L)>=0?'':' (no camera mapped)')})),
+          ...((s.location&&clLocOpts.indexOf(s.location)<0)?[{v:s.location, label:s.location+' (no camera — pick a camera area)'}]:[])]},
       days:clDays.map(([d,label])=>{ const on=(s.days||[]).indexOf(d)>=0;
         return {label, cls:on?'chip on':'chip', onClick:()=>this.clSet(i,{days:on?s.days.filter(x=>x!==d):[...(s.days||[]),d].sort()})}; }),
       items:Object.keys(CL_ITEMS).map(k=>{ const on=(s.items||[]).indexOf(k)>=0;
