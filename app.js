@@ -2564,7 +2564,7 @@ class Component extends DCLogic {
         if(_primary[rkey] && _primary[rkey]!==c.stream) mirrorOf=_primary[rkey];
         else _primary[rkey]=c.stream;
       }
-      const match=(st.filter==='all'||st.filter===c.mod);
+      const match=true;   // module filter removed: every camera at full brightness
       const dim = match?(on?1:0.62):0.34;
       const vch=this.vChip(c.stream || String(c.id).toLowerCase(), !!vsrc);   // CONNECTING… / BUFFERING / STREAM ERROR
       return {

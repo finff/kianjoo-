@@ -756,12 +756,6 @@
           <h2 class="c99">Live Feeds</h2>
           <span class="c100">Showing {{ shownCount }} of {{ feedTotal }} · {{ feedOnline }} online</span>
           <div class="c101">
-            <div class="c102">
-              <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
-                <button class="c103" onClick="{{ f.onClick }}" style="border:1px solid {{ f.border }}; background:{{ f.bg }}; color:{{ f.color }}">{{ f.label }}</button>
-              </sc-for>
-            </div>
-            <div class="c104"></div>
             <div class="c105">
               <sc-for list="{{ gridOpts }}" as="g" hint-placeholder-count="3">
                 <button class="c106" onClick="{{ g.onClick }}" title="{{ g.title }}" style="background:{{ g.bg }}; color:{{ g.color }}">{{ g.label }}</button>
