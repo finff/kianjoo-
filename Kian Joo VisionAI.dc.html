@@ -65,6 +65,19 @@
       </div>
 
       <div class="nav-sec">
+        <button class="nav-sec-head {{ sec.move.hasOn }}" onClick="{{ sec.move.toggle }}" title="{{ sec.move.title }}">
+          <span class="nav-sec-lbl">MOVEMENT</span><span class="nav-sec-dot"></span>
+          <svg class="nav-caret {{ sec.move.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="nav-sec-items {{ sec.move.cls }}">
+      <button class="c10 navbtn {{ nav.movement.cls }}" onClick="{{ nav.movement.go }}" title="Movement Log">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>
+        <span class="nav-lbl">Movement Log</span>
+      </button>
+        </div>
+      </div>
+
+      <div class="nav-sec">
         <button class="nav-sec-head {{ sec.safety.hasOn }}" onClick="{{ sec.safety.toggle }}" title="{{ sec.safety.title }}">
           <span class="nav-sec-lbl">SAFETY MONITORING</span><span class="nav-sec-dot"></span>
           <svg class="nav-caret {{ sec.safety.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
@@ -105,24 +118,6 @@
         </div>
       </div>
 
-      <sc-if value="{{ hasPlants }}" hint-placeholder-val="{{ true }}">
-      <div class="nav-sec side-plants">
-        <button class="nav-sec-head {{ sec.plants.hasOn }}" onClick="{{ sec.plants.toggle }}" title="{{ sec.plants.title }}">
-          <span class="nav-sec-lbl">PLANTS</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.plants.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.plants.cls }}">
-        <sc-for list="{{ plantRows }}" as="p" hint-placeholder-count="3">
-          <div class="plant-row {{ p.cls }}" onClick="{{ p.onClick }}" title="{{ p.title }}">
-            <span class="plant-caret">›</span>
-            <span class="plant-name">{{ p.name }}</span>
-            <span class="plant-dot" style="background:{{ p.dot }}"></span>
-            <span class="plant-state">{{ p.state }}</span>
-          </div>
-        </sc-for>
-        </div>
-      </div>
-      </sc-if>
 
       <div class="nav-sec">
         <button class="nav-sec-head {{ sec.system.hasOn }}" onClick="{{ sec.system.toggle }}" title="{{ sec.system.title }}">
@@ -2324,6 +2319,63 @@
         </sc-if>
         </sc-if>
 
+      </div>
+      </sc-if>
+
+      <!-- ===== MOVEMENT LOG (camera → camera) ===== -->
+      <sc-if value="{{ isMovement }}" hint-placeholder-val="{{ false }}">
+      <div class="c207">
+        <div class="att-bar">
+          <span class="sel-lab">From</span>
+          <input class="c665 att-date" type="date" value="{{ mvFrom }}" onChange="{{ onMvFrom }}">
+          <span class="sel-lab">To</span>
+          <input class="c665 att-date" type="date" value="{{ mvTo }}" onChange="{{ onMvTo }}">
+          <input class="c665 mv-search" value="{{ mvQ }}" onInput="{{ onMvQ }}" placeholder="Search name or staff ID">
+          <button class="c185 {{ mvUnknownCls }}" onClick="{{ toggleMvUnknown }}">Include unknown people</button>
+          <button class="c185 chip" onClick="{{ reloadMv }}">⟳ Refresh</button>
+          <span class="c100">{{ mvStatus }}</span>
+        </div>
+
+        <div class="att-kpis">
+          <sc-for list="{{ mvKpis }}" as="k" hint-placeholder-count="4">
+            <div class="att-kpi">
+              <div class="att-kpi-label">{{ k.label }}</div>
+              <div class="att-kpi-value" style="color:{{ k.col }}">{{ k.value }}</div>
+              <div class="att-kpi-sub">{{ k.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ mvHasRoutes }}" hint-placeholder-val="{{ true }}">
+        <div class="att-panel">
+          <div class="c129">Most common routes</div>
+          <div class="ovs-bars">
+            <sc-for list="{{ mvRoutes }}" as="r" hint-placeholder-count="3">
+              <div class="ovs-bar mv-route"><span class="ovs-bar-lbl" title="{{ r.label }}">{{ r.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ r.w }}; background:var(--brand)"></span></span><span class="ovs-bar-val">{{ r.n }}</span></div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <div class="att-panel">
+          <div class="c129">Movement log</div>
+          <div class="att-thead mv-cols">
+            <span>TIME</span><span>EMPLOYEE</span><span>FROM</span><span></span><span>TO</span><span>TIME BETWEEN</span>
+          </div>
+          <sc-for list="{{ mvRows }}" as="r" hint-placeholder-count="6">
+            <div class="att-row mv-cols">
+              <div class="mv-time"><b>{{ r.time }}</b><span>{{ r.date }}</span></div>
+              <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
+              <div class="mv-pt"><b>{{ r.from }}</b><span>{{ r.fromSub }}</span></div>
+              <div class="mv-arrow">→</div>
+              <div class="mv-pt"><b>{{ r.to }}</b><span>{{ r.toSub }}</span></div>
+              <div class="att-loc">{{ r.gap }}</div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ mvEmpty }}" hint-placeholder-val="{{ false }}">
+            <div class="c100 att-cap">{{ mvEmptyText }}</div>
+          </sc-if>
+        </div>
       </div>
       </sc-if>
 

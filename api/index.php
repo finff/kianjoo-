@@ -664,6 +664,56 @@ try {
                         'provider' => $llm->provider(), 'upstream' => $res['upstream'] ?? 0], 502);
     }
 
+    // ── Movement log: camera → camera moves per person ──────
+    // GET /movement/log?from=&to=&q=&unknown=1 → moves (newest first), KPIs, top routes
+    if ($route === '/movement/log') {
+        $requireToken($config['auth']['read_token']);
+        require_once APP_ROOT . '/lib/Attendance.php';
+        $store = new EventStore(Database::connect($config['storage']), $config);
+        $att   = new Attendance($store, $config);
+        $to    = Attendance::cleanDate((string) ($_GET['to'] ?? date('Y-m-d')));
+        $from  = Attendance::cleanDate((string) ($_GET['from'] ?? date('Y-m-d', strtotime($to) - 6 * 86400)));
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+        $f = ['q' => substr(trim((string) ($_GET['q'] ?? '')), 0, 80), 'unknown' => !empty($_GET['unknown'])];
+        $visits = $att->movement($from, $to, null, $f);   // sorted by person, then arrival
+
+        $point = static fn (array $v): string => (string) ($v['location'] ?: strtoupper((string) $v['camera']));
+        $moves = $routes = $people = $cams = [];
+        $prev  = null;
+        foreach ($visits as $v) {
+            $cams[strtoupper((string) $v['camera'])] = true;
+            if ($prev !== null && $prev['personId'] === $v['personId'] && $point($prev) !== $point($v)) {
+                $gap = max(0, (int) round(((strtotime($v['arrive']) ?: 0) - (strtotime($prev['depart']) ?: 0)) / 60));
+                $moves[] = [
+                    'personId' => $v['personId'], 'name' => $v['name'], 'staffId' => $v['staffId'],
+                    'department' => $v['department'],
+                    'from' => $point($prev), 'fromCamera' => strtoupper((string) $prev['camera']), 'leftAt' => $prev['depart'],
+                    'to' => $point($v), 'toCamera' => strtoupper((string) $v['camera']), 'arrivedAt' => $v['arrive'],
+                    'gapMin' => $gap,
+                ];
+                $people[$v['personId']] = true;
+                $rk = $point($prev) . "\x1F" . $point($v);
+                $routes[$rk] = ($routes[$rk] ?? 0) + 1;
+            }
+            $prev = $v;
+        }
+        usort($moves, static fn ($a, $b) => strcmp($b['arrivedAt'], $a['arrivedAt']));
+        arsort($routes);
+        $top = [];
+        foreach (array_slice($routes, 0, 5, true) as $k => $n) {
+            [$a, $b] = explode("\x1F", $k);
+            $top[] = ['from' => $a, 'to' => $b, 'n' => $n];
+        }
+        Response::ok([
+            'from' => $from, 'to' => $to,
+            'kpi' => ['moves' => count($moves), 'people' => count($people), 'cameras' => count($cams),
+                      'visits' => count($visits), 'avgGapMin' => $moves ? (int) round(array_sum(array_column($moves, 'gapMin')) / count($moves)) : null],
+            'routes' => $top, 'moves' => array_slice($moves, 0, 500), 'truncated' => count($moves) > 500,
+        ]);
+    }
+
     // ── Attendance & movement (POC Use Case 1) ───────────────
     // GET /attendance?days=          → per-person entry / latest detection /
     //                                  latest-known location, split Known vs

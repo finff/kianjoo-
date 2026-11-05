@@ -1836,3 +1836,14 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 
 /* Employees table without the SenseStudio sync column */
 .att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1fr .8fr 1.2fr .7fr auto}
+
+/* ── Movement log ── */
+.att-thead.mv-cols,.att-row.mv-cols{grid-template-columns:90px 1.4fr 1.3fr 24px 1.3fr 110px}
+.mv-time b{display:block;font-size:13px;color:var(--text)}
+.mv-time span,.mv-pt span{display:block;font-size:11px;color:var(--text3)}
+.mv-pt{min-width:0}
+.mv-pt b{display:block;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-arrow{color:var(--brand);font-weight:700;text-align:center}
+.mv-search{min-width:200px}
+.mv-route{grid-template-columns:minmax(0,260px) 1fr auto}
+@media (max-width:900px){.att-thead.mv-cols{display:none}.att-row.mv-cols{grid-template-columns:1fr 1fr}.mv-arrow{display:none}}

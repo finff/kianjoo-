@@ -756,7 +756,7 @@ class Component extends DCLogic {
     if(inGroup){ this.setState({navOpen:{...st.navOpen, [g]:!open}}); }
     else { this.setState({navOpen:{...st.navOpen, [g]:true}}); this.setPage(def); } }
   // Sidebar section a page lives in: att | safety | system | '' (Overview).
-  navSecOf(p){ const m={attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',behaviour:'safety',forklift:'safety',aiperf:'system',poc:'system'};
+  navSecOf(p){ const m={movement:'move',attendance:'att',employees:'att',faces:'att',ppe:'safety',intr:'safety',cleaning:'safety',behaviour:'safety',forklift:'safety',aiperf:'system',poc:'system'};
     if(m[p]) return m[p]; const g=this.navGroupOf(p); return g==='cameras'?'safety':((g==='reports'||g==='settings')?'system':''); }
   setNavSec(next){ try{ localStorage.setItem('tmns-nav-sec', JSON.stringify(next)); }catch(e){} this.setState({navSec:next}); }
   toggleNavSec(k){ const open=this.state.navSec[k]!==false; this.setNavSec({...this.state.navSec, [k]:!open}); }
@@ -786,6 +786,7 @@ class Component extends DCLogic {
     if(p==='forklift'){ this.loadFk(); this.loadApp(); }
     if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
     if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
+    if(p==='movement'){ this.loadMv(); }
     if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
     if(p==='behaviour'){ this.loadBeh(); }             // Workstream C: Line 5 behaviour analytics
     if(p==='analytics'){ this.loadHm(); }              // Workstream C: incident heatmap
@@ -799,7 +800,18 @@ class Component extends DCLogic {
     if(p==='poc') this.loadPoc(); }                  // Workstream D: POC scorecard
   // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
   setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','aiperf','poc'];
+  // ── Movement log (camera → camera) ──
+  loadMv(patch){
+    const st=this.state, today=new Date(), d=(x)=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+    const f={from:st.mvFrom||d(new Date(today.getTime()-6*86400000)), to:st.mvTo||d(today), q:st.mvQ||'', unknown:!!st.mvUnknown, ...(patch||{})};
+    this.setState({mvFrom:f.from, mvTo:f.to, mvQ:f.q, mvUnknown:f.unknown, mvBusy:true});
+    const qs='from='+f.from+'&to='+f.to+(f.q?'&q='+encodeURIComponent(f.q):'')+(f.unknown?'&unknown=1':'');
+    const seq=(this._mvSeq=(this._mvSeq||0)+1);
+    fetch(`${this.API}/movement/log?${qs}&token=${this.TOK}`).then(r=>r.json())
+      .then(d=>{ if(seq!==this._mvSeq) return; this.setState({mv:(d&&d.ok)?d:null, mvBusy:false, mvErr:(d&&d.ok)?'':((d&&d.error)||'Could not load movements')}); })
+      .catch(()=>{ if(seq===this._mvSeq) this.setState({mvBusy:false, mvErr:'Could not load movements'}); });
+  }
+  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','aiperf','poc','movement'];
     const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
   camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
@@ -2470,6 +2482,34 @@ class Component extends DCLogic {
     };
   }
 
+  mvVals(){
+    const st=this.state, d=st.mv||{}, k=d.kpi||{};
+    const fmtT=(t)=>String(t||'').slice(11,16), fmtD=(t)=>{ const x=new Date(String(t||'').replace(' ','T'));
+      return isNaN(x)?String(t||'').slice(0,10):x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
+    const gap=(m)=>m==null?'—':(m<1?'< 1 min':(m<60?m+' min':(Math.floor(m/60)+' h '+(m%60)+' min')));
+    const routes=Array.isArray(d.routes)?d.routes:[], rMax=Math.max(1, ...routes.map(r=>r.n||0));
+    const rows=(Array.isArray(d.moves)?d.moves:[]).map(m=>({time:fmtT(m.arrivedAt), date:fmtD(m.arrivedAt),
+      name:m.name||('#'+m.personId), staff:[m.staffId, m.department].filter(Boolean).join(' · ')||'—',
+      from:m.from, fromSub:(m.fromCamera&&m.fromCamera!==m.from)?m.fromCamera:'left '+fmtT(m.leftAt),
+      to:m.to, toSub:(m.toCamera&&m.toCamera!==m.to)?m.toCamera:'arrived '+fmtT(m.arrivedAt), gap:gap(m.gapMin)}));
+    const top=routes[0];
+    return {
+      isMovement:st.page==='movement', mvFrom:st.mvFrom||'', mvTo:st.mvTo||'', mvQ:st.mvQ||'',
+      onMvFrom:(e)=>this.loadMv({from:e.target.value}), onMvTo:(e)=>this.loadMv({to:e.target.value}),
+      onMvQ:(e)=>{ const v=e.target.value; this.setState({mvQ:v}); clearTimeout(this._mvT); this._mvT=setTimeout(()=>this.loadMv({q:v}), 400); },
+      mvUnknownCls:st.mvUnknown?'chip on':'chip', toggleMvUnknown:()=>this.loadMv({unknown:!st.mvUnknown}), reloadMv:()=>this.loadMv(),
+      mvStatus:st.mvBusy?'Loading…':(st.mvErr||(d.truncated?'Showing the latest 500 moves':'')),
+      mvKpis:[
+        {label:'Camera-to-camera moves', value:String(k.moves||0), col:'var(--brand)', sub:(d.from&&d.to)?(d.from+' → '+d.to):'Selected range'},
+        {label:'People moving', value:String(k.people||0), col:'var(--text)', sub:'with at least one move'},
+        {label:'Cameras involved', value:String(k.cameras||0), col:'var(--text)', sub:(k.visits||0)+' camera visits'},
+        {label:'Most common route', value:top?String(top.n):'—', col:'var(--ok)', sub:top?(top.from+' → '+top.to):'No moves yet'},
+      ],
+      mvHasRoutes:routes.length>0, mvRoutes:routes.map(r=>({label:r.from+' → '+r.to, n:r.n, w:Math.max(4, Math.round(100*r.n/rMax))+'%'})),
+      mvRows:rows, mvEmpty:!st.mvBusy && rows.length===0,
+      mvEmptyText:'No camera-to-camera movement in this range. Moves appear when the same person is recognised at two different cameras.',
+    };
+  }
   renderVals(){
     const st=this.state;
     const showBoxes = this.props.showOverlays !== false;
@@ -2622,13 +2662,13 @@ class Component extends DCLogic {
       // per-page entries kept for any direct link
       live:navExact('live'), incidents:navExact('incidents'), analytics:navExact('analytics'), forecast:navExact('forecast'),
       fire:navExact('fire'), face:navExact('face'), rules:navExact('rules'), users:navExact('users'),
-      aiperf:navStyle('aiperf'), poc:navStyle('poc')};   // Workstream D
+      aiperf:navStyle('aiperf'), poc:navStyle('poc'), movement:navStyle('movement')};   // Workstream D
     // Sidebar sections (fold / unfold); a folded section holding the active page shows a dot.
     const curSec=this.navSecOf(st.page);
     const navSecEntry=(k,label)=>{ const open=st.navSec[k]!==false; const has=k==='plants'?!!st.plant:curSec===k;
       return {toggle:()=>this.toggleNavSec(k), cls:open?'':'closed', caret:open?'open':'', hasOn:(!open&&has)?'has-on':'',
         title:(open?'Collapse ':'Expand ')+label}; };
-    const sec={att:navSecEntry('att','Attendance'), safety:navSecEntry('safety','Safety monitoring'), system:navSecEntry('system','System'), plants:navSecEntry('plants','Plants')};
+    const sec={move:navSecEntry('move','Movement'), att:navSecEntry('att','Attendance'), safety:navSecEntry('safety','Safety monitoring'), system:navSecEntry('system','System'), plants:navSecEntry('plants','Plants')};
     const modMeta={
       fire:{name:'Fire & Smoke Detection', desc:'Thermal and visual smoke/flame recognition', tag:'FIRE', col:'var(--high)', model:'YOLOv8-fire · v2.4', classes:['Flame','Smoke — light','Smoke — dense','Thermal anomaly']},
       ppe:{name:'PPE Compliance', desc:'Hard hat, vest, gloves and face-shield checks', tag:'PPE', col:'var(--gold)', model:'PPE-Net · v3.1', classes:['Hard hat','Hi-vis vest','Safety gloves','Face shield']},
@@ -2640,6 +2680,7 @@ class Component extends DCLogic {
       camdash:['Camera Dashboard','Fleet health, detections and coverage across all plants'],
       live:['Live Feeds','Live camera wall with real-time detections'],
       employees:['Employees','Employee directory and registration'],
+      movement:['Movement Log','Employee movement from one camera to another'],
       faces:['Face Registration','Enrol faces so CCTV can recognise employees'],
       forklift:['Forklift Monitoring','Forklift detections, zone rules and incident review'],
       cleaning:['Cleaning Monitoring','Cleaning schedules and PPE compliance during cleaning'],
@@ -4573,7 +4614,7 @@ class Component extends DCLogic {
       sideMode:st.sideCollapsed?'collapsed':'open', toggleSide:()=>this.toggleSide(),
       sideToggleTitle:st.sideCollapsed?'Expand navigation':'Collapse navigation',
       // global plant filter + sidebar plants + grouped sub-tabs
-      plantSel, plantRows, hasPlants:plantRows.length>0, subTabs, hasSubTabs:subTabs.length>0,
+      plantSel, plantRows, hasPlants:plantRows.length>0, ...this.mvVals(), subTabs, hasSubTabs:subTabs.length>0,
       // overview
       isOverview:st.page==='overview', ovKpi, ovPresentRing, ovYAxis, ovWeek, ovDonut, ovDonutTotal:fmtN(eTot), ovDonutLegend,
       ovPlants, ovPlantsEmpty:!!st.ov && ovPlants.length===0, ovFaces, ovFacesEmpty:ovFaces.length===0,
