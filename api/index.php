@@ -1031,6 +1031,8 @@ try {
     // ── Employee sync to the SenseStudio person library ─────
     // POST /employees/sync {person_id} | {all:true}  (settings permission)
     if ($route === '/employees/sync') {
+        // SenseStudio is pull-only: employees are never pushed to its person library.
+        Response::error('SenseStudio is read-only from this dashboard: make this change in SenseStudio.', 403);
         require_once APP_ROOT . '/lib/Auth.php';
         require_once APP_ROOT . '/lib/Attendance.php';
         require_once APP_ROOT . '/lib/Kiosk.php';
@@ -2743,6 +2745,11 @@ try {
             }
             return ['ok' => $r['ok'], 'name' => $label, 'error' => $r['error']];
         };
+
+        // SenseStudio is pull-only: devices are created / edited in SenseStudio itself.
+        if ($method === 'POST') {
+            Response::error('SenseStudio is read-only from this dashboard: make this change in SenseStudio.', 403);
+        }
 
         // POST /cameras/{did} — update a device's config via SenseStudio (§3.3.3)
         if ($did !== '' && $method === 'POST') {

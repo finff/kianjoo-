@@ -2339,15 +2339,12 @@
             <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
           </select>
           <button class="c185 chip on" onClick="{{ newEmployee }}">＋ Register employee</button>
-          <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">
-            <button class="c185 chip" onClick="{{ syncAll }}">{{ syncAllLabel }}</button>
-          </sc-if>
           <span class="c100">{{ empMsg }}</span>
         </div>
         <div class="c100 att-cap">{{ empCount }}</div>
         <div class="att-panel">
           <div class="att-thead emp-cols">
-            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>PLANT</span><span>SHIFT</span><span>STATUS</span><span>SENSESTUDIO</span><span></span>
+            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>PLANT</span><span>SHIFT</span><span>STATUS</span><span></span>
           </div>
           <sc-for list="{{ empRows }}" as="r" hint-placeholder-count="6">
             <div class="att-row emp-cols">
@@ -2359,7 +2356,6 @@
               <div class="att-loc">{{ r.plant }}</div>
               <div class="att-loc">{{ r.shift }}</div>
               <div class="att-status" style="color:{{ r.activeCol }}">{{ r.active }}</div>
-              <div class="att-status" style="color:{{ r.syncCol }}" title="{{ r.syncTip }}">{{ r.sync }}</div>
               <div class="att-unk-btns">
                 <button class="c185 chip on" onClick="{{ r.onEdit }}">Edit</button>
                 <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">
@@ -2394,8 +2390,7 @@
         </div>
         <div class="fr-steps">
           <div class="fr-step"><span class="fr-step-n">1</span><div><b>Register</b>Create the employee with staff ID, department, plant and shift, and add a front-facing photo (kiosk capture or upload).</div></div>
-          <div class="fr-step"><span class="fr-step-n">2</span><div><b>Sync to SenseStudio</b>The profile is pushed to the plant's SenseStudio person group. Sync status is shown per employee in the directory.</div></div>
-          <div class="fr-step"><span class="fr-step-n">3</span><div><b>Recognised at cameras</b>Face-recognition cameras match the person in real time — clock points feed the attendance register, every camera records movement.</div></div>
+          <div class="fr-step"><span class="fr-step-n">2</span><div><b>Recognised at cameras</b>Face-recognition cameras match the person in real time — clock points feed the attendance register, every camera records movement.</div></div>
         </div>
 
         <!-- people roster: one card per unique tracked person (VisionAI personId) -->
@@ -2798,22 +2793,6 @@
               <span class="c362">Type</span><span>{{ camDetail.type }}</span>
               <span class="c362">RTSP (current)</span><span class="c364">{{ camDetail.rtspMask }}</span>
               <span class="c362">Stream URL</span><span class="c364">{{ camDetail.streamUrl }}</span>
-            </div>
-            <div class="c365"></div>
-            <div class="c366">EDIT · updates VisionAI (device/update)</div>
-            <div><div class="c367">Camera name</div>
-              <input class="c368" value="{{ camDetail.editName }}" onInput="{{ camDetail.onEditName }}"></div>
-            <div><div class="c367">RTSP stream URL</div>
-              <input class="c369" value="{{ camDetail.editRtsp }}" onInput="{{ camDetail.onEditRtsp }}"></div>
-            <div class="c370">
-              <div><div class="c367">Tag</div>
-                <input class="c368" value="{{ camDetail.editTag }}" onInput="{{ camDetail.onEditTag }}" placeholder="optional"></div>
-              <div><div class="c367">Description</div>
-                <input class="c368" value="{{ camDetail.editDesc }}" onInput="{{ camDetail.onEditDesc }}" placeholder="optional"></div>
-            </div>
-            <div class="c371">
-              <button class="c372" onClick="{{ camDetail.onSave }}">Save to VisionAI</button>
-              <span class="c47">{{ camDetail.saveMsg }}</span>
             </div>
           </div>
         </div>
@@ -3727,10 +3706,8 @@
             <div class="c431">Behaviour analytics watches the cameras at the selected camera points (default <b>Line 5</b>) plus any camera picked below. <b>Chit-chat / loitering</b> is raised when the set number of people are seen together for the dwell time while no cleaning session is scheduled, or one identified person stays past the idle threshold. Headcount comes from detections: an identified person is "present" between sightings no further apart than the presence gap, each anonymous detection counts for one minute. <b>Cleaning activity</b> is detected from a SenseStudio custom algorithm named clean / mop / sweep / wipe, or — as an attribute proxy — people wearing the cleaning PPE below during a scheduled cleaning window. <b>Fighting</b> and <b>falls</b> need a SenseStudio behaviour / custom algorithm on the camera (policy name containing fight / altercation / fall); they alert as <b>Critical</b> / High through the normal alert pipeline.</div>
             <div class="c426">BEHAVIOUR ANALYTICS</div>
             <div class="poc-chips"><sc-for list="{{ behSet.enableChips }}" as="l" hint-placeholder-count="2"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">CAMERA POINTS MONITORED</div>
+            <div class="c426">CAMERAS MONITORED</div>
             <div class="poc-chips"><sc-for list="{{ behSet.locChips }}" as="l" hint-placeholder-count="7"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">ADDITIONAL CAMERAS</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.camChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
             <div class="c426">CHIT-CHAT — PEOPLE TOGETHER</div>
             <div class="poc-chips"><sc-for list="{{ behSet.groupChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
             <div class="c426">CHIT-CHAT — DWELL THRESHOLD</div>

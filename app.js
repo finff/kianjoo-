@@ -1019,10 +1019,7 @@ class Component extends DCLogic {
         this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}, modal:null, pf:null}));
         this.loadPeople(); this.fetchFeed();
         if(this.state.page==='attendance'||this.state.page==='employees') this.loadRegister();
-        // Keep SenseStudio's employee library in step: sync when there is a
-        // staff ID and a photo (or when deactivating an already-synced person).
-        const prof=(d.profiles||{})[d.person_id]||{};
-        if(this.PERMS.settings && (prof.ssUid || (prof.staffId && prof.photo))) this.syncEmployee(d.person_id, true); })
+ })
       .catch(e=>this.setState(st=>({pf:{...st.pf, saving:false, msg:(e&&e.message&&e.message!=='bad')?e.message:'Save failed'}})));
   }
 
@@ -2642,7 +2639,7 @@ class Component extends DCLogic {
       overview:['AI Factory Monitoring Dashboard','Real-time monitoring of people, safety and operations across all plants'],
       camdash:['Camera Dashboard','Fleet health, detections and coverage across all plants'],
       live:['Live Feeds','Live camera wall with real-time detections'],
-      employees:['Employees','Employee directory, registration and SenseStudio sync'],
+      employees:['Employees','Employee directory and registration'],
       faces:['Face Registration','Enrol faces so CCTV can recognise employees'],
       forklift:['Forklift Monitoring','Forklift detections, zone rules and incident review'],
       cleaning:['Cleaning Monitoring','Cleaning schedules and PPE compliance during cleaning'],
@@ -3776,7 +3773,7 @@ class Component extends DCLogic {
           onSync:()=>this.syncEmployee(p.personId),
           onJourney:()=>this.openJourney({personId:p.personId, name:p.name, staffId:p.staffId, photo:p.photo}),
         }; });
-    const empCount=profs.length+' employee'+(profs.length===1?'':'s')+' · '+profs.filter(p=>p.ssSync==='synced').length+' synced to SenseStudio';
+    const empCount=profs.length+' employee'+(profs.length===1?'':'s');
 
     // Reports
     const rp=st.rep, today=this.todayStr();
@@ -4448,7 +4445,8 @@ class Component extends DCLogic {
     const behPpeItems=(st.clD&&st.clD.items)||(st.ppeD&&st.ppeD.items)||{gloves:'Safety gloves', goggles:'Safety goggles', helmet:'Safety helmet', vest:'Safety vest'};
     const behSet={
       enableChips:[[true,'Behaviour analytics on'],[false,'Off']].map(([v,label])=>({label, cls:!!bc.enabled===v?'chip on':'chip', onClick:()=>this.behSet({enabled:v})})),
-      locChips:spLocOpts.map(L=>({label:L, cls:(bc.locations||[]).indexOf(L)>=0?'chip on':'chip', onClick:()=>this.behSet({locations:behToggle(bc.locations||[], L)})})),
+      locChips:[...new Set([...(st.liveRelay||[]), ...(st.liveStill||[]), ...Object.keys(st.liveDirect||{})].map(k=>String(k||'').toLowerCase()).filter(Boolean))]
+        .map(k=>({label:k.toUpperCase(), cls:(bc.cameras||[]).indexOf(k)>=0?'chip on':'chip', onClick:()=>this.behSet({cameras:behToggle(bc.cameras||[], k)})})),
       camChips:pocStreams.map(c=>({label:String(c.key).toUpperCase()+(spCamLocCur[c.key]?' · '+spCamLocCur[c.key]:''),
         cls:(bc.cameras||[]).indexOf(c.key)>=0?'chip on':'chip', onClick:()=>this.behSet({cameras:behToggle(bc.cameras||[], c.key)})})),
       groupChips:behChipRow('group_min',[2,3,4,5],v=>v+'+ people'),

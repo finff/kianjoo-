@@ -1833,3 +1833,6 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 .fkz-rules b{font-size:12px;color:var(--text)}
 .fkz-rules span{font-size:11px;color:var(--text3)}
 @media (max-width:760px){.fkz-rules{grid-template-columns:1fr}}
+
+/* Employees table without the SenseStudio sync column */
+.att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1fr .8fr 1.2fr .7fr auto}
