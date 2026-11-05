@@ -201,7 +201,7 @@ final class Overview
                 $items[$it] = (int) ($t['byItem'][$it]['missing'] ?? 0);
             }
             return ['today' => (int) ($byDay[$today] ?? 0), 'yesterday' => (int) ($byDay[$yesterday] ?? 0),
-                    'compliance' => $w['kpi']['compliance'], 'byItem' => $items];
+                    'compliance' => $w['kpi']['compliance'], 'byItem' => $items, 'daily' => $w['daily']];
         }, ['today' => 0, 'yesterday' => 0, 'compliance' => null, 'byItem' => array_fill_keys(self::ITEMS, 0)]);
 
         // ── Restricted area ──
@@ -243,7 +243,7 @@ final class Overview
             usort($zones, static fn ($a, $b) => $b['n'] <=> $a['n']);
             return ['today' => (int) ($byDay[$today] ?? 0), 'yesterday' => (int) ($byDay[$yesterday] ?? 0),
                     'open' => (int) $r['kpi']['open'], 'recent' => $recent,
-                    'todayBy' => $todayBy, 'zones' => array_slice($zones, 0, 4)];
+                    'todayBy' => $todayBy, 'zones' => array_slice($zones, 0, 4), 'daily' => $r['daily']];
         }, ['today' => 0, 'yesterday' => 0, 'open' => 0, 'recent' => [], 'todayBy' => [], 'zones' => []]);
 
         // ── Cleaning ──
@@ -266,7 +266,7 @@ final class Overview
                 $items[$it] = ['required' => (int) ($p['byItem'][$it]['required'] ?? 0), 'missing' => (int) ($p['byItem'][$it]['missing'] ?? 0)];
             }
             return ['sessionsToday' => count($sess), 'done' => $done, 'pending' => count($sess) - $done - $notDone,
-                    'notDone' => $notDone, 'compliance' => $p['kpi']['compliance'], 'byItem' => $items];
+                    'notDone' => $notDone, 'compliance' => $p['kpi']['compliance'], 'byItem' => $items, 'daily' => $p['daily']];
         }, ['sessionsToday' => 0, 'done' => 0, 'pending' => 0, 'notDone' => 0, 'compliance' => null,
             'byItem' => array_fill_keys(self::ITEMS, ['required' => 0, 'missing' => 0])]);
 
@@ -295,7 +295,7 @@ final class Overview
                     'violationsToday' => (int) ($byDay[$today]['violations'] ?? 0),
                     'yesterday' => (int) ($byDay[$yesterday]['detections'] ?? 0),
                     'violationsYesterday' => (int) ($byDay[$yesterday]['violations'] ?? 0),
-                    'open' => (int) $r['kpi']['open'], 'recent' => $recent, 'modelNote' => Forklift::MODEL_NOTE,
+                    'open' => (int) $r['kpi']['open'], 'recent' => $recent, 'modelNote' => Forklift::MODEL_NOTE, 'daily' => $r['daily'],
                     'week' => [
                         'forklifts' => (int) ($r['kpi']['forklifts'] ?? 0), 'pedIntrusions' => (int) ($r['kpi']['pedIntrusions'] ?? 0),
                         'opViolations' => (int) ($r['kpi']['opViolations'] ?? 0),

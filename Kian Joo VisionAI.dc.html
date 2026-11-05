@@ -479,10 +479,16 @@
               <div class="ovs-big" style="color:{{ ovSum.att.bigCol }}">{{ ovSum.att.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.att.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.att.deltaCol }}">{{ ovSum.att.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.att.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.att.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.att.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.att.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.att.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -490,9 +496,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.att.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.att.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.att.go }}">{{ ovSum.att.more }} →</button>
           </div>
@@ -509,10 +512,16 @@
               <div class="ovs-big" style="color:{{ ovSum.ppe.bigCol }}">{{ ovSum.ppe.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ppe.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ppe.deltaCol }}">{{ ovSum.ppe.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.ppe.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.ppe.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.ppe.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.ppe.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.ppe.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -520,9 +529,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.ppe.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.ppe.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.ppe.go }}">{{ ovSum.ppe.more }} →</button>
           </div>
@@ -539,10 +545,16 @@
               <div class="ovs-big" style="color:{{ ovSum.ra.bigCol }}">{{ ovSum.ra.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ra.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ra.deltaCol }}">{{ ovSum.ra.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.ra.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.ra.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.ra.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.ra.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.ra.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -550,9 +562,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.ra.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.ra.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.ra.go }}">{{ ovSum.ra.more }} →</button>
           </div>
@@ -569,10 +578,16 @@
               <div class="ovs-big" style="color:{{ ovSum.cl.bigCol }}">{{ ovSum.cl.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.cl.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.cl.deltaCol }}">{{ ovSum.cl.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.cl.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.cl.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.cl.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.cl.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.cl.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -580,9 +595,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.cl.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.cl.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.cl.go }}">{{ ovSum.cl.more }} →</button>
           </div>
@@ -600,10 +612,16 @@
               <div class="ovs-big" style="color:{{ ovSum.fk.bigCol }}">{{ ovSum.fk.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.fk.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.fk.deltaCol }}">{{ ovSum.fk.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.fk.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.fk.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.fk.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.fk.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.fk.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -611,9 +629,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.fk.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.fk.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.fk.go }}">{{ ovSum.fk.more }} →</button>
           </div>
@@ -659,10 +674,16 @@
               <div class="ovs-big" style="color:{{ ovSum.ev.bigCol }}">{{ ovSum.ev.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ev.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ev.deltaCol }}">{{ ovSum.ev.delta }}</div></div>
             </div>
-            <div class="ovs-stats">
-              <sc-for list="{{ ovSum.ev.stats }}" as="s" hint-placeholder-count="3">
-                <div class="ovs-stat"><b style="color:{{ s.col }}">{{ s.v }}</b><span>{{ s.k }}</span></div>
-              </sc-for>
+            <div class="ovs-chart">
+              <div class="ovs-cols">
+                <sc-for list="{{ ovSum.ev.cols }}" as="c" hint-placeholder-count="7">
+                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ ovSum.ev.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
+            </div>
+            <div class="ovs-legend">
+              <sc-for list="{{ ovSum.ev.legend }}" as="l" hint-placeholder-count="3"><span class="ovs-key"><i style="background:{{ l.col }}"></i>{{ l.label }}</span></sc-for>
             </div>
             <sc-if value="{{ ovSum.ev.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
@@ -670,9 +691,6 @@
                 <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
-            </sc-if>
-            <sc-if value="{{ ovSum.ev.hasNote }}" hint-placeholder-val="{{ false }}">
-              <div class="ovs-note">{{ ovSum.ev.note }}</div>
             </sc-if>
             <button class="ovs-more" onClick="{{ ovSum.ev.go }}">{{ ovSum.ev.more }} →</button>
           </div>

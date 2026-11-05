@@ -4201,7 +4201,8 @@ class Component extends DCLogic {
     const _pctCol=(p)=>p==null?'var(--text3)':(p>=95?'var(--ok)':(p>=80?'var(--gold)':'var(--crit)'));
     const _bars=(rows, col)=>{ const mx=Math.max(1, ...rows.map(r=>N(r.n)));
       return rows.map(r=>({label:r.label, val:r.val!=null?r.val:fmtN(r.n), w:Math.max(3, Math.round(100*N(r.n)/mx))+'%', col:r.col||col})); };
-    const _card=(o)=>Object.assign({bigCol:'var(--text)', deltaCol:'var(--text3)', stats:[], bars:[], note:''}, o,
+    let _trends=null;
+    const _card=(o)=>Object.assign({bigCol:'var(--text)', deltaCol:'var(--text3)', stats:[], bars:[], note:''}, o, (_trends||{})[o.key]||{},
       {hasBars:!!(o.bars&&o.bars.length), hasNote:!(o.bars&&o.bars.length) && !!o.note});
     const _last=(Array.isArray(ov.recognized)?ov.recognized:[])[0]||null;
     const PPE_LBL={helmet:'Helmet', vest:'Safety vest', goggles:'Goggles', gloves:'Gloves', boots:'Safety boots', hairnet:'Hair net', ear:'Ear protection'};
@@ -4215,32 +4216,61 @@ class Component extends DCLogic {
     const EV_MOD={face:['Face & Body','var(--brand)'], ppe:['PPE','var(--gold)'], intr:['Restricted / Intrusion','var(--crit)'],
       forklift:['Forklift','var(--high)'], fire:['Fire & Smoke','#EA580C'], cleaning:['Cleaning','var(--ok)'], behaviour:['Behaviour','var(--purple)']};
     const _evMods={}; _evToday.forEach(e=>{ _evMods[e.mod]=(_evMods[e.mod]||0)+1; });
+    // 7-day stacked columns (3 fixed segments) for each card.
+    const _days=[]; for(let i=6;i>=0;i--){ const d=new Date(_t0.getTime()-i*86400000);
+      _days.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
+        lbl:i===0?'Today':d.toLocaleDateString('en-GB',{weekday:'short'}), start:d.getTime()}); }
+    const _byDate=(arr)=>{ const m={}; (Array.isArray(arr)?arr:[]).forEach(r=>{ if(r&&r.date) m[r.date]=r; }); return m; };
+    // segs: [[label, colour, row=>value], …] bottom → top
+    const _trend=(rowOf, segs)=>{
+      const vals=_days.map(d=>{ const r=rowOf(d)||{}; return segs.map(g=>Math.max(0,N(g[2](r)))); });
+      const mx=Math.max(1, ...vals.map(v=>v.reduce((a,b)=>a+b,0)));
+      const total=vals.reduce((a,v)=>a+v.reduce((x,y)=>x+y,0),0);
+      return {chartEmpty:total===0,
+        legend:segs.map(g=>({label:g[0], col:g[1]})),
+        cols:_days.map((d,i)=>{ const v=vals[i]; const c={lbl:d.lbl,
+            tip:d.lbl+' · '+segs.map((g,j)=>g[0]+' '+v[j]).join(' · ')};
+          [0,1,2].forEach(j=>{ c['h'+j]=v[j]!=null?(Math.round(1000*v[j]/mx)/10)+'%':'0%'; c['c'+j]=segs[j]?segs[j][1]:'transparent'; });
+          return c; })}; };
+    const _wk=_byDate((Array.isArray(ov.week)?ov.week:[]));
+    const _pd=_byDate(opp.daily), _rd=_byDate(ora.daily), _cd=_byDate(ocl.daily), _fd=_byDate(ofk.daily);
+    const _ed=_days.map(d=>({crit:0, med:0, low:0}));
+    (st.events||[]).forEach(e=>{ const t=N(e.ts); const i=_days.findIndex((d,k)=>t>=d.start && (k===6 || t<_days[k+1].start));
+      if(i<0) return; const b=_ed[i]; if(e.sev==='critical'||e.sev==='high') b.crit++; else if(e.sev==='medium') b.med++; else b.low++; });
+    _trends={
+      att:_trend(d=>_wk[d.key], [['Present','var(--ok)',r=>r.present],['Late','var(--gold)',r=>r.late],['Absent','var(--crit)',r=>r.absent]]),
+      ppe:_trend(d=>_pd[d.key], [['Compliant','var(--ok)',r=>N(r.checks)-N(r.violations)],['Violations','var(--crit)',r=>r.violations]]),
+      ra:_trend(d=>_rd[d.key], [['Authorized','var(--ok)',r=>r.authorized],['Needs review','var(--gold)',r=>r.review],['Unauthorized','var(--crit)',r=>r.violation]]),
+      cl:_trend(d=>_cd[d.key], [['PPE compliant','var(--ok)',r=>N(r.checks)-N(r.violations)],['PPE missing','var(--crit)',r=>r.violations]]),
+      fk:_trend(d=>_fd[d.key], [['Detections','var(--high)',r=>N(r.detections)-N(r.violations)],['Violations','var(--crit)',r=>r.violations]]),
+      ev:_trend(d=>_ed[_days.indexOf(d)], [['Low','var(--brand)',r=>r.low],['Medium','var(--gold)',r=>r.med],['High / critical','var(--crit)',r=>r.crit]]),
+    };
     const ovSum={
-      att:_card({big:fmtN(eIn), bigLbl:'employees recognised today', bigCol:'var(--brand)',
+      att:_card({key:'att', big:fmtN(eIn), bigLbl:'employees recognised today', bigCol:'var(--brand)',
         delta:_last?('Last: '+(_last.name||('#'+_last.personId))+' · '+hms(_last.time)+(_last.location?(' · '+_last.location):'')):'No recognitions yet today',
         stats:[{k:'On time', v:fmtN(eOnTime), col:'var(--ok)'}, {k:'Late', v:fmtN(eLate), col:'var(--gold)'}, {k:'Unknown faces', v:fmtN(oe.unknownToday), col:N(oe.unknownToday)?'var(--crit)':'var(--text)'}],
         note:fmtN(oe.sightingsToday)+' face sightings today at mapped camera points', go:()=>this.setPage('attendance'), more:'Open Attendance'}),
-      ppe:_card({big:opp.compliance!=null?(opp.compliance+'%'):'—', bigLbl:'PPE compliance · 7 days', bigCol:_pctCol(opp.compliance!=null?Number(opp.compliance):null),
+      ppe:_card({key:'ppe', big:opp.compliance!=null?(opp.compliance+'%'):'—', bigLbl:'PPE compliance · 7 days', bigCol:_pctCol(opp.compliance!=null?Number(opp.compliance):null),
         delta:ppeD.delta+' (violations)', deltaCol:ppeD.col,
         stats:[{k:'Violations today', v:fmtN(opp.today), col:N(opp.today)?'var(--crit)':'var(--text)'}, {k:'Yesterday', v:fmtN(opp.yesterday), col:'var(--text)'},
           {k:'Items flagged', v:String(_ppeRows.length), col:_ppeRows.length?'var(--gold)':'var(--text)'}],
         bars:_bars(_ppeRows, 'var(--crit)'), note:'No PPE violations today.', go:()=>this.setPage('ppe'), more:'Open PPE Compliance'}),
-      ra:_card({big:fmtN(ora.today), bigLbl:'restricted-area alerts today', bigCol:N(ora.today)?'var(--crit)':'var(--text)', delta:raD2.delta, deltaCol:raD2.col,
+      ra:_card({key:'ra', big:fmtN(ora.today), bigLbl:'restricted-area alerts today', bigCol:N(ora.today)?'var(--crit)':'var(--text)', delta:raD2.delta, deltaCol:raD2.col,
         stats:[{k:'Unauthorized', v:fmtN(_raBy.violation), col:N(_raBy.violation)?'var(--crit)':'var(--text)'}, {k:'Needs review', v:fmtN(_raBy.review), col:N(_raBy.review)?'var(--gold)':'var(--text)'},
           {k:'Authorized', v:fmtN(_raBy.authorized), col:'var(--ok)'}],
         bars:_bars((ora.zones||[]).map(z=>({label:z.zone, n:z.n})), 'var(--crit)'), note:'No restricted-area alerts this week.',
         go:()=>this.setPage('intr'), more:'Open Restricted Area'}),
-      cl:_card({big:clPct==null?'—':(clPct+'%'), bigLbl:'cleaning tasks completed today', bigCol:_pctCol(clPct),
+      cl:_card({key:'cl', big:clPct==null?'—':(clPct+'%'), bigLbl:'cleaning tasks completed today', bigCol:_pctCol(clPct),
         delta:ocl.compliance!=null?('PPE during cleaning '+ocl.compliance+'% · 7 days'):'No cleaning PPE checks yet', deltaCol:_pctCol(ocl.compliance!=null?Number(ocl.compliance):null),
         stats:[{k:'Scheduled', v:fmtN(clSess), col:'var(--text)'}, {k:'Done', v:fmtN(clDone), col:'var(--ok)'}, {k:'Pending', v:fmtN(ocl.pending), col:N(ocl.pending)?'var(--gold)':'var(--text)'}],
         bars:_clRows.map(r=>({label:r.label, val:r.val, w:Math.max(3,r.n)+'%', col:r.col})), note:'No cleaning sessions scheduled today.',
         go:()=>this.setPage('cleaning'), more:'Open Cleaning Monitoring'}),
-      fk:_card({big:fmtN(ofk.today), bigLbl:'forklift detections today', delta:fkD2.delta+' (violations)', deltaCol:fkD2.col,
+      fk:_card({key:'fk', big:fmtN(ofk.today), bigLbl:'forklift detections today', delta:fkD2.delta+' (violations)', deltaCol:fkD2.col,
         stats:[{k:'Violations today', v:fmtN(ofk.violationsToday), col:N(ofk.violationsToday)?'var(--crit)':'var(--text)'}, {k:'Open', v:fmtN(ofk.open), col:N(ofk.open)?'var(--gold)':'var(--text)'},
           {k:'Pedestrian intrusions · 7 d', v:fmtN(_fkW.pedIntrusions), col:N(_fkW.pedIntrusions)?'var(--crit)':'var(--text)'}],
         bars:_bars((ofk.zones||[]).map(z=>({label:z.zone, n:z.n, val:fmtN(z.n)+(N(z.v)?(' · '+fmtN(z.v)+' viol.'):'')})), 'var(--high)'),
         note:'No forklift activity this week.', go:()=>this.setPage('forklift'), more:'Open Forklift Monitoring'}),
-      ev:_card({big:fmtN(_evToday.length), bigLbl:'detections today · all modules',
+      ev:_card({key:'ev', big:fmtN(_evToday.length), bigLbl:'detections today · all modules',
         delta:_evToday.filter(e=>e.sev==='critical'||e.sev==='high').length+' high / critical',
         deltaCol:_evToday.some(e=>e.sev==='critical'||e.sev==='high')?'var(--crit)':'var(--text3)',
         stats:[{k:'Open', v:fmtN(_evToday.filter(e=>e.status==='open').length), col:'var(--gold)'},
