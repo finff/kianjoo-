@@ -1853,3 +1853,10 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 
 /* Employees table: SenseStudio push status column */
 .att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1.1fr 1.3fr .7fr .9fr auto}
+
+/* Cleaning sessions: fixed action column so every row lines up */
+.att-thead.cl-cols,.att-row.cl-cols{grid-template-columns:minmax(150px,1.3fr) minmax(170px,1.5fr) 100px minmax(130px,1fr) minmax(130px,1fr) minmax(150px,1.1fr) 196px;column-gap:16px;align-items:center}
+.att-row.cl-cols > div{min-width:0}
+.cl-act{justify-content:flex-end;flex-wrap:nowrap}
+.cl-act-h{text-align:right}
+@media (max-width:1100px){.att-thead.cl-cols{display:none}.att-row.cl-cols{grid-template-columns:1fr 1fr}.cl-act{justify-content:flex-start}}

@@ -1647,9 +1647,9 @@
         </div>
 
         <div class="att-panel">
-          <div class="c129">Cleaning sessions <span class="c100">— scheduled window · observed at the cameras · PPE results · supervisor confirmation</span></div>
+          <div class="c129">Cleaning sessions</div>
           <div class="att-thead cl-cols">
-            <span>SESSION</span><span>AREA</span><span>SCHEDULED</span><span>OBSERVED</span><span>PPE DURING CLEANING</span><span>CONFIRMATION</span><span></span>
+            <span>SESSION</span><span>AREA</span><span>STATUS</span><span>OBSERVED</span><span>PPE DURING CLEANING</span><span>CONFIRMATION</span><span class="cl-act-h">ACTION</span>
           </div>
           <sc-for list="{{ clSessions }}" as="s" hint-placeholder-count="5">
             <div class="att-row cl-cols">
@@ -1659,7 +1659,7 @@
               <div class="att-loc" style="color:{{ s.observedCol }}">{{ s.observed }}</div>
               <div class="att-loc" style="color:{{ s.ppeCol }}">{{ s.ppe }}</div>
               <div><div class="att-status" style="color:{{ s.confCol }}">{{ s.conf }}</div><div class="att-attrs">{{ s.note }}</div></div>
-              <div class="att-unk-btns">
+              <div class="att-unk-btns cl-act">
                 <sc-if value="{{ s.canConfirm }}" hint-placeholder-val="{{ true }}">
                   <button class="c185 chip" onClick="{{ s.onDone }}">Cleaned</button>
                   <button class="c185 chip" onClick="{{ s.onNotDone }}">Not done</button>

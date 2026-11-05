@@ -3959,7 +3959,7 @@ class Component extends DCLogic {
         name:s.name, when:s.date+' · '+String(s.start).slice(11,16)+'–'+String(s.end).slice(11,16),
         where:[s.location].filter(Boolean).join(' · '), req:'Requires '+s.items.map(clItem).join(', '),
         state:stt[0], stateCol:stt[1],
-        observed:(s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'no camera mapped to this area')
+        observed:(s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'No camera mapped')
           +((Number(s.activity)||0)?(' · cleaning activity detected ×'+(Number(s.activity)||0)):''),   // Workstream C (Behaviour Analytics)
         observedCol:!s.cameras?'var(--high)':(s.state==='ended'&&!s.detections?'var(--high)':'var(--text2)'),
         ppe:s.checks?(s.checks+' checked · '+s.violations+' violation'+(s.violations===1?'':'s')+' · '+comp+'%'):'no PPE checks',
