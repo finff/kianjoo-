@@ -2322,7 +2322,7 @@ class Component extends DCLogic {
       day:pct(m.day&&m.day.precision)+' / '+pct(m.day&&m.day.recall), night:pct(m.night&&m.night.precision)+' / '+pct(m.night&&m.night.recall),
       onPick:()=>this.setAipF({module:af.module===m.module?'':m.module})}));
     const aipPerRows=(ad.periods||[]).map(p=>({label:p.label, ...mRow(p)}));
-    const aipCamRows=(ad.cameras||[]).slice(0,60).map(c=>({name:c.name, sub:[c.location, c.plant, c.camera].filter(Boolean).join(' · '), label:c.label, ...mRow(c)}));
+    const aipCamRows=(ad.cameras||[]).slice(0,60).map(c=>({name:c.name, sub:[c.location, c.camera].filter(Boolean).join(' · '), label:c.label, ...mRow(c)}));
     const fc=ad.face||{}, bins=fc.bins||[], bMax=Math.max(1,...bins.map(b=>b.count));
     const aipSimBars=bins.map(b=>({label:b.range+'%', value:String(b.count), w:Math.round(100*b.count/bMax)+'%',
       col:/^(9|95)/.test(b.range)?'var(--ok)':(/^(85|80)/.test(b.range)?'var(--gold)':'var(--high)')}));
@@ -2693,8 +2693,8 @@ class Component extends DCLogic {
       face:{name:'Face & Body Attribute', desc:'Identity match and body-attribute analysis', tag:'FACE', col:'var(--low)', model:'FaceAttr · v4.0', classes:['Face match','Gender','Age band','Clothing color']},
     };
     const titles={
-      overview:['AI Factory Monitoring Dashboard','Real-time monitoring of people, safety and operations across all plants'],
-      camdash:['Camera Dashboard','Fleet health, detections and coverage across all plants'],
+      overview:['AI Factory Monitoring Dashboard','Real-time monitoring of people, safety and operations'],
+      camdash:['Camera Dashboard','Fleet health, detections and coverage'],
       live:['Live Feeds','Live camera wall with real-time detections'],
       employees:['Employees','Employee directory and registration'],
       movement:['Movement Log','Employee movement from one camera to another'],
@@ -3788,7 +3788,7 @@ class Component extends DCLogic {
       return {
         photoBg:r.photo?`url('${r.photo}') center/cover no-repeat`:grad,
         name:r.name||'—', staff:r.staffId?('Staff ID '+r.staffId):'',
-        org:[r.department,r.plant].filter(Boolean).join(' · ')||'—',
+        org:[r.department].filter(Boolean).join(' · ')||'—',
         shift:r.shift+' '+r.shiftStart+'–'+r.shiftEnd,
         clockIn:hm(r.clockIn), inLoc:r.clockIn?((r.clockInLoc||'')+(r.clockInSrc==='kiosk'?' · kiosk':'')):'',
         clockOut:hm(r.clockOut), outLoc:r.clockOutLoc||'',
@@ -3801,7 +3801,7 @@ class Component extends DCLogic {
     const regRecent=(regD.recent||[]).slice(0,14).map(e=>({
       time:hm(e.time), who:e.known?(e.name+(e.staffId?(' · '+e.staffId):'')):('Unknown #'+e.personId),
       whoCol:e.known?'var(--text)':'var(--high)',
-      where:[e.plant,e.location].filter(Boolean).join(' · ')+' · '+(e.source==='kiosk'?'kiosk':'CCTV'),
+      where:[e.location].filter(Boolean).join(' · ')+' · '+(e.source==='kiosk'?'kiosk':'CCTV'),
       conf:e.similarity?(String(e.similarity).indexOf('.')>=0&&Number(e.similarity)<=1?Math.round(Number(e.similarity)*100)+'%':e.similarity):'',
       tag:e.role==='movement'?'movement':'clock point',
       thumb:e.image?`url('${e.image}') center/cover no-repeat`:grad,
@@ -3954,7 +3954,7 @@ class Component extends DCLogic {
       const comp=s.checks?Math.round(100*(s.checks-s.violations)/s.checks):null;
       return {
         name:s.name, when:s.date+' · '+String(s.start).slice(11,16)+'–'+String(s.end).slice(11,16),
-        where:[s.plant, s.location].filter(Boolean).join(' · '), req:'Requires '+s.items.map(clItem).join(', '),
+        where:[s.location].filter(Boolean).join(' · '), req:'Requires '+s.items.map(clItem).join(', '),
         state:stt[0], stateCol:stt[1],
         observed:(s.cameras?(s.detections+' detection'+(s.detections===1?'':'s')+' at the area'):'no camera mapped to this area')
           +((Number(s.activity)||0)?(' · cleaning activity detected ×'+(Number(s.activity)||0)):''),   // Workstream C (Behaviour Analytics)
@@ -3969,7 +3969,7 @@ class Component extends DCLogic {
     const clViol=(cd.violations||[]).map(v=>({
       thumb:v.image?`url('${v.image}') center/cover no-repeat`:grad,
       missing:'No '+v.missing.map(i=>clItem(i).replace('Safety ','').toLowerCase()).join(', '),
-      session:v.schedule||'', where:[v.plant, v.location].filter(Boolean).join(' · '), cam:v.camera,
+      session:v.schedule||'', where:[v.location].filter(Boolean).join(' · '), cam:v.camera,
       time:String(v.time).slice(0,16),
       onOpen:()=>{ if(v.image) this.openLightbox(v.image, 'PPE violation during cleaning · '+v.location+' · '+String(v.time).slice(0,16)); },
     }));
@@ -4020,7 +4020,7 @@ class Component extends DCLogic {
       title:d.date+' · '+d.violation+' unauthorized · '+d.review+' review · '+(d.authorized+d.outside_hours)+' cleared',
       vH:Math.round(100*d.violation/raMax)+'%', rH:Math.round(100*d.review/raMax)+'%', aH:Math.round(100*(d.authorized+d.outside_hours)/raMax)+'%',
       v:(d.violation+d.review)?String(d.violation+d.review):''}));
-    const raByZone=(rd.byZone||[]).map(z=>({zone:z.zone, sub:[z.plant, z.camera].filter(Boolean).join(' · '),
+    const raByZone=(rd.byZone||[]).map(z=>({zone:z.zone, sub:[z.camera].filter(Boolean).join(' · '),
       line:z.violation+' unauthorized · '+z.review+' review · '+(z.authorized+z.outside_hours)+' cleared',
       col:z.violation?'var(--crit)':(z.review?'var(--gold)':'var(--ok)'),
       onClick:()=>this.setRaF({camera:rf.camera===z.camera?'':z.camera})}));
@@ -4029,7 +4029,7 @@ class Component extends DCLogic {
       return {
         thumb:i.image?`url('${i.image}') center/cover no-repeat`:grad,
         verdict:vv[0], vCol:vv[1], zone:i.zone||i.camera,
-        where:[i.plant, i.location].filter(Boolean).join(' · '), cam:i.camera+(i.policy?(' · '+i.policy):''),
+        where:[i.location].filter(Boolean).join(' · '), cam:i.camera+(i.policy?(' · '+i.policy):''),
         time:String(i.time).slice(0,16), who:i.name?(i.name+(i.staffId?(' · '+i.staffId):'')):(i.personId?('Unknown #'+i.personId):'Unidentified person'),
         reason:i.reason, status:'Alert: '+(i.status||'open')+(i.reviewedBy?(' · reviewed by '+i.reviewedBy):'')+(i.note?(' — '+i.note):''),
         canConfirm:open && i.verdict==='review', canClear:open && (i.verdict==='review'||i.verdict==='violation'),
@@ -4111,7 +4111,7 @@ class Component extends DCLogic {
     const ppeViol=(pd.violations||[]).map(v=>({
       thumb:v.image?`url('${v.image}') center/cover no-repeat`:grad,
       missing:'No '+v.missing.map(i=>itemLabel(i).replace('Safety ','').toLowerCase()).join(', '),
-      where:[v.plant, v.location].filter(Boolean).join(' · '), cam:v.camera+(v.device&&v.device.toUpperCase()!==v.camera?(' · '+v.device):''),
+      where:[v.location].filter(Boolean).join(' · '), cam:v.camera+(v.device&&v.device.toUpperCase()!==v.camera?(' · '+v.device):''),
       time:String(v.time).slice(0,16).replace('T',' '),
       unchecked:v.unchecked&&v.unchecked.length?('not checked: '+v.unchecked.map(i=>itemLabel(i).replace('Safety ','').toLowerCase()).join(', ')):'',
       onOpen:()=>{ if(v.image) this.openLightbox(v.image, 'PPE violation · '+v.location+' · '+String(v.time).slice(0,16)); },
@@ -4232,7 +4232,7 @@ class Component extends DCLogic {
       absent:['ABSENT','var(--crit)',tint.crit], off:['OFF DAY','var(--text3)',tint.muted]};
     const ovFaces=(Array.isArray(ov.recognized)?ov.recognized:[]).slice(0,6).map(r=>{ const s=FSTAT[r.status]||FSTAT.present;
       return {bg:thumbOf(r.image), time:hms(r.time), name:r.name||('#'+r.personId),
-        loc:[r.plant, r.location].filter(Boolean).join(' · ')||'—', status:s[0], statusCol:s[1], statusBg:s[2],
+        loc:[r.location].filter(Boolean).join(' · ')||'—', status:s[0], statusCol:s[1], statusBg:s[2],
         onOpen:()=>{ if(r.image) this.openLightbox(r.image, (r.name||'')+' · '+(r.location||'')+' · '+hms(r.time)); }}; });
     // PPE tiles (today's violations per missing item)
     const pb=opp.byItem||{};
@@ -4245,11 +4245,11 @@ class Component extends DCLogic {
     // Restricted / forklift recent lists
     const ovRa=(Array.isArray(ora.recent)?ora.recent:[]).slice(0,3).map(r=>{ const pl=pill(r.severity);
       return {thumb:thumbOf(r.image), title:r.verdictLabel||(r.verdict==='review'?'Needs review':'Unauthorized entry'),
-        sub:[r.plant, r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
+        sub:[r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
         pill:pl[0], pillCol:pl[1], pillBg:pl[2], onOpen:()=>this.setPage('intr')}; });
     const ovFk=(Array.isArray(ofk.recent)?ofk.recent:[]).slice(0,3).map(r=>{ const pl=pill(r.severity);
       return {thumb:thumbOf(r.image), title:r.verdictLabel||({violation:'Zone violation', logged:'Forklift detected', cleared:'Cleared'}[r.verdict]||'Forklift event'),
-        sub:[r.plant, r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
+        sub:[r.zone||r.location].filter(Boolean).join(' – ')||r.camera||'', time:String(r.time||'').slice(0,16),
         pill:pl[0], pillCol:pl[1], pillBg:pl[2], onOpen:()=>this.setPage('forklift')}; });
     const ovFkStats={today:fmtN(ofk.today), violations:fmtN(ofk.violationsToday), violCol:N(ofk.violationsToday)?'var(--crit)':'var(--text)'};
     // Cleaning card
@@ -4433,13 +4433,13 @@ class Component extends DCLogic {
           liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
           onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
     const cxAttention=[
-      ...cxCams.filter(c=>!c.online).map(c=>({name:c.name, sub:[c.plant, c.loc||c.zone||c.id].filter(Boolean).join(' · ')+' · not reachable', pill:'Offline', pillCol:'var(--crit)', pillBg:tint.crit, onClick:c.onOpen})),
+      ...cxCams.filter(c=>!c.online).map(c=>({name:c.name, sub:[c.loc||c.zone||c.id].filter(Boolean).join(' · ')+' · not reachable', pill:'Offline', pillCol:'var(--crit)', pillBg:tint.crit, onClick:c.onOpen})),
       ...cxCams.filter(c=>c.online&&!c.det).map(c=>({name:c.name, sub:(c.loc||c.id)+' · no detections in 24 h', pill:'Silent', pillCol:'#B45309', pillBg:tint.gold, onClick:c.onOpen})),
       ...cxCams.filter(c=>!c.loc).map(c=>({name:c.name, sub:c.id+' · not mapped to a camera point', pill:'Unmapped', pillCol:'var(--text3)', pillBg:tint.muted, onClick:goPoc})),
     ].slice(0,10);
     const MODLBL={fire:'Fire',ppe:'PPE',intr:'Intrusion',face:'Face',forklift:'Forklift',behaviour:'Behaviour'};
     const cxRows=cxCams.slice().sort((a,b)=>(a.online-b.online)||(b.det-a.det)).map(c=>({
-      name:c.name, id:c.id, where:[c.plant, c.loc].filter(Boolean).join(' · ')||(c.zone||'—'),
+      name:c.name, id:c.id, where:[c.loc].filter(Boolean).join(' · ')||(c.zone||'—'),
       mods:c.mods.map(m=>({label:MODLBL[m]||m, bg:(this.MODS[m]||{}).tagBg||'var(--text3)'})), modsEmpty:!c.mods.length,
       status:c.statusLabel, statusCol:c.online?'var(--ok)':'var(--crit)', statusBg:c.online?tint.ok:tint.crit,
       det:fmtN(c.det), open:fmtN(c.open), openCol:c.open?'var(--crit)':'var(--text2)', last:c.last?this.ago(c.last):'—',
@@ -4489,7 +4489,7 @@ class Component extends DCLogic {
     const behExc=(bhd.exceptions||[]).map(i=>{ const kk=BEHK[i.kind]||[String(i.kind||'').toUpperCase(),'var(--text3)'], vv=BEHV[i.verdict]||BEHV.detected;
       const isAbn=i.kind==='abnormal';
       return {thumb:thumbOf(i.image), kind:(isAbn?(i.sub==='fight'?'ABNORMAL: FIGHTING':'ABNORMAL: PERSON FALL'):kk[0]), kCol:kk[1],
-        sub:(BEHSUB[i.sub]||i.sub)+' · '+(BEHSRC[i.source]||i.source), where:[i.plant, i.location||i.camera].filter(Boolean).join(' · '),
+        sub:(BEHSUB[i.sub]||i.sub)+' · '+(BEHSRC[i.source]||i.source), where:[i.location||i.camera].filter(Boolean).join(' · '),
         time:String(i.start||'').slice(0,16)+(i.durMin?(' · '+i.durMin+' min'):'')+(i.persons>1?(' · '+i.persons+' people'):''),
         reason:i.reason||'', verdict:vv[0]+(i.reviewedBy?(' · '+i.reviewedBy):'')+(i.note?(' — '+i.note):''), vCol:vv[1],
         canConfirm:i.verdict!=='confirmed', canClear:i.verdict!=='false_alarm',
@@ -4575,7 +4575,7 @@ class Component extends DCLogic {
         vH:Math.round(100*v/fkMax)+'%', lH:Math.round(100*l/fkMax)+'%', v:N(x.detections)?String(N(x.detections)):''}; });
     const fkZMax=Math.max(1, ...(fkd.byZone||[]).map(z=>N(z.detections)));
     const FKRULE={prohibited:'prohibited', restricted:'restricted hours', forklift_only:'forklift only — no pedestrians'};
-    const fkByZone=(fkd.byZone||[]).map(z=>({zone:z.zone||z.camera, sub:[z.plant, z.camera, FKRULE[z.rule]].filter(Boolean).join(' · '),
+    const fkByZone=(fkd.byZone||[]).map(z=>({zone:z.zone||z.camera, sub:[z.camera, FKRULE[z.rule]].filter(Boolean).join(' · '),
       line:N(z.violations)+' violations · '+N(z.detections)+' detections', w:Math.round(100*N(z.detections)/fkZMax)+'%',
       split:N(z.forklifts)+' forklift · '+N(z.pedestrians)+' pedestrian · '+N(z.operators)+' operator detections'
         +(N(z.pedViolations)?(' · '+N(z.pedViolations)+' pedestrian intrusions'):'')+(N(z.opViolations)?(' · '+N(z.opViolations)+' operator PPE'):''),
@@ -4589,7 +4589,7 @@ class Component extends DCLogic {
         kindLabel:(fkd.kinds||{})[i.kind]||(i.kind==='pedestrian'?'Pedestrian':(i.kind==='operator'?'Forklift operator':'Forklift detection')),
         opLine:i.opPpe==='missing'?('Operator PPE: missing '+(i.opMissing||[]).map(fkItemLbl).join(', ')):(i.opPpe==='ok'?'Operator PPE: compliant':(i.opPpe==='unknown'?'Operator PPE: not reported by model':'')),
         opCol:i.opPpe==='missing'?'var(--crit)':(i.opPpe==='ok'?'var(--ok)':'var(--text3)'),
-        where:[i.plant, i.location].filter(Boolean).join(' · '), cam:(i.camera||'')+(i.policy?(' · '+i.policy):'')+(i.rule?(' · '+(FKRULE[i.rule]||i.rule)):''),
+        where:[i.location].filter(Boolean).join(' · '), cam:(i.camera||'')+(i.policy?(' · '+i.policy):'')+(i.rule?(' · '+(FKRULE[i.rule]||i.rule)):''),
         time:String(i.time||'').slice(0,16), reason:i.reason||'',
         status:'Alert: '+(i.status||'open')+(i.reviewedBy?(' · reviewed by '+i.reviewedBy):'')+(i.note?(' — '+i.note):''),
         canConfirm:i.verdict==='logged'||i.verdict==='cleared', canClear:i.verdict==='violation'||i.verdict==='logged',

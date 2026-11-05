@@ -1847,3 +1847,6 @@ div:has(> .poc-cam) > :not(.poc-cam){grid-column:1/-1}
 .mv-search{min-width:200px}
 .mv-route{grid-template-columns:minmax(0,260px) 1fr auto}
 @media (max-width:900px){.att-thead.mv-cols{display:none}.att-row.mv-cols{grid-template-columns:1fr 1fr}.mv-arrow{display:none}}
+
+/* Employees table without the plant column */
+.att-thead.emp-cols,.att-row.emp-cols{grid-template-columns:2fr 1.1fr 1.3fr .7fr auto}
