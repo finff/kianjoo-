@@ -673,6 +673,19 @@ final class EventStore
                 'image'   => $this->fullUrl($r['trigger_img_url'] ?? null),
             ];
         }
+        // Totals cover the whole 24 h window; only the list is capped at $limit.
+        $cnt = $this->pdo->prepare(
+            "SELECT a.value_name, COUNT(*) AS n
+             FROM event_attributes a
+             JOIN events e ON e.id = a.event_id
+             WHERE a.feature_name = 'WithReflectiveVest' AND e.received_at >= :f
+             GROUP BY a.value_name"
+        );
+        $cnt->execute(['f' => $from]);
+        $wearing = $missing = 0;
+        foreach ($cnt->fetchAll() as $c) {
+            $c['value_name'] === 'ReflectiveVest' ? $wearing += (int) $c['n'] : $missing += (int) $c['n'];
+        }
         $total = $wearing + $missing;
         return [
             'wearing' => $wearing,
