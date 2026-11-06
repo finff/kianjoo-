@@ -48,7 +48,24 @@ final class RelayHub
      *
      * @return string '' when frames were served, else the last camera error
      */
-    public function serve(callable $out, int $maxSeconds = 240): string
+    /** Viewers allowed at once across all streams: each one holds a PHP worker. */
+    public const MAX_VIEWERS = 4;
+
+    /** True when another viewer may join without starving the site's PHP workers. */
+    public function hasCapacity(): bool
+    {
+        $n = 0;
+        $now = time();
+        foreach (glob($this->dir . '/*.c.*') ?: [] as $f) {
+            $m = @filemtime($f);
+            if ($m !== false && $now - $m <= self::IDLE_STOP_S) {
+                $n++;
+            }
+        }
+        return $n < self::MAX_VIEWERS;
+    }
+
+    public function serve(callable $out, int $maxSeconds = 75): string
     {
         $me    = $this->dir . '/' . $this->name . '.c.' . bin2hex(random_bytes(4));
         $start = time();

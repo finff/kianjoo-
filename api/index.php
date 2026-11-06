@@ -2672,6 +2672,11 @@ try {
             // be answered as a JSON error instead of an empty 200.
             $started = false;
             $hub = new RelayHub(LiveBridge::storageDir($config), $name, $src);
+            if (!$hub->hasCapacity()) {
+                // Too many open streams: refuse rather than tie up every PHP
+                // worker; the player falls back to camera snapshots.
+                Response::error('Live relay busy — showing snapshots.', 503);
+            }
             $err = $hub->serve(static function (string $rec) use (&$started): bool {
                 if (connection_aborted()) {
                     return false;
@@ -2688,7 +2693,7 @@ try {
                 echo $rec;
                 @flush();
                 return !connection_aborted();
-            }, max(30, min(600, (int) ($_GET['max'] ?? 240))));
+            }, max(30, min(180, (int) ($_GET['max'] ?? 75))));
             if (!$started) {
                 Response::error('Live relay: ' . ($err !== '' ? $err : 'no video from camera'), 502);
             }

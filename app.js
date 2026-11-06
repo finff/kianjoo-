@@ -330,12 +330,18 @@ class Component extends DCLogic {
   relayStop(v){
     const c=v&&v._relay; if(!c) return;
     c.stopped=true; v._relay=null;
+    if(this._relayActive && c.stream && this._relayActive[c.stream]===c) delete this._relayActive[c.stream];
     try{ c.ab&&c.ab.abort(); }catch(e){}
     try{ c.jm&&c.jm.destroy(); }catch(e){}
   }
   relayStart(v, stream, onState){
     this.relayStop(v);
-    const c={stopped:false, jm:null, ab:null, fails:0, frames:0}; v._relay=c;
+    // One open relay per camera: a newer player (page change, re-render) takes
+    // over and the older connection is closed instead of lingering on the server.
+    this._relayActive=this._relayActive||{};
+    const prev=this._relayActive[stream];
+    if(prev && !prev.stopped){ prev.stopped=true; try{ prev.ab&&prev.ab.abort(); }catch(e){} try{ prev.jm&&prev.jm.destroy(); }catch(e){} if(prev.v&&prev.v._relay===prev) prev.v._relay=null; }
+    const c={stopped:false, jm:null, ab:null, fails:0, frames:0, stream, v}; v._relay=c; this._relayActive[stream]=c;
     v.muted=true; v.playsInline=true;
     const giveUp=()=>{ if(c.stopped) return; this.relayStop(v);
       (this._relayFail=this._relayFail||{})[stream]=Date.now();     // tiles drop back to camera snapshots
@@ -350,6 +356,7 @@ class Component extends DCLogic {
       c.ab=(typeof AbortController!=='undefined')?new AbortController():null;
       fetch(this.liveApiUrl('/live/relay?stream='+encodeURIComponent(stream)), {cache:'no-store', signal:c.ab?c.ab.signal:undefined})
         .then(r=>{
+          if(r.status===503){ giveUp(); return; }            // server busy → snapshots, retry live in a minute
           if(!r.ok || !r.body) throw new Error('HTTP '+r.status);
           const rd=r.body.getReader(); let buf=new Uint8Array(0);
           const pump=()=>rd.read().then(({done, value})=>{
