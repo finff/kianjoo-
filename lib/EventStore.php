@@ -37,6 +37,11 @@ final class EventStore
         if (preg_match('#^https?://#i', $path)) {
             return $path;
         }
+        // Photos uploaded to the dashboard itself (employee profile pictures)
+        // are served by this site, never by SenseStudio.
+        if (preg_match('#^/?uploads/#i', $path)) {
+            return '/' . ltrim($path, '/');
+        }
         if ($this->imageBase === '') {
             return $path;
         }
