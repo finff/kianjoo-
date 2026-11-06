@@ -1657,6 +1657,9 @@ try {
                     }
                 }
                 $out['ppe_rules'] = (object) $rules;
+                // New / changed rules: re-check the last 30 days of detections
+                // (already-checked events are skipped, so nothing double-counts).
+                @unlink(APP_ROOT . '/storage/ppe_cursor.json');
             }
             // Restricted zones: {stream key → {enabled, name, hours, staff[], depts[]}}.
             if (isset($in['ra_zones']) && is_array($in['ra_zones'])) {
