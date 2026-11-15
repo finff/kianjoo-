@@ -1761,7 +1761,13 @@ body{font-variant-numeric:tabular-nums}
 /* Top bar: keep the search box usable and the icon buttons whole when space runs short —
    the page title truncates first, then the date hides (≤1380px), then the search narrows to 170px. */
 .c25 .c51,.c25 .c53,.c25 .c54,.c25 .kj-tb-bell{flex-shrink:0}
-@media (min-width:769px){.c25 .c31{min-width:170px}}
+@media (min-width:769px){
+  .c25 .c31{min-width:170px}
+  /* The title + hub tabs give up the space (tabs scroll sideways); the controls on
+     the right always stay fully on screen. */
+  .c25 .c26{flex:1 1 0}
+  .c25 .c44{flex-shrink:0!important}
+}
 @media (min-width:769px) and (max-width:1100px){.c25 .c31{min-width:130px}.c25 .c34{display:none}}
 @media (max-width:1500px){.c25 .tb-sub{display:none}}
 .c207>*{min-width:0;max-width:100%}
