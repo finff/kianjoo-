@@ -113,8 +113,10 @@ $config = [
         'password' => Env::get('MAIL_PASSWORD', ''),
         'from'     => Env::get('MAIL_FROM_ADDRESS', ''),
         'from_name'=> Env::get('MAIL_FROM_NAME', 'Kian Joo VisionAI'),
-        'to'       => array_filter(array_map('trim', explode(',', Env::get('MAIL_TO', '')))),
+        'to'       => Env::get('MAIL_TO', ''),   // parsed into a validated list by MailSettings::apply()
         'cooldown' => max(1, (int) Env::get('MAIL_COOLDOWN_MIN', '5')),
+        // System email switch: false = every alert / report / ticket email is a no-op.
+        'enabled'  => Env::bool('MAIL_ENABLED', true),
     ],
     'forward' => [
         'firebase_base' => rtrim(Env::get('FORWARD_FIREBASE_BASE', ''), '/'),
@@ -122,28 +124,20 @@ $config = [
 ];
 
 // Runtime alert-settings overlay, edited from the dashboard's Alert Rules page
-// (POST /api/alerts → storage/alert_settings.json). Overrides the .env defaults.
+// (POST /api/alerts) and Settings › System email (POST /api/mail/settings) →
+// storage/alert_settings.json. Overrides the .env defaults; the mail_* keys
+// (host, port, scheme, username, password, from, enabled) + mail_to /
+// cooldown_min are merged by MailSettings::apply() (records mail.source).
+require_once APP_ROOT . '/lib/MailSettings.php';
 $overlayFile = APP_ROOT . '/storage/alert_settings.json';
-if (is_file($overlayFile)) {
-    $o = json_decode((string) file_get_contents($overlayFile), true);
-    if (is_array($o)) {
-        foreach (['min_severity', 'always_mods', 'intr_armed', 'mods_enabled', 'email_enabled'] as $k) {
-            if (array_key_exists($k, $o)) {
-                $config['alerts'][$k] = $o[$k];
-            }
-        }
-        if (isset($o['mail_to'])) {
-            $to = is_array($o['mail_to']) ? $o['mail_to'] : explode(',', (string) $o['mail_to']);
-            $to = array_values(array_filter(array_map('trim', $to)));
-            if ($to) {
-                $config['mail']['to'] = $to;
-            }
-        }
-        if (isset($o['cooldown_min'])) {
-            $config['mail']['cooldown'] = max(1, (int) $o['cooldown_min']);
-        }
+$o = is_file($overlayFile) ? json_decode((string) file_get_contents($overlayFile), true) : null;
+$o = is_array($o) ? $o : [];
+foreach (['min_severity', 'always_mods', 'intr_armed', 'mods_enabled', 'email_enabled'] as $k) {
+    if (array_key_exists($k, $o)) {
+        $config['alerts'][$k] = $o[$k];
     }
 }
+$config['mail'] = MailSettings::apply($config['mail'], $o);
 
 // App-settings overlay, edited from the dashboard's Settings page
 // (POST /api/settings → storage/app_settings.json). SenseTime API config,
@@ -200,33 +194,45 @@ $config['live']['rtsp'] = LiveBridge::mergeSources(
     $config['live']['rtsp'],
     is_array($app['live_rtsp'] ?? null) ? $app['live_rtsp'] : []
 );
-// AI source: 'weststar' (default, api.weststar-ai.com middleware) or 'anthropic'
-// (direct Claude API — needs anthropic_key) or 'off'.
-$config['ai']['source']          = in_array($app['ai_source'] ?? '', ['weststar', 'anthropic', 'off'], true)
-    ? $app['ai_source'] : (Env::get('AI_SOURCE', 'weststar'));
-$config['ai']['anthropic_key']   = (string) ($app['anthropic_key'] ?? Env::get('ANTHROPIC_API_KEY', ''));
-$config['ai']['anthropic_model'] = (string) ($app['anthropic_model'] ?? Env::get('ANTHROPIC_MODEL', 'claude-opus-4-8'));
-// In-dashboard assistant: a Weststar AI agent (RAG over the SenseStudio /
-// Kian Joo docs, plus live detections through its http tool → /api/ai/*).
-$config['ai']['agent_base'] = rtrim((string) ($app['agent_base'] ?? Env::get('WESTAR_AI_AGENT_BASE', 'https://api.weststar-ai.com/v1/agents')), '/');
-$config['ai']['agent_id']   = (string) ($app['agent_id'] ?? Env::get('WESTAR_AI_AGENT_ID', ''));
-$config['ai']['agent_key']  = (string) ($app['agent_key'] ?? Env::get('WESTAR_AI_KEY', ''));
-// Which LLM answers the in-dashboard assistant. Exactly one is active;
-// 'weststar' (the agent, with retrieval + live-data tools) is the default.
-$config['ai']['provider']     = in_array($app['llm_provider'] ?? '', ['weststar', 'anthropic', 'gemini', 'openai'], true)
-    ? (string) $app['llm_provider'] : Env::get('LLM_PROVIDER', 'weststar');
+// AI layer (M8): every AI feature goes through lib/Claude.php — the old
+// 'weststar' middleware path is retired ("weststar ai replace with claude").
+// source: 'claude' (default) or 'off'. Legacy values 'weststar' / 'anthropic'
+// saved by the old Settings page resolve to 'claude'.
+$config['ai']['source'] = (($app['ai_source'] ?? Env::get('AI_SOURCE', 'claude')) === 'off') ? 'off' : 'claude';
+// Server-side only — never exposed to the browser.
+$config['ai']['claude_key'] = (string) (Env::get('CLAUDE_API_KEY', '') ?: Env::get('ANTHROPIC_API_KEY', '') ?: ($app['anthropic_key'] ?? ''));
+$config['ai']['anthropic_key']   = $config['ai']['claude_key'];          // legacy alias (settings page reads it masked)
+$config['ai']['anthropic_model'] = 'claude-sonnet-5-5';                   // informational; routing lives in Claude::ROUTES
+$config['ai']['provider']        = 'claude';
+// Retired Weststar AI middleware: no forwarding, no remote reviews/analytics.
+$config['ai']['base']    = '';
+$config['ai']['forward'] = false;
+$config['ai']['agent_base'] = '';
+$config['ai']['agent_id']   = '';
+$config['ai']['agent_key']  = '';
+// M9 PPE-forklift pipeline (lib/PpeForkliftPipeline.php).
+$config['ai']['pipeline'] = [
+    'enabled'        => !in_array($app['ai_pipeline_enabled'] ?? Env::get('AI_PIPELINE_ENABLED', '1'), ['0', 0, false, 'false', 'off'], true),
+    'rate_sec'       => max(60, (int) ($app['ai_pipeline_rate_sec'] ?? Env::get('AI_PIPELINE_RATE_SEC', '60'))),
+    'gap_sec'        => max(60, (int) ($app['ai_pipeline_gap_sec'] ?? Env::get('AI_PIPELINE_GAP_SEC', '600'))),
+    'max_reviews'    => max(1, min(30, (int) ($app['ai_pipeline_max_reviews'] ?? Env::get('AI_PIPELINE_MAX_REVIEWS', '6')))),
+    'max_age_sec'    => max(300, (int) Env::get('AI_PIPELINE_MAX_AGE_SEC', '1800')),
+    'min_confidence' => (float) ($app['ai_pipeline_min_confidence'] ?? Env::get('AI_PIPELINE_MIN_CONFIDENCE', '0.6')),
+    'zone_only'      => null,   // auto: only forklift-zone cameras when zones are configured
+];
 $config['ai']['storage_dir'] = APP_ROOT . '/storage';
-$config['ai']['gemini_key']   = (string) ($app['gemini_key'] ?? Env::get('GEMINI_API_KEY', ''));
-$config['ai']['gemini_model'] = (string) ($app['gemini_model'] ?? Env::get('GEMINI_MODEL', ''));
-$config['ai']['openai_key']   = (string) ($app['openai_key'] ?? Env::get('OPENAI_API_KEY', ''));
-$config['ai']['openai_model'] = (string) ($app['openai_model'] ?? Env::get('OPENAI_MODEL', 'gpt-4o-mini'));
+// VisionAI camera monitors (lib/MonitorScanner.php): env MONITOR_* defaults,
+// app_settings monitor_settings (global scan settings) + cam_monitors (per camera) override.
+require_once APP_ROOT . '/lib/Monitors.php';
+$config['monitor'] = Monitors::configFrom($app);
+$config['ai']['gemini_key']   = '';   // retired provider (Claude only)
+$config['ai']['gemini_model'] = '';
+$config['ai']['openai_key']   = '';   // retired provider (Claude only)
+$config['ai']['openai_model'] = '';
 // Notification routing (escalation-matrix targets), Settings-page managed.
 // Each accepts a comma list; empty falls back to the base MAIL_TO recipients.
-$emails = static function ($v): array {
-    $to = is_array($v) ? $v : explode(',', (string) $v);
-    return array_values(array_filter(array_map('trim', $to),
-        static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL)));
-};
+// Comma / semicolon / whitespace separated, validated + deduped (Mailer::parseList).
+$emails = static fn ($v): array => Mailer::parseList($v, 30);
 $config['routing'] = [
     'tmforce'    => $emails($app['email_tmforce'] ?? Env::get('EMAIL_TMFORCE', '')),
     'soc'        => $emails($app['email_soc'] ?? Env::get('EMAIL_SOC', '')),
@@ -449,9 +455,7 @@ $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)
         ? $app['report_frequency'] : 'off',
     'hour'       => max(0, min(23, (int) ($app['report_hour'] ?? 8))),
-    'recipients' => array_values(array_filter(array_map('trim',
-        is_array($app['report_recipients'] ?? null) ? $app['report_recipients'] : []),
-        static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL))) ?: ($config['mail']['to'] ?? []),
+    'recipients' => Mailer::parseList($app['report_recipients'] ?? [], 30) ?: ($config['mail']['to'] ?? []),
 ];
 
 // Workstream A: Telegram channel, unattended-alert escalation workflow and

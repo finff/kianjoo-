@@ -6,6 +6,7 @@
  * via GET/POST /api/notify/settings) and applied by config/config.php as
  *   $config['telegram']             Bot API channel
  *   $config['escalation']           unattended-alert escalation workflow (L1..L3)
+ *                                   + tickets_email (ticket/leave e-mail mirrors, default on)
  *   $config['alerts']['conditions'] predefined condition rules (Alert Rules page)
  *
  * .env defaults: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (comma list),
@@ -77,6 +78,8 @@ final class NotifySettings
             'min_severity'   => in_array($es['min_severity'] ?? '', self::SEVS, true) ? (string) $es['min_severity'] : 'high',
             'max_age_h'      => max(1, min(168, (int) ($es['max_age_h'] ?? 24))),
             'levels'         => $levels,
+            // Ticket + leave e-mail mirrors (lib/NotifyMail.php). Default ON.
+            'tickets_email'  => array_key_exists('tickets_email', $es) ? (bool) $es['tickets_email'] : true,
         ];
 
         $conditions = [];
@@ -137,6 +140,9 @@ final class NotifySettings
             }
             if (isset($e['max_age_h'])) {
                 $es['max_age_h'] = max(1, min(168, (int) $e['max_age_h']));
+            }
+            if (array_key_exists('tickets_email', $e)) {
+                $es['tickets_email'] = filter_var($e['tickets_email'], FILTER_VALIDATE_BOOLEAN);
             }
             if (isset($e['levels']) && is_array($e['levels'])) {
                 $old = is_array($es['levels'] ?? null) ? array_values($es['levels']) : [];
@@ -236,15 +242,9 @@ final class NotifySettings
     /** @return string[] */
     public static function emailList($v): array
     {
-        $a = is_array($v) ? $v : preg_split('/[\s,;]+/', (string) $v);
-        $out = [];
-        foreach ($a ?: [] as $x) {
-            $x = trim((string) $x);
-            if ($x !== '' && filter_var($x, FILTER_VALIDATE_EMAIL)) {
-                $out[] = $x;
-            }
-        }
-        return array_values(array_unique(array_slice($out, 0, 30)));
+        // Comma / semicolon / whitespace separated (string or list items), validated + deduped.
+        require_once __DIR__ . '/Mailer.php';
+        return Mailer::parseList($v, 30);
     }
 
     private static function clip(string $s, int $n): string

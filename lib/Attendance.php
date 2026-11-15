@@ -310,6 +310,91 @@ final class Attendance
     }
 
     /**
+     * Person-month view (GET /api/attendance/month) — the same daily() rows the
+     * range CSV export uses, as JSON. Days after today are not computed.
+     *
+     * $personId set  → ['person' => profile, 'days' => [full day rows], 'summary' => counts]
+     * $personId null → ['people' => [{profile, shift, days: {date: {status,in,out,inLoc,hours,lateMin}}, summary}]]  (team)
+     * Returns null when $personId is not an enrolled profile.
+     */
+    public function month(string $ym, ?string $personId = null, array $f = []): ?array
+    {
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $ym)) {
+            $ym = date('Y-m');
+        }
+        $from  = $ym . '-01';
+        $last  = date('Y-m-t', strtotime($from) ?: time());
+        $today = date('Y-m-d');
+        $to    = min($last, $today);
+        $profiles = $this->store->personProfiles();
+        if ($personId !== null && !isset($profiles[$personId])) {
+            return null;
+        }
+        $blank = static fn (): array => ['present' => 0, 'late' => 0, 'absent' => 0, 'pending' => 0, 'off' => 0,
+                                         'missingOut' => 0, 'lateMin' => 0, 'hours' => 0.0, 'days' => 0];
+        $people = [];
+        if ($from <= $today) {
+            foreach ($this->range($from, $to, $personId !== null ? [] : $f) as $r) {
+                $pid = (string) $r['personId'];
+                if ($personId !== null && $pid !== $personId) {
+                    continue;
+                }
+                if (!isset($people[$pid])) {
+                    $people[$pid] = ['personId' => $pid, 'name' => $r['name'], 'staffId' => $r['staffId'],
+                                     'department' => $r['department'], 'plant' => $r['plant'], 'photo' => $r['photo'],
+                                     'days' => [], 'summary' => $blank()];
+                }
+                $s = &$people[$pid]['summary'];
+                $s['days']++;
+                $s[$r['status']] = ($s[$r['status']] ?? 0) + 1;
+                $s['lateMin'] += (int) $r['lateMin'];
+                $s['hours']   += (float) ($r['hours'] ?? 0);
+                if (in_array('missing_out', $r['flags'], true)) {
+                    $s['missingOut']++;
+                }
+                unset($s);
+                if ($personId !== null) {
+                    $people[$pid]['days'][] = [
+                        'date' => $r['date'], 'status' => $r['status'], 'shift' => $r['shift'],
+                        'shiftStart' => $r['shiftStart'], 'shiftEnd' => $r['shiftEnd'],
+                        'clockIn' => $r['clockIn'], 'clockInLoc' => $r['clockInLoc'], 'clockInSrc' => $r['clockInSrc'],
+                        'clockOut' => $r['clockOut'], 'clockOutLoc' => $r['clockOutLoc'],
+                        'hours' => $r['hours'], 'lateMin' => $r['lateMin'], 'flags' => $r['flags'], 'plants' => $r['plants'],
+                    ];
+                } else {
+                    $people[$pid]['shift'] ??= $r['shift'];
+                    $people[$pid]['days'][$r['date']] = [
+                        'status' => $r['status'],
+                        'in' => $r['clockIn'] ? substr((string) $r['clockIn'], 11, 5) : '',
+                        'out' => $r['clockOut'] ? substr((string) $r['clockOut'], 11, 5) : '',
+                        'inLoc' => (string) ($r['clockInLoc'] ?? ''), 'hours' => $r['hours'], 'lateMin' => $r['lateMin'],
+                    ];
+                }
+            }
+        }
+        foreach ($people as &$pp) {
+            $pp['summary']['hours'] = round($pp['summary']['hours'], 1);
+            if ($personId === null) {
+                $pp['days'] = (object) $pp['days'];
+            }
+        }
+        unset($pp);
+        $out = ['month' => $ym, 'from' => $from, 'to' => $to, 'last' => $last];
+        if ($personId === null) {
+            usort($people, static fn ($a, $b) => strcmp((string) $a['name'], (string) $b['name']));
+            return $out + ['people' => array_values($people)];
+        }
+        $emp = $profiles[$personId];
+        $one = $people[$personId] ?? ['days' => [], 'summary' => $blank()];
+        return $out + [
+            'person' => ['personId' => $personId, 'name' => $emp['name'], 'staffId' => $emp['staffId'],
+                         'department' => $emp['department'], 'plant' => $emp['plant'], 'photo' => $emp['photo'],
+                         'active' => $emp['active']],
+            'days' => $one['days'], 'summary' => $one['summary'],
+        ];
+    }
+
+    /**
      * Movement report: every sighting in [$from, $to] grouped into visits
      * (consecutive sightings at one location), per person.
      */

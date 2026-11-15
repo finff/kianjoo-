@@ -1,0 +1,156 @@
+/* ==========================================================================
+   Kian Joo VisionAI — design tokens (M1)
+   Light theme first. Dark overrides apply to any subtree carrying
+   data-theme="dark" (the dashboard root .c1 does; KJModal mirrors it).
+   All tokens are prefixed --kj- so they never collide with legacy app.css vars.
+   Reference: docs/plan/FRONTEND_FOUNDATIONS.md
+   ========================================================================== */
+:root,
+[data-theme="light"] {
+  /* ── Palette ─────────────────────────────────────────── */
+  --kj-bg:            #F4F6FA;   /* app canvas */
+  --kj-bg-subtle:     #EEF1F7;   /* inset wells, table head */
+  --kj-surface:       #FFFFFF;   /* cards, modals */
+  --kj-surface-2:     #F8FAFD;   /* nested card / hover row */
+  --kj-border:        #E3E8F0;
+  --kj-border-strong: #CBD3E1;
+
+  --kj-text:          #0F1B33;
+  --kj-text-2:        #4A5672;
+  --kj-text-3:        #8691A8;
+  --kj-text-inverse:  #FFFFFF;
+
+  --kj-primary:       #1E6BF1;
+  --kj-primary-hover: #1559D4;
+  --kj-primary-press: #1048B3;
+  --kj-primary-soft:  #E8F0FE;   /* tinted bg for chips / icon wells */
+  --kj-primary-ring:  rgba(30, 107, 241, .28);
+
+  --kj-navy:          #0B1F3A;
+  --kj-navy-2:        #132B4F;
+
+  --kj-success:       #16A34A;
+  --kj-success-soft:  #E7F7EE;
+  --kj-warn:          #D97706;
+  --kj-warn-soft:     #FEF3E2;
+  --kj-danger:        #DC2626;
+  --kj-danger-soft:   #FDECEC;
+  --kj-info:          #0891B2;
+  --kj-info-soft:     #E3F6FA;
+  --kj-purple:        #7C3AED;
+  --kj-purple-soft:   #F1EBFE;
+  --kj-orange:        #EA580C;
+  --kj-orange-soft:   #FFEFE5;
+
+  --kj-overlay:       rgba(11, 31, 58, .45);   /* modal backdrop */
+  --kj-skeleton:      #E9EDF4;
+  --kj-skeleton-hi:   #F5F7FB;
+
+  /* ── Radius ──────────────────────────────────────────── */
+  --kj-r-xs:   4px;
+  --kj-r-sm:   8px;
+  --kj-r-md:   12px;
+  --kj-r-lg:   16px;
+  --kj-r-xl:   20px;
+  --kj-r-2xl:  28px;
+  --kj-r-full: 999px;
+
+  /* ── Shadow ──────────────────────────────────────────── */
+  --kj-shadow-xs: 0 1px 2px rgba(15, 27, 51, .05);
+  --kj-shadow-sm: 0 1px 3px rgba(15, 27, 51, .06), 0 1px 2px rgba(15, 27, 51, .04);
+  --kj-shadow-md: 0 6px 16px -4px rgba(15, 27, 51, .08), 0 2px 6px rgba(15, 27, 51, .04);
+  --kj-shadow-lg: 0 16px 36px -8px rgba(15, 27, 51, .14), 0 4px 10px rgba(15, 27, 51, .05);
+  --kj-shadow-xl: 0 28px 64px -12px rgba(15, 27, 51, .25);
+  --kj-shadow-focus: 0 0 0 3px var(--kj-primary-ring);
+
+  /* ── Spacing (4px grid) ──────────────────────────────── */
+  --kj-s-0: 0;
+  --kj-s-1: 4px;
+  --kj-s-2: 8px;
+  --kj-s-3: 12px;
+  --kj-s-4: 16px;
+  --kj-s-5: 20px;
+  --kj-s-6: 24px;
+  --kj-s-8: 32px;
+  --kj-s-10: 40px;
+  --kj-s-12: 48px;
+
+  /* ── Typography ──────────────────────────────────────── */
+  --kj-font:      'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --kj-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --kj-fs-2xs: 10.5px;
+  --kj-fs-xs:  11.5px;
+  --kj-fs-sm:  12.5px;
+  --kj-fs-md:  14px;
+  --kj-fs-lg:  16px;
+  --kj-fs-xl:  20px;
+  --kj-fs-2xl: 24px;
+  --kj-fs-3xl: 32px;
+  --kj-fs-4xl: 44px;
+  --kj-fw-regular: 400;
+  --kj-fw-medium:  500;
+  --kj-fw-semi:    600;
+  --kj-fw-bold:    700;
+  --kj-fw-black:   800;
+  --kj-lh-tight: 1.2;
+  --kj-lh-base:  1.5;
+
+  /* ── Motion / layering ───────────────────────────────── */
+  --kj-ease:      cubic-bezier(.2, .8, .2, 1);
+  --kj-dur-fast:  120ms;
+  --kj-dur:       200ms;
+  --kj-dur-slow:  320ms;
+  --kj-z-drawer:  900;
+  --kj-z-modal:   1000;   /* each stacked modal adds +10 */
+  --kj-z-toast:   1200;
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --kj-bg:            #0A1222;
+  --kj-bg-subtle:     #0F1A2E;
+  --kj-surface:       #111C31;
+  --kj-surface-2:     #16233C;
+  --kj-border:        #22314F;
+  --kj-border-strong: #31436A;
+
+  --kj-text:          #E8EDF7;
+  --kj-text-2:        #A9B4CB;
+  --kj-text-3:        #6F7C98;
+  --kj-text-inverse:  #0A1222;
+
+  --kj-primary:       #4C8BFF;
+  --kj-primary-hover: #6A9EFF;
+  --kj-primary-press: #3A78EE;
+  --kj-primary-soft:  rgba(76, 139, 255, .14);
+  --kj-primary-ring:  rgba(76, 139, 255, .35);
+
+  --kj-navy:          #E8EDF7;
+  --kj-navy-2:        #C9D4EA;
+
+  --kj-success:       #34D399;
+  --kj-success-soft:  rgba(52, 211, 153, .14);
+  --kj-warn:          #FBBF24;
+  --kj-warn-soft:     rgba(251, 191, 36, .14);
+  --kj-danger:        #F87171;
+  --kj-danger-soft:   rgba(248, 113, 113, .14);
+  --kj-info:          #22D3EE;
+  --kj-info-soft:     rgba(34, 211, 238, .14);
+  --kj-purple:        #A78BFA;
+  --kj-purple-soft:   rgba(167, 139, 250, .14);
+  --kj-orange:        #FB923C;
+  --kj-orange-soft:   rgba(251, 146, 60, .14);
+
+  --kj-overlay:       rgba(2, 6, 16, .66);
+  --kj-skeleton:      #1A2742;
+  --kj-skeleton-hi:   #22324F;
+
+  --kj-shadow-xs: 0 1px 2px rgba(0, 0, 0, .3);
+  --kj-shadow-sm: 0 1px 3px rgba(0, 0, 0, .35);
+  --kj-shadow-md: 0 6px 16px -4px rgba(0, 0, 0, .45);
+  --kj-shadow-lg: 0 16px 36px -8px rgba(0, 0, 0, .55);
+  --kj-shadow-xl: 0 28px 64px -12px rgba(0, 0, 0, .65);
+
+  color-scheme: dark;
+}

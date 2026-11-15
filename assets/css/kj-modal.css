@@ -1,0 +1,73 @@
+/* ==========================================================================
+   KJModal — typed detail modals (M2). Requires kj-tokens.css + kj-components.css.
+   Stacking: each layer gets .kj-layer-N (N = 0…5) for its z-index.
+   ========================================================================== */
+.kj-modal-layer { position: fixed; inset: 0; z-index: var(--kj-z-modal); display: flex; align-items: center; justify-content: center; padding: var(--kj-s-6); }
+.kj-modal-layer.kj-layer-1 { z-index: calc(var(--kj-z-modal) + 10); }
+.kj-modal-layer.kj-layer-2 { z-index: calc(var(--kj-z-modal) + 20); }
+.kj-modal-layer.kj-layer-3 { z-index: calc(var(--kj-z-modal) + 30); }
+.kj-modal-layer.kj-layer-4 { z-index: calc(var(--kj-z-modal) + 40); }
+.kj-modal-layer.kj-layer-5 { z-index: calc(var(--kj-z-modal) + 50); }
+
+.kj-modal-backdrop { position: absolute; inset: 0; background: var(--kj-overlay); opacity: 0; transition: opacity var(--kj-dur) var(--kj-ease); }
+.kj-modal-layer.is-open .kj-modal-backdrop { opacity: 1; }
+/* Lower layers dim further when another modal stacks on top. */
+.kj-modal-layer.is-covered .kj-modal { transform: scale(.97); filter: brightness(.96); }
+
+.kj-modal { position: relative; display: flex; flex-direction: column; width: min(760px, 100%); max-height: calc(100vh - 48px); background: var(--kj-bg); border-radius: var(--kj-r-xl); box-shadow: var(--kj-shadow-xl); overflow: hidden; opacity: 0; transform: translateY(14px) scale(.98); transition: opacity var(--kj-dur) var(--kj-ease), transform var(--kj-dur-slow) var(--kj-ease), filter var(--kj-dur); }
+.kj-modal-layer.is-open .kj-modal { opacity: 1; transform: none; }
+.kj-modal.kj-size-sm { width: min(520px, 100%); }
+.kj-modal.kj-size-lg { width: min(980px, 100%); }
+.kj-modal:focus { outline: none; }
+
+.kj-modal-head { display: flex; align-items: center; gap: var(--kj-s-3); padding: var(--kj-s-4) var(--kj-s-5); background: var(--kj-surface); border-bottom: 1px solid var(--kj-border); }
+.kj-modal-head-ico { width: 38px; height: 38px; border-radius: var(--kj-r-md); display: grid; place-items: center; background: var(--kj-primary-soft); color: var(--kj-primary); flex-shrink: 0; }
+.kj-modal-head-ico .kj-ico { width: 19px; height: 19px; }
+.kj-modal-head-ico.is-danger { background: var(--kj-danger-soft); color: var(--kj-danger); }
+.kj-modal-head-ico.is-warn { background: var(--kj-warn-soft); color: var(--kj-warn); }
+.kj-modal-head-ico.is-success { background: var(--kj-success-soft); color: var(--kj-success); }
+.kj-modal-head-ico.is-purple { background: var(--kj-purple-soft); color: var(--kj-purple); }
+.kj-modal-head-ico.is-orange { background: var(--kj-orange-soft); color: var(--kj-orange); }
+.kj-modal-titles { flex: 1 1 auto; min-width: 0; }
+.kj-modal-kicker { font-size: var(--kj-fs-2xs); font-weight: var(--kj-fw-bold); letter-spacing: .07em; text-transform: uppercase; color: var(--kj-text-3); }
+.kj-modal-title { margin: 0; font-size: var(--kj-fs-lg); font-weight: var(--kj-fw-bold); color: var(--kj-text); line-height: var(--kj-lh-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kj-modal-close { flex-shrink: 0; }
+
+.kj-modal-body { flex: 1 1 auto; overflow-y: auto; padding: var(--kj-s-5); display: flex; flex-direction: column; gap: var(--kj-s-4); overscroll-behavior: contain; }
+.kj-modal-foot { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--kj-s-2); padding: var(--kj-s-3) var(--kj-s-5); background: var(--kj-surface); border-top: 1px solid var(--kj-border); }
+.kj-modal-foot:empty { display: none; }
+
+/* Hero block used by person / camera / event modals */
+.kj-hero { display: flex; align-items: center; gap: var(--kj-s-4); background: var(--kj-surface); border: 1px solid var(--kj-border); border-radius: var(--kj-r-lg); padding: var(--kj-s-4) var(--kj-s-5); box-shadow: var(--kj-shadow-xs); }
+.kj-hero-main { flex: 1 1 auto; min-width: 0; }
+.kj-hero-name { font-size: var(--kj-fs-xl); font-weight: var(--kj-fw-bold); color: var(--kj-text); margin: 0 0 var(--kj-s-2); }
+.kj-hero-big { font-size: var(--kj-fs-4xl); font-weight: var(--kj-fw-black); line-height: 1; color: var(--kj-text); }
+.kj-hero-big.is-danger { color: var(--kj-danger); }
+.kj-hero-big.is-success { color: var(--kj-success); }
+.kj-hero-big.is-warn { color: var(--kj-warn); }
+.kj-hero-big.is-primary { color: var(--kj-primary); }
+
+.kj-modal-error { display: flex; flex-direction: column; gap: var(--kj-s-3); }
+
+/* Phones (≤768px): full-screen sheet. The head (title + close) never scrolls away —
+   only .kj-modal-body scrolls — and is sticky as a belt-and-braces; safe areas padded. */
+@media (max-width: 768px) {
+  .kj-modal-layer { padding: 0; align-items: stretch; }
+  .kj-modal, .kj-modal.kj-size-sm, .kj-modal.kj-size-lg {
+    width: 100%; height: 100vh; height: 100dvh; max-height: none; border-radius: 0;
+    transform: translateY(24px);
+  }
+  .kj-modal-head { position: sticky; top: 0; z-index: 2; flex-shrink: 0; padding: calc(env(safe-area-inset-top, 0px) + var(--kj-s-3)) var(--kj-s-4) var(--kj-s-3); }
+  .kj-modal-close { width: 44px; height: 44px; }
+  .kj-modal-close .kj-ico { width: 22px; height: 22px; }
+  .kj-modal-body { padding: var(--kj-s-4); }
+  .kj-modal-foot { flex-shrink: 0; padding: var(--kj-s-3) var(--kj-s-4) calc(env(safe-area-inset-bottom, 0px) + var(--kj-s-3)); }
+  .kj-hero { flex-direction: column; align-items: flex-start; }
+  .kj-modal-foot .kj-btn { flex: 1 1 auto; min-height: 44px; }
+  .kj-modal-layer.is-covered .kj-modal { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kj-modal, .kj-modal-backdrop { transition: none; }
+}
+/* While any KJModal is open the page behind must not scroll. */
+html.kj-modal-open, html.kj-modal-open body { overflow: hidden; }

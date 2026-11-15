@@ -162,151 +162,50 @@ function hourlyTrend(EventStore $store): array
 }
 
 /**
- * Weststar AI per-event review remarks (uuid → short remark), file-cached ~45s.
- * Prefers an image-grounded vision field (review_vision / review_remark) added by
- * the on-prem vision model; falls back to the first sentence of review_summary.
+ * Per-event AI review remarks (uuid → short remark) from the Claude
+ * PPE-forklift pipeline (ai_reviews table). Replaces the retired Weststar AI
+ * middleware remarks; same output shape.
  */
 function senseReviews(array $config): array
 {
-    $base = $config['ai']['base'] ?? '';
-    if ($base === '' || !function_exists('curl_init')) {
+    try {
+        $pdo = Database::connect($config['storage']);
+        $st  = $pdo->query("SELECT event_uuid, verdict_json, violation FROM ai_reviews
+                            WHERE event_uuid IS NOT NULL AND verdict_json IS NOT NULL ORDER BY id DESC LIMIT 200");
+        $map = [];
+        foreach ($st->fetchAll() as $r) {
+            $v = json_decode((string) $r['verdict_json'], true) ?: [];
+            $reason = trim((string) ($v['reason'] ?? ''));
+            if ($reason !== '' && !isset($map[$r['event_uuid']])) {
+                $map[(string) $r['event_uuid']] = ['remark' => ((int) $r['violation'] ? 'Forklift without PPE: ' : '') . mb_substr($reason, 0, 160)];
+            }
+        }
+        return $map;
+    } catch (Throwable $e) {
         return [];
     }
-    // Every dashboard tab polls the feed every 5s — serve this from cache for
-    // 5 minutes, and skip the call entirely while the breaker is open.
-    $cache = ($config['storage']['raw_log'] ?? (APP_ROOT . '/storage/x')) . '.reviews.json';
-    $fresh = is_file($cache) ? (time() - filemtime($cache)) : PHP_INT_MAX;
-    if ($fresh < 300) {
-        $c = json_decode((string) file_get_contents($cache), true);
-        if (is_array($c)) {
-            return $c;
-        }
-    }
-    require_once APP_ROOT . '/lib/Upstream.php';
-    $dir = dirname((string) ($config['storage']['raw_log'] ?? (APP_ROOT . '/storage/x')));
-    if (!Upstream::allow('westar_reviews', $dir, 4)) {
-        $c = is_file($cache) ? json_decode((string) file_get_contents($cache), true) : [];
-        return is_array($c) ? $c : [];
-    }
-    $ch = curl_init($base . '/events?limit=200');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_CONNECTTIMEOUT => 3]);
-    $body = curl_exec($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $cerr = curl_error($ch);
-    curl_close($ch);
-    if ($cerr !== '' || $code === 0 || $code >= 500) {
-        Upstream::failed('westar_reviews', $dir);
-        @touch($cache);                       // hold the last good map, stop retrying
-        $c = is_file($cache) ? json_decode((string) file_get_contents($cache), true) : [];
-        return is_array($c) ? $c : [];
-    }
-    Upstream::ok('westar_reviews', $dir);
-
-    if ($code === 200 && $body) {
-        $d = json_decode((string) $body, true);
-        $map = [];
-        foreach (($d['events'] ?? []) as $e) {
-            $uuid = (string) ($e['uuid'] ?? '');
-            if ($uuid === '') {
-                continue;
-            }
-            // Only image-grounded remarks (from the on-prem vision model). The
-            // verbose attribute-based review_summary is intentionally NOT used —
-            // set VISION_REMARKS_FROM_SUMMARY=1 in .env to fall back to it.
-            $remark = $e['review_vision'] ?? $e['review_remark'] ?? $e['vision_caption'] ?? null;
-            if (!$remark && (getenv('VISION_REMARKS_FROM_SUMMARY') === '1')) {
-                $s = trim((string) ($e['review_summary'] ?? ''));
-                if ($s !== '') {
-                    $first = preg_split('/(?<=[.!?])\s+/', $s)[0] ?? $s;
-                    $remark = mb_substr($first, 0, 160);
-                }
-            }
-            if ($remark) {
-                $map[$uuid] = ['remark' => trim((string) $remark)];
-            }
-        }
-        @file_put_contents($cache, json_encode($map, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-        return $map;
-    }
-    if (is_file($cache)) {
-        $c = json_decode((string) file_get_contents($cache), true);
-        if (is_array($c)) {
-            return $c;
-        }
-    }
-    return [];
 }
 
 /**
- * Weststar AI analytics + LLM summary, file-cached so the 5s dashboard poll
- * never blocks on the (slow) LLM call. Refreshes at most once per TTL.
+ * AI analytics summary for the dashboard — Claude forecast narration
+ * (lib/Insights.php → lib/Claude.php, cached 30 min). Source 'off' → null.
  */
 function aiAnalytics(array $config): ?array
 {
-    // AI source is switchable from the Settings page: weststar-ai middleware
-    // (default), the Anthropic API directly, or off.
-    $source = $config['ai']['source'] ?? 'weststar';
-    if ($source === 'off') {
+    if (($config['ai']['source'] ?? 'claude') === 'off') {
         return null;
     }
-    if ($source === 'anthropic') {
-        require_once APP_ROOT . '/lib/Insights.php';
-        try {
-            $pdo = Database::connect($config['storage']);
-            $agg = Insights::aggregate($pdo, 7);
-            $llm = Insights::llmForecast($config, $agg, Insights::forecast($agg));
-            return $llm ? ['summary' => $llm['summary'], 'source' => $llm['source'], 'fetched_at' => $llm['fetched_at'] ?? date('c')] : null;
-        } catch (Throwable $e) {
-            error_log('[feed] anthropic ai: ' . $e->getMessage());
-            return null;
-        }
-    }
-    $base = $config['ai']['base'] ?? '';
-    if ($base === '' || !function_exists('curl_init')) {
+    require_once APP_ROOT . '/lib/Insights.php';
+    try {
+        $pdo = Database::connect($config['storage']);
+        $agg = Insights::aggregate($pdo, 7);
+        $llm = Insights::llmForecast($config, $agg, Insights::forecast($agg));
+        return $llm ? ['summary' => $llm['summary'], 'source' => $llm['source'], 'fetched_at' => $llm['fetched_at'] ?? date('c'),
+                       'by_category' => $agg['byType'], 'total' => $agg['total']] : null;
+    } catch (Throwable $e) {
+        error_log('[feed] claude ai: ' . $e->getMessage());
         return null;
     }
-    $cacheFile = ($config['storage']['raw_log'] ?? (APP_ROOT . '/storage/x')) . '.ai.json';
-    $ttl = 120;
-
-    if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttl) {
-        $c = json_decode((string) file_get_contents($cacheFile), true);
-        if (is_array($c)) {
-            return $c;
-        }
-    }
-
-    $ch = curl_init($base . '/analytics?window=24h');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 8,
-        CURLOPT_CONNECTTIMEOUT => 4,
-    ]);
-    $body = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($code === 200 && $body) {
-        $d = json_decode((string) $body, true);
-        if (is_array($d)) {
-            $out = [
-                'summary'     => $d['llm_review'] ?? null,
-                'by_category' => $d['by_category'] ?? [],
-                'by_device'   => $d['by_device'] ?? [],
-                'total'       => $d['total'] ?? null,
-                'fetched_at'  => date('c'),
-            ];
-            @file_put_contents($cacheFile, json_encode($out, JSON_UNESCAPED_SLASHES));
-            return $out;
-        }
-    }
-    // Serve stale cache if the live call failed.
-    if (is_file($cacheFile)) {
-        $c = json_decode((string) file_get_contents($cacheFile), true);
-        if (is_array($c)) {
-            return $c;
-        }
-    }
-    return null;
 }
 
 // Read token: required only if READ_TOKEN is set. Accept ?token= or header.
@@ -380,6 +279,15 @@ try {
         Retention::maybeRun($pdo, $config, 86400, 1500);
     } catch (Throwable $e) {
         error_log('[feed] retention: ' . $e->getMessage());
+    }
+    // Camera monitors: fallback when /api/monitors/cron is not scheduled. Both
+    // share throttle files + flocks, so with the cron running these are no-ops.
+    try {
+        require_once APP_ROOT . '/lib/MonitorScanner.php';
+        MonitorScanner::maybeFitness($pdo, $config, 86400, 15, 1);
+        MonitorScanner::maybeRun($pdo, $config, 20, 10, 'feed');
+    } catch (Throwable $e) {
+        error_log('[feed] monitors: ' . $e->getMessage());
     }
 
     // The recent window, PLUS every detection that is still open or acknowledged
@@ -499,6 +407,14 @@ try {
 
     $armedWindow = (string) ($config['alerts']['intr_armed'] ?? 'always');
 
+    // Assets part of the build stamp — keep identical to index.php (four flat
+    // globs, no recursive scan) so an assets-only deploy raises the banner.
+    $assetMtime = 0;
+    foreach (['assets/js/*.js', 'assets/js/pages/*.js', 'assets/css/*.css', 'assets/css/pages/*.css'] as $pat) {
+        foreach (glob(APP_ROOT . '/' . $pat) ?: [] as $f) {
+            $assetMtime = max($assetMtime, (int) @filemtime($f));
+        }
+    }
     Response::json([
         'ok'         => true,
         'server_now' => $nowTs,
@@ -508,6 +424,7 @@ try {
             @filemtime(APP_ROOT . '/Kian Joo VisionAI.dc.html'),
             @filemtime(APP_ROOT . '/app.js'),
             @filemtime(APP_ROOT . '/app.css'),
+            $assetMtime,
         ])),
         'events'     => $incidents,
         'cams'       => $cams,

@@ -200,7 +200,8 @@ final class Escalation
     private static function emailReady(array $config, array $to): bool
     {
         $m = $config['mail'] ?? [];
-        return $to !== [] && (string) ($m['host'] ?? '') !== '' && (string) ($m['username'] ?? '') !== '';
+        return $to !== [] && ($m['enabled'] ?? true) !== false
+            && (string) ($m['host'] ?? '') !== '' && (string) ($m['username'] ?? '') !== '';
     }
 
     private static function chText(string $label, ?string $state): string

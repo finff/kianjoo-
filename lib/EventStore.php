@@ -12,6 +12,9 @@ require_once __DIR__ . '/Text.php';
 
 final class EventStore
 {
+    /** Incident status enum is open | ack | resolved; ITSM-style names accepted on write. */
+    private const STATUS_ALIAS = ['new' => 'open', 'acknowledged' => 'ack', 'in_progress' => 'ack', 'closed' => 'resolved'];
+
     private PDO $pdo;
     private array $cfg;
     private string $imageBase;
@@ -363,19 +366,36 @@ final class EventStore
 
     /**
      * Record a triage action. First ack stamps acked_at; resolve stamps
-     * resolved_at. Returns true if a row was updated.
+     * resolved_at. Returns true when the event exists and the status is valid
+     * (also for a no-op repeat), false otherwise.
      */
     public function setStatus(string $uuid, string $status, ?string $assignee = null): bool
     {
+        // ITSM-style names from the unified Tickets table map onto the event enum.
+        $status = self::STATUS_ALIAS[strtolower(trim($status))] ?? $status;
         if (!in_array($status, ['open', 'ack', 'resolved'], true)) {
             return false;
         }
-        // Previous status → change-history entry with per-stage timing.
+        // Previous status → change-history entry with per-stage timing. The
+        // row's existence (not rowCount — MySQL reports 0 for a no-op UPDATE,
+        // e.g. re-acknowledging) decides found / not found.
         $old = 'open';
+        $where = 'uuid = :uuid';
         try {
             $q = $this->pdo->prepare('SELECT status FROM events WHERE uuid = :u LIMIT 1');
             $q->execute(['u' => $uuid]);
-            $old = (string) ($q->fetchColumn() ?: 'open');
+            $cur = $q->fetch();
+            if (!$cur && ctype_digit($uuid)) {
+                // Events pushed without a uuid are addressed by numeric id (DashboardMapper id fallback).
+                $q = $this->pdo->prepare('SELECT status FROM events WHERE id = :u LIMIT 1');
+                $q->execute(['u' => (int) $uuid]);
+                $cur = $q->fetch();
+                $where = 'id = :uuid';
+            }
+            if (!$cur) {
+                return false;
+            }
+            $old = (string) ($cur['status'] ?: 'open');
         } catch (Throwable $e) {
         }
         $now = date('Y-m-d H:i:s');
@@ -394,14 +414,13 @@ final class EventStore
             $params['assignee'] = $assignee;
         }
         $stmt = $this->pdo->prepare(
-            'UPDATE events SET ' . implode(', ', $sets) . ' WHERE uuid = :uuid'
+            'UPDATE events SET ' . implode(', ', $sets) . ' WHERE ' . $where
         );
         $stmt->execute($params);
-        $changed = $stmt->rowCount() > 0;
-        if ($changed && $old !== $status) {
+        if ($old !== $status) {
             $this->addLog($uuid, 'status', $assignee ?: 'Operator', $old, $status, null);
         }
-        return $changed;
+        return true;
     }
 
     // ── Incident tickets & change log ────────────────────────
@@ -1381,7 +1400,11 @@ final class EventStore
         require_once __DIR__ . '/Telegram.php';
         require_once __DIR__ . '/Alerting.php';
         $tgCfg  = $this->cfg['telegram'] ?? [];
-        $mailOn = !empty($mailCfg['host']) && !empty($mailCfg['to'])
+        // Base list OR any escalation-matrix target counts as a recipient.
+        $routing = $this->cfg['routing'] ?? [];
+        $mailOn = !empty($mailCfg['host']) && !empty($mailCfg['username'])
+            && ($mailCfg['enabled'] ?? true) !== false
+            && (!empty($mailCfg['to']) || array_filter($routing))
             && (($this->cfg['alerts']['email_enabled'] ?? true) !== false);
         $tgOn   = Telegram::ready($tgCfg);
         if (!$mailOn && !$tgOn) {
@@ -1524,8 +1547,7 @@ final class EventStore
 
         // Escalation-matrix routing: severity adds the configured targets
         // (Settings → Notifications) on top of the base recipients.
-        $routing = $this->cfg['routing'] ?? [];
-        $to = $mailCfg['to'];
+        $to = (array) ($mailCfg['to'] ?? []);
         if ($sev === 'critical') {
             $to = array_merge($to, $routing['tmforce'] ?? [], $routing['soc'] ?? [], $routing['admin'] ?? []);
         } elseif ($sev === 'high') {
@@ -1533,7 +1555,10 @@ final class EventStore
         } elseif ($sev === 'medium') {
             $to = array_merge($to, $routing['supervisor'] ?? []);
         }
-        $to = array_values(array_unique($to));
+        $to = Mailer::parseList($to, 100);
+        if (!$to) {
+            return;   // severity added no matrix target and the base list is empty
+        }
 
         try {
             $sentOk = (new Mailer($mailCfg))->send('[Kian Joo VisionAI] ' . $sevTag . ' ' . $modLabel . ' — ' . $what . ' @ ' . ($row['device_name'] ?: ($row['stream'] ?? '')), $html, $to);

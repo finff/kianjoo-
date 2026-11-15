@@ -358,9 +358,10 @@ try {
             $to = $ch === 'tmforce'
                 ? array_merge($routing['tmforce'] ?? [], $routing['admin'] ?? [])
                 : array_merge($routing['soc'] ?? [], $routing['supervisor'] ?? []);
-            $to = array_values(array_unique($to ?: ($config['mail']['to'] ?? [])));
+            $to = Mailer::parseList($to ?: ($config['mail']['to'] ?? []), 100);
             $mailer = new Mailer($config['mail']);
-            $sent   = $mailer->ready() && $mailer->send('[Kian Joo VisionAI] ' . $tag . ' — ' . $ticket, $html, $to);
+            $mailOk = $mailer->canSend() && $mailer->enabled() && $to !== [];
+            $sent   = $mailOk && $mailer->send('[Kian Joo VisionAI] ' . $tag . ' — ' . $ticket, $html, $to);
             // Workstream A: the same escalation also goes to Telegram — default
             // chats plus the escalation-level chats (ERT → L3, email → L1 + L2).
             require_once APP_ROOT . '/lib/Alerting.php';
@@ -379,7 +380,7 @@ try {
                 $tgSent = $tr['ok'];
                 Alerting::logSend('telegram', $tr['ok'], 'manual', $uuid, $tr['errors'] ? implode('; ', $tr['errors']) : $tag);
             }
-            if ($mailer->ready()) {
+            if ($mailOk) {
                 Alerting::logSend('email', $sent, 'manual', $uuid, $tag);
             }
             $store->addLog($uuid, $ch === 'tmforce' ? 'tmforce' : 'notify', $in['actor'] ?? null, null, null,
@@ -473,12 +474,38 @@ try {
         Response::ok(['count' => count($events), 'events' => $events]);
     }
 
+    // ── AI layer, ITSM tickets, AI reports (M7/M8/M9/M12) ────
+    // Session-resolved RBAC on every route; see lib/AiRoutes.php for the
+    // route table. Returns here when the route is not one of its own.
+    require APP_ROOT . '/lib/AiRoutes.php';
+
+    // ── Leave workflow (M6), profile self-service, in-app notifications ──
+    // Same session-RBAC conventions; route table in lib/HrRoutes.php.
+    require APP_ROOT . '/lib/HrRoutes.php';
+
+    // ── Login ↔ employee link (users.person_id): GET|POST /user-links [admin + users] ──
+    require APP_ROOT . '/lib/UserLinkRoutes.php';
+
+    // ── Floor plans, camera pins, movement playback (M14) ────
+    // /floorplans/* and /movement/{path,occupancy,people,thumb,camera};
+    // route table + RBAC in lib/FloorplanRoutes.php (/movement/log falls through).
+    require APP_ROOT . '/lib/FloorplanRoutes.php';
+
+    // ── Widget dashboard layout (M3): GET|POST /dashboard/layout ──
+    require APP_ROOT . '/lib/DashboardRoutes.php';
+
+    // ── Proof-viewer image enhance (user-initiated only): GET /image/enhance [supervisor+] ──
+    require APP_ROOT . '/lib/ImageRoutes.php';
+
+    // ── VisionAI camera monitors (fast-model gate → advanced-model review): /monitors/* ──
+    // Admin session (or provision token); /monitors/cron is token-only. Table in lib/MonitorRoutes.php.
+    require APP_ROOT . '/lib/MonitorRoutes.php';
+
     // ── Assistant / agent read API (/api/ai/*) ───────────────
-    // The Weststar AI agent calls these through its permissioned http tool
-    // (Authorization: Bearer <read token>). Everything here is read-only and
-    // pre-summarised — see lib/AiContext.php.
+    // Read-only, pre-summarised (lib/AiContext.php). Authorised in
+    // lib/AiRoutes.php: admin session (view) or the provision token — the
+    // dashboard's read token no longer opens camera/detection data to AI.
     if (($seg[0] ?? '') === 'ai') {
-        $requireToken($config['auth']['read_token']);
         require_once APP_ROOT . '/lib/Text.php';
         require_once APP_ROOT . '/lib/Attributes.php';
         require_once APP_ROOT . '/lib/DashboardMapper.php';
@@ -601,68 +628,7 @@ try {
                       'warnings' => $errs ?: null]);
     }
 
-    // ── Assistant chat proxy (POST /api/assistant) ───────────
-    // The browser never sees the Weststar AI key: it posts the conversation
-    // here and this forwards it to the agent, which answers from its documents
-    // and — through its own http tool — from /api/ai/* above.
-    if ($route === '/assistant') {
-        $requireToken($config['auth']['read_token']);
-        if ($method !== 'POST') {
-            Response::error('POST {messages:[{role,content}]}.', 405);
-        }
-        require_once APP_ROOT . '/lib/Llm.php';
-        $llm = new Llm($config['ai']);
-        if (!$llm->ready()) {
-            Response::json(['ok' => false, 'error' => 'No API key set for ' . (Llm::LABEL[$llm->provider()] ?? 'the selected provider')
-                . '. Add one in Settings → AI Source.'], 503);
-        }
-
-        $in   = json_decode(file_get_contents('php://input') ?: '', true) ?: [];
-        $msgs = [];
-        foreach (array_slice(is_array($in['messages'] ?? null) ? $in['messages'] : [], -8) as $m) {
-            $role = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
-            $text = trim((string) ($m['content'] ?? ''));
-            if ($text !== '') {
-                $msgs[] = ['role' => $role, 'content' => mb_substr($text, 0, 2000)];
-            }
-        }
-        if (!$msgs) {
-            Response::error('At least one message is required.', 422);
-        }
-
-        // The Weststar agent pulls live data itself through its http tool; the
-        // direct providers have no tools, so hand them a snapshot up front.
-        $context = '';
-        if ($llm->provider() !== 'weststar') {
-            require_once APP_ROOT . '/lib/Text.php';
-            require_once APP_ROOT . '/lib/Attributes.php';
-            require_once APP_ROOT . '/lib/DashboardMapper.php';
-            require_once APP_ROOT . '/lib/AiContext.php';
-            $ctx  = new AiContext(new EventStore(Database::connect($config['storage']), $config), $config);
-            $sum  = $ctx->summary(24);
-            $cams = $ctx->cameras();
-            $ppl  = $ctx->people(['days' => 7, 'limit' => 10]);
-            $recent = [];
-            foreach ($ctx->detections(['hours' => 24, 'limit' => 15])['data'] as $d) {
-                $recent[] = '- ' . implode(' · ', array_filter([
-                    $d['when'] ?? '', $d['camera'] ?? '', $d['module'] ?? '',
-                    $d['what'] ?? '', ($d['severity'] ?? '') . '/' . ($d['status'] ?? ''),
-                ]));
-            }
-            $context = $sum['summary'] . "\n\n" . $cams['summary'] . "\n" . $ppl['summary']
-                . ($recent ? "\n\nMost recent detections:\n" . implode("\n", $recent) : '');
-        }
-
-        @set_time_limit(180);
-        $res = $llm->chat($msgs, $context);
-        if (!empty($res['ok'])) {
-            Response::ok(['answer' => $res['answer'], 'citations' => $res['citations'] ?? [],
-                          'model' => $res['model'] ?? '', 'provider' => $llm->provider(),
-                          'used_tools' => !empty($res['used_tools'])]);
-        }
-        Response::json(['ok' => false, 'error' => $res['error'] ?? 'The assistant could not answer.',
-                        'provider' => $llm->provider(), 'upstream' => $res['upstream'] ?? 0], 502);
-    }
+    // POST /api/assistant is served by lib/AiRoutes.php (Claude + RBAC tools).
 
     // ── Movement log: camera → camera moves per person ──────
     // GET /movement/log?from=&to=&q=&unknown=1 → moves (newest first), KPIs, top routes
@@ -1466,10 +1432,8 @@ try {
                 $out['mods_enabled'] = $me;
             }
             if (isset($in['mail_to'])) {
-                $to = is_array($in['mail_to']) ? $in['mail_to'] : explode(',', (string) $in['mail_to']);
-                $to = array_values(array_filter(array_map('trim', $to),
-                    static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL)));
-                $out['mail_to'] = $to;   // empty list falls back to .env MAIL_TO
+                require_once APP_ROOT . '/lib/Mailer.php';
+                $out['mail_to'] = Mailer::parseList($in['mail_to'], 20);   // empty list falls back to .env MAIL_TO
             }
             if (isset($in['cooldown_min'])) {
                 $out['cooldown_min'] = max(1, min(1440, (int) $in['cooldown_min']));
@@ -1521,7 +1485,7 @@ try {
             'mods_enabled'  => $config['alerts']['mods_enabled'] ?? ['fire' => true, 'ppe' => true, 'intr' => true, 'face' => true],
             'mail_to'       => $config['mail']['to'] ?? [],
             'cooldown_min'  => (int) ($config['mail']['cooldown'] ?? 5),
-            'mail_ready'    => !empty($config['mail']['host']) && !empty($config['mail']['to']),
+            'mail_ready'    => (new Mailer($config['mail']))->ready(),
             'armed_now'     => DashboardMapper::armedNow((string) ($config['alerts']['intr_armed'] ?? 'always')),
         ]]);
     }
@@ -1546,8 +1510,8 @@ try {
                     $out[$k] = substr(trim((string) $in[$k]), 0, $len);
                 }
             }
-            // Assistant LLM: exactly one provider active at a time.
-            if (isset($in['llm_provider']) && in_array($in['llm_provider'], ['weststar', 'anthropic', 'gemini', 'openai'], true)) {
+            // Assistant LLM: Claude only now (legacy ids accepted, resolved to Claude in config.php).
+            if (isset($in['llm_provider']) && in_array($in['llm_provider'], ['claude', 'weststar', 'anthropic', 'gemini', 'openai'], true)) {
                 $out['llm_provider'] = $in['llm_provider'];
             }
             // Secrets: only overwrite when a non-empty value is supplied.
@@ -1727,7 +1691,7 @@ try {
             if (isset($in['att_kiosk_clock'])) {
                 $out['att_kiosk_clock'] = (bool) $in['att_kiosk_clock'];
             }
-            if (isset($in['ai_source']) && in_array($in['ai_source'], ['weststar', 'anthropic', 'off'], true)) {
+            if (isset($in['ai_source']) && in_array($in['ai_source'], ['claude', 'weststar', 'anthropic', 'off'], true)) {
                 $out['ai_source'] = $in['ai_source'];
             }
             if (isset($in['report_frequency']) && in_array($in['report_frequency'], ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)) {
@@ -1737,9 +1701,8 @@ try {
                 $out['report_hour'] = max(0, min(23, (int) $in['report_hour']));
             }
             if (isset($in['report_recipients'])) {
-                $to = is_array($in['report_recipients']) ? $in['report_recipients'] : explode(',', (string) $in['report_recipients']);
-                $out['report_recipients'] = array_values(array_filter(array_map('trim', $to),
-                    static fn ($e) => (bool) filter_var($e, FILTER_VALIDATE_EMAIL)));
+                require_once APP_ROOT . '/lib/Mailer.php';
+                $out['report_recipients'] = Mailer::parseList($in['report_recipients'], 30);
             }
             // Token rotation. New read token = current page token dies → the UI
             // must reload (index.php injects the fresh one).
@@ -1836,7 +1799,10 @@ try {
         $days = max(2, min(90, (int) ($_GET['days'] ?? 14)));
         $agg  = Insights::aggregate($pdo, $days);
         $fc   = Insights::forecast($agg);
-        $llm  = Insights::llmForecast($config, $agg, $fc);
+        // The Claude narrative is AI output over detection data: admin tier only.
+        require_once APP_ROOT . '/lib/AiGuard.php';
+        $aiP  = AiGuard::principal($pdo, $provisionAdmin());
+        $llm  = ($aiP && AiGuard::atLeast($aiP, 'admin')) ? Insights::llmForecast($config, $agg, $fc) : null;
         Response::ok(['agg' => $agg, 'forecast' => $fc, 'ai' => $llm]);
     }
 
@@ -1889,6 +1855,13 @@ try {
             } catch (Throwable $e) {
                 error_log('[escalation] cron: ' . $e->getMessage());
             }
+            // ITSM ticket SLA sweep: persist breach flags + send breach e-mails (once each).
+            try {
+                require_once APP_ROOT . '/lib/Tickets.php';
+                (new Tickets(Database::connect($config['storage']), (string) ($config['ai']['storage_dir'] ?? (APP_ROOT . '/storage'))))->sweepBreaches();
+            } catch (Throwable $e) {
+                error_log('[tickets] cron sweep: ' . $e->getMessage());
+            }
             // falls through to the report cron block below
         }
 
@@ -1906,6 +1879,7 @@ try {
             }
             $eff  = NotifySettings::load();
             $mail = $config['mail'] ?? [];
+            $mst  = (new Mailer($mail))->status();
             $pdo  = Database::connect($config['storage']);
             Response::ok([
                 'saved'    => $method === 'POST',
@@ -1913,9 +1887,10 @@ try {
                 'channels' => [
                     'email' => [
                         'configured' => (string) ($mail['host'] ?? '') !== '' && (string) ($mail['username'] ?? '') !== '',
-                        'enabled'    => ($config['alerts']['email_enabled'] ?? true) !== false,
+                        'enabled'    => ($config['alerts']['email_enabled'] ?? true) !== false && ($mail['enabled'] ?? true) !== false,
                         'recipients' => count($mail['to'] ?? []),
-                        'ready'      => (string) ($mail['host'] ?? '') !== '' && !empty($mail['to']) && ($config['alerts']['email_enabled'] ?? true) !== false,
+                        'ready'      => $mst === '' && ($config['alerts']['email_enabled'] ?? true) !== false,
+                        'status'     => $mst === '' ? 'ready' : $mst,
                     ],
                     'telegram' => [
                         'configured' => $eff['telegram']['bot_token'] !== '',
@@ -1969,28 +1944,12 @@ try {
                 Response::error('POST {to?}.', 405);
             }
             $wsaNeedSettings('send a test email');
-            require_once APP_ROOT . '/lib/Mailer.php';
-            require_once APP_ROOT . '/lib/EmailTemplate.php';
-            $to = NotifySettings::emailList($wsaIn['to'] ?? '') ?: ($config['mail']['to'] ?? []);
-            $mc = $config['mail'];
-            $mc['to'] = $to;
-            $mailer = new Mailer($mc);
-            if (!$mailer->ready()) {
-                Response::error('Email not configured — set MAIL_HOST / MAIL_USERNAME in .env and at least one recipient.', 422);
-            }
-            $content = EmailTemplate::heading('Email channel is working')
-                . EmailTemplate::sub('Test notification from Kian Joo VisionAI (Settings → Notifications) — no action is required.')
-                . EmailTemplate::rows([
-                    ['Minimum severity', (string) ($config['alerts']['min_severity'] ?? 'high')],
-                    ['Escalation workflow', !empty($config['escalation']['enabled'])
-                        ? ('on · every ' . (int) ($config['escalation']['unattended_min'] ?? 5) . ' min unattended') : 'off'],
-                    ['Recipients', implode(', ', $to)],
-                ])
-                . EmailTemplate::buttons([['Open dashboard', EmailTemplate::host() . '/', true]]);
-            $ok = $mailer->send('[Kian Joo VisionAI] Test alert — email channel OK',
-                EmailTemplate::shell('Email channel test', 'EMAIL CHANNEL TEST', EmailTemplate::COLORS['ok'], $content), $to);
-            Alerting::logSend('email', $ok, 'test', null, implode(',', $to));
-            Response::json(['ok' => $ok, 'to' => $to, 'error' => $ok ? null : 'SMTP send failed — check error_log'], $ok ? 200 : 502);
+            // Same code path as POST /mail/test (lib/MailSettings.php).
+            require_once APP_ROOT . '/lib/MailSettings.php';
+            $r = MailSettings::test($config, $wsaIn['to'] ?? null, 'Settings › Notifications');
+            $code = $r['code'];
+            unset($r['code']);
+            Response::json($r + ['error' => null], $code);
         }
 
         if ($route === '/escalation/run') {
@@ -2512,14 +2471,68 @@ try {
         ], $rows)]);
     }
 
+    // ── System email (Settings › System email) — admin / superadmin ──
+    //   GET  /mail/settings   effective SMTP + recipients (password never returned)
+    //   POST /mail/settings   {enabled?, host?, port?, scheme?, username?, password?,
+    //                          from_address?, from_name?, to?, cooldown_min?} → same shape
+    //   POST /mail/test {to?} test e-mail with the effective config (shared with /alerts/email-test)
+    // Overrides persist to storage/alert_settings.json (mail_* keys), merged by config.php.
+    if ($route === '/mail/settings' || $route === '/mail/test') {
+        require_once APP_ROOT . '/lib/AiGuard.php';
+        require_once APP_ROOT . '/lib/MailSettings.php';
+        $mp = AiGuard::require(Database::connect($config['storage']));
+        AiGuard::demand($mp, 'admin', 'settings');
+        $in = $method === 'POST' ? (json_decode(file_get_contents('php://input') ?: '', true) ?: []) : [];
+
+        if ($route === '/mail/test') {
+            if ($method !== 'POST') {
+                Response::error('POST {to?}.', 405);
+            }
+            $r = MailSettings::test($config, $in['to'] ?? null);
+            $code = $r['code'];
+            unset($r['code']);
+            Response::json($r, $code);
+        }
+        $extra = [];
+        if ($method === 'POST') {
+            try {
+                $extra['ignored'] = MailSettings::save($in);
+            } catch (InvalidArgumentException $e) {
+                Response::error($e->getMessage(), 422);
+            } catch (Throwable $e) {
+                Response::error($e->getMessage(), 500);
+            }
+            $extra['saved'] = true;
+            $config = require APP_ROOT . '/config/config.php';   // re-merge the fresh overlay
+        } elseif ($method !== 'GET') {
+            Response::error('GET or POST.', 405);
+        }
+        Response::ok(['settings' => MailSettings::view($config)] + $extra);
+    }
+
     // ── Mail test (provision token): verify SMTP alerts end-to-end ──
+    //   GET /mailtest?token=PROVISION[&to=a@b.com]  — `to` overrides the default list,
+    //   so SMTP can be verified even when MAIL_TO / Alert Rules mail_to are empty.
     if ($route === '/mailtest') {
         $requireToken($config['auth']['provision_token']);
         require_once APP_ROOT . '/lib/Mailer.php';
-        $mailer = new Mailer($config['mail']);
-        if (!$mailer->ready()) {
-            Response::error('Mailer not configured (MAIL_HOST / MAIL_USERNAME / MAIL_TO).', 422);
+        $mtTo = null;
+        if (isset($_GET['to']) && trim((string) $_GET['to']) !== '') {
+            $mtTo = trim((string) $_GET['to']);
+            if (strlen($mtTo) > 254 || !filter_var($mtTo, FILTER_VALIDATE_EMAIL)) {
+                Response::error('`to` is not a valid e-mail address.', 422);
+            }
+            $mtTo = [$mtTo];
         }
+        $mailer = new Mailer($config['mail']);
+        if (!$mailer->canSend()) {
+            Response::error('Mailer not configured (MAIL_HOST / MAIL_USERNAME).', 422);
+        }
+        if ($mtTo === null && !$mailer->ready()) {
+            Response::json(['ok' => false, 'error' => 'No default recipients (MAIL_TO / Alert Rules mail_to are empty) — pass &to=you@example.com.',
+                            'log_tail' => $mailer->logTail(3)], 422);
+        }
+        $rcpt = $mtTo ?? ($config['mail']['to'] ?? []);
         require_once APP_ROOT . '/lib/EmailTemplate.php';
         $content = EmailTemplate::heading('Email channel is working')
             . EmailTemplate::sub('This is a test notification from the Kian Joo VisionAI — no action is required.')
@@ -2529,14 +2542,16 @@ try {
                 ['Always-alert modules', implode(', ', $config['alerts']['always_mods'] ?? []) ?: '—'],
                 ['Intrusion armed window', (string) ($config['alerts']['intr_armed'] ?? 'always')],
                 ['Email interval', (int) ($config['mail']['cooldown'] ?? 5) . ' min per camera + module'],
-                ['Recipients', implode(', ', $config['mail']['to'] ?? [])],
+                ['Default recipients', implode(', ', $config['mail']['to'] ?? []) ?: '— (none)'],
+                ['Ticket e-mails', ($config['escalation']['tickets_email'] ?? true) !== false ? 'on' : 'off'],
             ])
             . EmailTemplate::buttons([['Open dashboard', EmailTemplate::host() . '/', true]]);
         $sent = $mailer->send('[Kian Joo VisionAI] Test alert — email channel OK',
             EmailTemplate::shell('Email channel test — configuration summary', 'EMAIL CHANNEL TEST',
-                EmailTemplate::COLORS['ok'], $content));
-        Response::json(['ok' => $sent, 'to' => $config['mail']['to'] ?? [],
-                        'error' => $sent ? null : 'SMTP send failed — check error_log'], $sent ? 200 : 502);
+                EmailTemplate::COLORS['ok'], $content), $rcpt);
+        Response::json(['ok' => $sent, 'to' => $rcpt, 'default_to' => $config['mail']['to'] ?? [],
+                        'error' => $sent ? null : ('SMTP send failed — ' . ($mailer->lastError ?: 'see log_tail')),
+                        'log_tail' => $mailer->logTail(3)], $sent ? 200 : 502);
     }
 
     // ── Live video bridge (go2rtc) ───────────────────────────

@@ -1,7 +1,7 @@
 <?php
 /**
  * Insights: historical aggregation, statistical trend forecasting, and
- * LLM-narrated predictions (weststar-ai middleware or the Anthropic API),
+ * LLM-narrated predictions (Claude via lib/Claude.php),
  * plus the scheduled email Reporter (daily/weekly/monthly/yearly).
  *
  * Forecast method: per-day detection counts (by module) drive a least-squares
@@ -141,13 +141,13 @@ final class Insights
     }
 
     /**
-     * LLM-narrated prediction, cached (slow + costly). Source per settings:
-     * 'anthropic' → Claude API directly; 'weststar' → weststar-ai middleware
-     * analytics review; 'off' → null.
+     * LLM-narrated prediction via Claude (lib/Claude.php, use case `insight`
+     * → Sonnet), cached 30 min (slow + costly). Source 'off' → null. The old
+     * 'weststar' middleware path is retired: any non-off source uses Claude.
      */
     public static function llmForecast(array $config, array $agg, array $fc): ?array
     {
-        $source = $config['ai']['source'] ?? 'weststar';
+        $source = $config['ai']['source'] ?? 'claude';
         if ($source === 'off' || !function_exists('curl_init')) {
             return null;
         }
@@ -160,16 +160,23 @@ final class Insights
             }
         }
 
-        $out = $source === 'anthropic'
-            ? self::anthropicForecast($config, $agg, $fc)
-            : self::weststarForecast($config);
-
+        // Negative cache: after a failure with nothing stale to serve, wait 5 min.
+        $failFile = $cacheFile . '.fail';
+        if (!is_file($cacheFile) && is_file($failFile) && (time() - filemtime($failFile)) < 300) {
+            return null;
+        }
+        $out = self::claudeForecast($config, $agg, $fc);
+        if ($out === null) {
+            @touch($failFile);
+        }
         if ($out !== null) {
             @file_put_contents($cacheFile, json_encode($out, JSON_UNESCAPED_SLASHES));
             return $out;
         }
-        // Serve stale on failure.
+        // Serve stale on failure, and back off for 5 min so the 5 s feed poll
+        // doesn't retry a failing call every few seconds.
         if (is_file($cacheFile)) {
+            @touch($cacheFile, time() - $ttl + 300);
             $c = json_decode((string) file_get_contents($cacheFile), true);
             if (is_array($c)) {
                 return $c;
@@ -178,14 +185,26 @@ final class Insights
         return null;
     }
 
-    /** Claude API (raw HTTP — no Composer on this host). */
-    private static function anthropicForecast(array $config, array $agg, array $fc): ?array
+    private const FORECAST_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'summary'        => ['type' => 'string'],
+            'risks'          => ['type' => 'array', 'items' => ['type' => 'string']],
+            'recommendation' => ['type' => 'string'],
+            'outlook'        => ['type' => 'string', 'enum' => ['rising', 'stable', 'falling']],
+        ],
+        'required' => ['summary', 'risks', 'recommendation', 'outlook'],
+        'additionalProperties' => false,
+    ];
+
+    /** Claude forecast narration (structured JSON). */
+    private static function claudeForecast(array $config, array $agg, array $fc): ?array
     {
-        $key = $config['ai']['anthropic_key'] ?? '';
-        if ($key === '') {
+        require_once __DIR__ . '/Claude.php';
+        $claude = Claude::fromConfig($config);
+        if (!$claude->ready()) {
             return null;
         }
-        $model = $config['ai']['anthropic_model'] ?: 'claude-opus-4-8';
         $stats = [
             'window_days'       => $agg['days'],
             'total_detections'  => $agg['total'],
@@ -199,91 +218,24 @@ final class Insights
             'predicted_next_7_days'      => $fc['next7'],
         ];
         $prompt = "You are the forecasting analyst for a CCTV AI-detection dashboard (fire/smoke, PPE compliance, "
-            . "intrusion, face & body analytics) at Kian Joo's plants. Based ONLY on the aggregated detection statistics "
-            . "below, produce a short operational forecast. Respond with STRICT JSON, no markdown, shaped exactly as: "
-            . '{"summary": "2-3 sentence plain-language forecast of the coming days", '
-            . '"risks": ["up to 3 short risk bullets"], "recommendation": "1 sentence operational recommendation", '
-            . '"outlook": "rising|stable|falling"}'
+            . "intrusion, face & body analytics, forklift safety) at Kian Joo's plants. Based ONLY on the aggregated detection statistics "
+            . "below, produce a short operational forecast: summary = 2-3 plain-language sentences about the coming days, "
+            . "risks = up to 3 short bullets, recommendation = 1 operational sentence, outlook = rising|stable|falling. "
+            . "Never invent numbers that are not in the statistics."
             . "\n\nStatistics:\n" . json_encode($stats, JSON_UNESCAPED_SLASHES);
 
-        $body = json_encode([
-            'model'      => $model,
-            'max_tokens' => 600,
-            'messages'   => [['role' => 'user', 'content' => $prompt]],
-        ], JSON_UNESCAPED_SLASHES);
-
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $body,
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: application/json',
-                'x-api-key: ' . $key,
-                'anthropic-version: 2023-06-01',
-            ],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 60,
-            CURLOPT_CONNECTTIMEOUT => 6,
-        ]);
-        $resp = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($code !== 200 || !$resp) {
-            error_log('[insights] anthropic HTTP ' . $code . ' ' . substr((string) $resp, 0, 200));
+        $res = $claude->json('insight', '', [['role' => 'user', 'content' => $prompt]], self::FORECAST_SCHEMA);
+        if (!$res['ok'] || empty($res['data']['summary'])) {
+            error_log('[insights] claude forecast: ' . ($res['error'] ?? 'no summary'));
             return null;
         }
-        $d = json_decode((string) $resp, true);
-        if (($d['stop_reason'] ?? '') === 'refusal') {
-            return null;
-        }
-        $text = '';
-        foreach (($d['content'] ?? []) as $blk) {
-            if (($blk['type'] ?? '') === 'text') {
-                $text .= $blk['text'];
-            }
-        }
-        // The model returns strict JSON; tolerate accidental fences.
-        $text = trim(preg_replace('/^```(json)?|```$/m', '', trim($text)) ?? $text);
-        $j = json_decode($text, true);
-        if (!is_array($j) || empty($j['summary'])) {
-            return null;
-        }
+        $j = $res['data'];
         return [
-            'source'     => 'anthropic · ' . $model,
+            'source'     => 'AI outlook engine',
             'summary'    => (string) $j['summary'],
             'risks'      => array_slice(array_map('strval', (array) ($j['risks'] ?? [])), 0, 3),
             'recommendation' => (string) ($j['recommendation'] ?? ''),
             'outlook'    => in_array($j['outlook'] ?? '', ['rising', 'stable', 'falling'], true) ? $j['outlook'] : 'stable',
-            'fetched_at' => date('c'),
-        ];
-    }
-
-    /** weststar-ai middleware: reuse its 24h analytics LLM review as narrative. */
-    private static function weststarForecast(array $config): ?array
-    {
-        $base = rtrim((string) ($config['ai']['base'] ?? ''), '/');
-        if ($base === '') {
-            return null;
-        }
-        $ch = curl_init($base . '/analytics?window=24h');
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 5]);
-        $resp = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($code !== 200 || !$resp) {
-            return null;
-        }
-        $d = json_decode((string) $resp, true);
-        $review = is_array($d) ? ($d['llm_review'] ?? null) : null;
-        if (!$review) {
-            return null;
-        }
-        return [
-            'source'     => 'weststar-ai',
-            'summary'    => (string) $review,
-            'risks'      => [],
-            'recommendation' => '',
-            'outlook'    => 'stable',
             'fetched_at' => date('c'),
         ];
     }
@@ -380,8 +332,8 @@ final class Reporter
         );
 
         require_once __DIR__ . '/Mailer.php';
-        $to = $config['reports']['recipients'] ?: ($config['mail']['to'] ?? []);
-        if (empty($config['mail']['host']) || !$to) {
+        $to = Mailer::parseList($config['reports']['recipients'] ?: ($config['mail']['to'] ?? []), 30);
+        if (empty($config['mail']['host']) || ($config['mail']['enabled'] ?? true) === false || !$to) {
             return false;
         }
         try {
@@ -506,8 +458,8 @@ final class Reporter
 
         require_once __DIR__ . '/Mailer.php';
         $mailCfg = $config['mail'];
-        $to = $config['reports']['recipients'] ?: ($mailCfg['to'] ?? []);
-        if (empty($mailCfg['host']) || !$to) {
+        $to = Mailer::parseList($config['reports']['recipients'] ?: ($mailCfg['to'] ?? []), 30);
+        if (empty($mailCfg['host']) || ($mailCfg['enabled'] ?? true) === false || !$to) {
             return false;
         }
         try {

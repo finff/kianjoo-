@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "player": "assets/vendor/lottie/lottie_light.min.js",
+  "renderer": "svg",
+  "animations": {
+    "loading": {"file": "loading-spinner.json", "loop": true,  "autoplay": true, "size": "40-64px"},
+    "success": {"file": "success-check.json",   "loop": false, "autoplay": true, "size": "64-96px"},
+    "error":   {"file": "error-alert.json",     "loop": false, "autoplay": true, "size": "64-96px"},
+    "empty":   {"file": "empty-box.json",       "loop": true,  "autoplay": true, "size": "120-160px"},
+    "scan":    {"file": "face-scan.json",       "loop": true,  "autoplay": true, "size": "120-200px"},
+    "sent":    {"file": "sent-plane.json",      "loop": false, "autoplay": true, "size": "64-96px"},
+    "pulse":   {"file": "pulse-ring.json",      "loop": true,  "autoplay": true, "size": "24-48px"}
+  }
+}

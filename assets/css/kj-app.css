@@ -1,0 +1,24 @@
+/* ==========================================================================
+   Bridge styles: affordances for legacy dashboard markup (app.css classes)
+   that is now wired to KJModal via data-kj-modal. Wave 2 replaces these
+   elements with kj-components; keep this file small.
+   ========================================================================== */
+.ov-bar-col[data-kj-modal]:not([data-kj-modal=""]),
+.ovs-col[data-kj-modal]:not([data-kj-modal=""]) { cursor: pointer; border-radius: 6px; transition: background var(--kj-dur-fast); }
+.ov-bar-col[data-kj-modal]:not([data-kj-modal=""]):hover,
+.ovs-col[data-kj-modal]:not([data-kj-modal=""]):hover { background: var(--kj-primary-soft); }
+
+.ov-leg-row[data-kj-modal]:not([data-kj-modal=""]),
+.ovs-bar[data-kj-modal]:not([data-kj-modal=""]) { cursor: pointer; border-radius: 6px; transition: background var(--kj-dur-fast); }
+.ov-leg-row[data-kj-modal]:not([data-kj-modal=""]):hover,
+.ovs-bar[data-kj-modal]:not([data-kj-modal=""]):hover { background: var(--kj-primary-soft); }
+
+.ovs-hero[data-kj-modal] { cursor: pointer; }
+.ovs-hero[data-kj-modal]:hover .ovs-big { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+
+.ovs-delta[data-kj-modal]:not([data-kj-modal=""]):hover,
+.att-name[data-kj-modal]:not([data-kj-modal=""]):hover,
+.att-rec-who[data-kj-modal]:not([data-kj-modal=""]):hover { text-decoration: underline; color: var(--kj-primary); }
+.att-face[data-kj-modal]:not([data-kj-modal=""]) { cursor: zoom-in; }
+
+[data-kj-modal]:not([data-kj-modal=""]):focus-visible { outline: 2px solid var(--kj-primary); outline-offset: 2px; }

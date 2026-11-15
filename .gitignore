@@ -53,3 +53,16 @@ storage/nettest_last.json
 storage/retention_state.json
 storage/poc_scorecard.json
 storage/live_relay/
+
+# Server runtime output (logs, generated reports, caches, schema markers)
+storage/*.log
+storage/*.log.*
+storage/*.ver
+storage/reports/
+storage/thumbs/
+storage/pdf_fonts/
+uploads/floorplans/*
+!uploads/floorplans/.htaccess
+
+# Reference documents, not source
+kian_kianjoo/

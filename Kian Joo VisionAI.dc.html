@@ -7,6 +7,24 @@
 <link rel="icon" type="image/png" href="/uploads/Kian-Joo-Logo.png">
 <script src="https://code.highcharts.com/highcharts.js"></script>
 <script src="./support.js"></script>
+<!-- SPA page modules (docs/plan/SPA_ARCHITECTURE.md). Blocking on purpose: they must be
+     registered before the dc-runtime evaluates app.js (which calls KJPages.install). -->
+<script src="assets/js/kj-router.js"></script>
+<script src="assets/js/kj-pages.js"></script>
+<script src="assets/js/kj-shell.js"></script>
+<script src="assets/js/pages/dashboard.js"></script>
+<script src="assets/js/pages/cameras.js"></script>
+<script src="assets/js/pages/detections.js"></script>
+<script src="assets/js/pages/movement.js"></script>
+<script src="assets/js/pages/people.js"></script>
+<script src="assets/js/pages/attendance.js"></script>
+<script src="assets/js/pages/tickets.js"></script>
+<script src="assets/js/pages/analytics.js"></script>
+<script src="assets/js/pages/settings.js"></script>
+<script src="assets/js/pages/staff-app.js"></script>
+<script src="assets/vendor/lucide/lucide.min.js" defer></script>
+<script src="assets/js/kj-icons.js" defer></script>
+<script src="assets/js/kj-modal.js" defer></script>
 </head>
 <body>
 <x-dc>
@@ -15,6 +33,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="assets/css/kj-tokens.css">
+<link rel="stylesheet" href="assets/css/kj-components.css">
+<link rel="stylesheet" href="assets/css/kj-modal.css">
+<link rel="stylesheet" href="assets/css/kj-app.css">
+<link rel="stylesheet" href="assets/css/kj-shell.css">
 </helmet>
 
 <div class="c1" data-theme="{{ theme }}" data-side="{{ sideMode }}" data-screen-label="Live Monitoring">
@@ -36,129 +59,9 @@
       </button>
     </div>
 
-    <nav class="c8">
-      <button class="c10 navbtn {{ nav.overview.cls }}" onClick="{{ nav.overview.go }}" title="Overview">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-        <span class="nav-lbl">Overview</span>
-        <span class="c11"></span>
-      </button>
-
-      <div class="nav-sec">
-        <button class="nav-sec-head {{ sec.att.hasOn }}" onClick="{{ sec.att.toggle }}" title="{{ sec.att.title }}">
-          <span class="nav-sec-lbl">ATTENDANCE</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.att.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.att.cls }}">
-      <button class="c10 navbtn {{ nav.attendance.cls }}" onClick="{{ nav.attendance.go }}" title="Attendance">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>
-        <span class="nav-lbl">Attendance</span>
-      </button>
-      <button class="c10 navbtn {{ nav.employees.cls }}" onClick="{{ nav.employees.go }}" title="Employees">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span class="nav-lbl">Employees</span>
-      </button>
-      <button class="c10 navbtn {{ nav.faces.cls }}" onClick="{{ nav.faces.go }}" title="Face Registration">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
-        <span class="nav-lbl">Face Registration</span>
-      </button>
-        </div>
-      </div>
-
-      <div class="nav-sec">
-        <button class="nav-sec-head {{ sec.move.hasOn }}" onClick="{{ sec.move.toggle }}" title="{{ sec.move.title }}">
-          <span class="nav-sec-lbl">MOVEMENT</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.move.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.move.cls }}">
-      <button class="c10 navbtn {{ nav.movement.cls }}" onClick="{{ nav.movement.go }}" title="Movement Log">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>
-        <span class="nav-lbl">Movement Log</span>
-      </button>
-        </div>
-      </div>
-
-      <div class="nav-sec">
-        <button class="nav-sec-head {{ sec.safety.hasOn }}" onClick="{{ sec.safety.toggle }}" title="{{ sec.safety.title }}">
-          <span class="nav-sec-lbl">SAFETY MONITORING</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.safety.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.safety.cls }}">
-      <button class="c10 navbtn {{ nav.ppe.cls }}" onClick="{{ nav.ppe.go }}" title="PPE Compliance">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>
-        <span class="nav-lbl">PPE Compliance</span>
-      </button>
-      <button class="c10 navbtn {{ nav.intr.cls }}" onClick="{{ nav.intr.go }}" title="Restricted Area">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-        <span class="nav-lbl">Restricted Area</span>
-      </button>
-      <button class="c10 navbtn {{ nav.cleaning.cls }}" onClick="{{ nav.cleaning.go }}" title="Cleaning Monitoring">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>
-        <span class="nav-lbl">Cleaning Monitoring</span>
-      </button>
-      <button class="c10 navbtn {{ nav.behaviour.cls }}" onClick="{{ nav.behaviour.go }}" title="Behaviour Analytics">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <span class="nav-lbl">Behaviour Analytics</span>
-      </button>
-      <button class="c10 navbtn {{ nav.forklift.cls }}" onClick="{{ nav.forklift.go }}" title="Forklift Monitoring">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12H5a2 2 0 0 0-2 2v5"/><circle cx="13" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><path d="M8 19h3"/><path d="M16 2v17h6"/><path d="M6 12V7a2 2 0 0 1 2-2h3l5 5"/></svg>
-        <span class="nav-lbl">Forklift Monitoring</span>
-      </button>
-      <button class="c10 navbtn {{ nav.cameras.cls }}" onClick="{{ nav.cameras.go }}" title="Cameras">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-        <span class="nav-lbl">Cameras</span>
-        <svg class="nav-caret {{ nav.cameras.caret }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
-      <sc-if value="{{ nav.cameras.open }}" hint-placeholder-val="{{ false }}">
-      <div class="nav-subs">
-        <sc-for list="{{ nav.cameras.items }}" as="i" hint-placeholder-count="2">
-          <button class="c10 navbtn nav-sub {{ i.cls }}" onClick="{{ i.go }}" title="{{ i.label }}"><span class="nav-dot"></span><span class="nav-lbl">{{ i.label }}</span></button>
-        </sc-for>
-      </div>
-      </sc-if>
-        </div>
-      </div>
-
-
-      <div class="nav-sec">
-        <button class="nav-sec-head {{ sec.system.hasOn }}" onClick="{{ sec.system.toggle }}" title="{{ sec.system.title }}">
-          <span class="nav-sec-lbl">SYSTEM</span><span class="nav-sec-dot"></span>
-          <svg class="nav-caret {{ sec.system.caret }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
-        <div class="nav-sec-items {{ sec.system.cls }}">
-      <button class="c10 navbtn {{ nav.reports.cls }}" onClick="{{ nav.reports.go }}" title="Reports">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6"/><rect x="12.5" y="7" width="3" height="10"/><rect x="18" y="13" width="3" height="4"/></svg>
-        <span class="nav-lbl">Reports</span>
-        <span class="c12">{{ openCount }}</span>
-        <svg class="nav-caret {{ nav.reports.caret }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
-      <sc-if value="{{ nav.reports.open }}" hint-placeholder-val="{{ false }}">
-      <div class="nav-subs">
-        <sc-for list="{{ nav.reports.items }}" as="i" hint-placeholder-count="2">
-          <button class="c10 navbtn nav-sub {{ i.cls }}" onClick="{{ i.go }}" title="{{ i.label }}"><span class="nav-dot"></span><span class="nav-lbl">{{ i.label }}</span></button>
-        </sc-for>
-      </div>
-      </sc-if>
-      <!-- Workstream D: POC Scorecard (AI Performance hidden) -->
-      <button class="c10 navbtn {{ nav.poc.cls }}" onClick="{{ nav.poc.go }}" title="POC Scorecard">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
-        <span class="nav-lbl">POC Scorecard</span>
-      </button>
-      <button class="c10 navbtn {{ nav.settings.cls }}" onClick="{{ nav.settings.go }}" title="Settings">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-        <span class="nav-lbl">Settings</span>
-        <svg class="nav-caret {{ nav.settings.caret }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
-      <sc-if value="{{ nav.settings.open }}" hint-placeholder-val="{{ false }}">
-      <div class="nav-subs">
-        <sc-for list="{{ nav.settings.items }}" as="i" hint-placeholder-count="2">
-          <button class="c10 navbtn nav-sub {{ i.cls }}" onClick="{{ i.go }}" title="{{ i.label }}"><span class="nav-dot"></span><span class="nav-lbl">{{ i.label }}</span></button>
-        </sc-for>
-      </div>
-      </sc-if>
-        </div>
-      </div>
-
-    </nav>
+    <!-- Sidebar is rendered by assets/js/kj-shell.js from its canonical NAV config
+         (RBAC-filtered). Hub sub-pages come from assets/js/pages/<hub>.js. -->
+    <nav class="c8 kj-nav" id="kj-nav" aria-label="Main navigation"></nav>
 
     <div class="c18">
       <div class="c19">{{ meInitials }}</div>
@@ -187,6 +90,7 @@
           </sc-if>
         </div>
         <div class="c29 tb-sub" style="overflow:hidden;text-overflow:ellipsis">{{ pageSub }}</div>
+        <div class="kj-hubtabs" id="kj-hub-tabs"></div>
       </div>
 
       <div class="c44" style="flex-shrink:1;min-width:0">
@@ -236,6 +140,8 @@
           <sc-if value="{{ isDarkTheme }}" hint-placeholder-val="{{ true }}"><svg class="c52" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></sc-if><sc-if value="{{ isLightTheme }}" hint-placeholder-val="{{ false }}"><svg class="c52" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></sc-if>
         </button>
 
+        <div class="kj-tb-bell" id="kj-tb-bell"></div>
+
         <div class="c53">
           <button class="c54" onClick="{{ toggleNotif }}" title="Notifications" style-hover="color:var(--text)">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
@@ -278,6 +184,9 @@
 
     <!-- CONTENT -->
     <div class="c73">
+
+      <!-- Host for module-rendered pages (KJPages mount(el)); legacy pages below render via sc-if. -->
+      <div class="kj-page-host" id="kj-page-host"></div>
 
       <!-- ===== OVERVIEW (AI Factory Monitoring Dashboard · /api/overview) ===== -->
       <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
@@ -368,7 +277,7 @@
               </div>
               <div class="ov-bars">
                 <sc-for list="{{ ovWeek }}" as="w" hint-placeholder-count="7">
-                  <div class="ov-bar-col" title="{{ w.title }}">
+                  <div class="ov-bar-col" title="{{ w.title }}" data-kj-modal="{{ w.kjm }}">
                     <div class="ov-bar-stack">
                       <div class="ov-seg" style="height:{{ w.nH }}; background:#C9D1E0"></div>
                       <div class="ov-seg" style="height:{{ w.aH }}; background:var(--crit)"></div>
@@ -408,7 +317,7 @@
               </div>
               <div class="ov-donut-legend">
                 <sc-for list="{{ ovDonutLegend }}" as="l" hint-placeholder-count="4">
-                  <div class="ov-leg-row">
+                  <div class="ov-leg-row" data-kj-modal="{{ l.kjm }}">
                     <span class="ov-leg-dot" style="background:{{ l.dot }}"></span>
                     <span>{{ l.label }}</span>
                     <span class="ov-leg-val">{{ l.val }} <span class="c100">{{ l.pct }}</span></span>
@@ -431,14 +340,14 @@
               <span class="ov-live">● Live</span>
               <button class="ov-link" onClick="{{ goAttendance }}">View All</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.att.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.att.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.att.bigCol }}">{{ ovSum.att.big }}</div>
-              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.att.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.att.deltaCol }}">{{ ovSum.att.delta }}</div></div>
+              <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.att.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.att.deltaCol }}" data-kj-modal="{{ ovSum.att.deltaKjm }}">{{ ovSum.att.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.att.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.att.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -449,7 +358,7 @@
             <sc-if value="{{ ovSum.att.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.att.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -464,14 +373,14 @@
               <div class="ov-title">PPE Compliance</div>
               <button class="ov-link" onClick="{{ goPpe }}">View Details</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.ppe.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.ppe.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.ppe.bigCol }}">{{ ovSum.ppe.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ppe.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ppe.deltaCol }}">{{ ovSum.ppe.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.ppe.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.ppe.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -482,7 +391,7 @@
             <sc-if value="{{ ovSum.ppe.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.ppe.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -497,14 +406,14 @@
               <div class="ov-title">Restricted Area Alerts</div>
               <button class="ov-link" onClick="{{ goIntr }}">View All</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.ra.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.ra.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.ra.bigCol }}">{{ ovSum.ra.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ra.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ra.deltaCol }}">{{ ovSum.ra.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.ra.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.ra.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -515,7 +424,7 @@
             <sc-if value="{{ ovSum.ra.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.ra.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -530,14 +439,14 @@
               <div class="ov-title">Cleaning Monitoring</div>
               <button class="ov-link" onClick="{{ goCleaning }}">View Details</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.cl.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.cl.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.cl.bigCol }}">{{ ovSum.cl.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.cl.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.cl.deltaCol }}">{{ ovSum.cl.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.cl.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.cl.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -548,7 +457,7 @@
             <sc-if value="{{ ovSum.cl.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.cl.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -564,14 +473,14 @@
               <span class="ov-live">● Live</span>
               <button class="ov-link" onClick="{{ goForklift }}">View All</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.fk.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.fk.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.fk.bigCol }}">{{ ovSum.fk.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.fk.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.fk.deltaCol }}">{{ ovSum.fk.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.fk.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.fk.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -582,7 +491,7 @@
             <sc-if value="{{ ovSum.fk.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.fk.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -626,14 +535,14 @@
               <div class="ov-title">Detections Today</div>
               <button class="ov-link" onClick="{{ goIncidents }}">View All</button>
             </div>
-            <div class="ovs-hero" onClick="{{ ovSum.ev.go }}">
+            <div class="ovs-hero" data-kj-modal="{{ ovSum.ev.kjm }}" title="Show details">
               <div class="ovs-big" style="color:{{ ovSum.ev.bigCol }}">{{ ovSum.ev.big }}</div>
               <div class="ovs-hero-txt"><div class="ovs-big-lbl">{{ ovSum.ev.bigLbl }}</div><div class="ovs-delta" style="color:{{ ovSum.ev.deltaCol }}">{{ ovSum.ev.delta }}</div></div>
             </div>
             <div class="ovs-chart">
               <div class="ovs-cols">
                 <sc-for list="{{ ovSum.ev.cols }}" as="c" hint-placeholder-count="7">
-                  <div class="ovs-col" title="{{ c.tip }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
+                  <div class="ovs-col" title="{{ c.tip }}" data-kj-modal="{{ c.kjm }}"><div class="ovs-stack"><div class="ov-seg" style="height:{{ c.h2 }}; background:{{ c.c2 }}"></div><div class="ov-seg" style="height:{{ c.h1 }}; background:{{ c.c1 }}"></div><div class="ov-seg" style="height:{{ c.h0 }}; background:{{ c.c0 }}"></div></div><div class="ovs-col-lbl">{{ c.lbl }}</div></div>
                 </sc-for>
               </div>
               <sc-if value="{{ ovSum.ev.chartEmpty }}" hint-placeholder-val="{{ false }}"><div class="ovs-chart-empty">No data in the last 7 days</div></sc-if>
@@ -644,7 +553,7 @@
             <sc-if value="{{ ovSum.ev.hasBars }}" hint-placeholder-val="{{ true }}">
             <div class="ovs-bars">
               <sc-for list="{{ ovSum.ev.bars }}" as="b" hint-placeholder-count="3">
-                <div class="ovs-bar"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
+                <div class="ovs-bar" data-kj-modal="{{ b.kjm }}"><span class="ovs-bar-lbl" title="{{ b.label }}">{{ b.label }}</span><span class="ovs-track"><span class="ovs-fill" style="width:{{ b.w }}; background:{{ b.col }}"></span></span><span class="ovs-bar-val">{{ b.val }}</span></div>
               </sc-for>
             </div>
             </sc-if>
@@ -653,235 +562,6 @@
         </div>
 
         <div class="c100" style="text-align:right">{{ ovUpdated }}</div>
-      </div>
-      </sc-if>
-
-      <!-- ===== LIVE MONITORING ===== -->
-      <sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
-      <div class="c74">
-
-      <!-- LEFT COLUMN -->
-      <div class="c75">
-        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
-        <div class="subtabs">
-          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
-            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-        </sc-if>
-
-        <!-- AI SUMMARY (weststar-ai LLM) -->
-        <sc-if value="{{ aiHas }}" hint-placeholder-val="{{ true }}">
-        <div class="c76">
-          <div class="c77">AI</div>
-          <div class="c39">
-            <div class="c78">AI SHIFT REVIEW · <span class="c79">weststar-ai</span></div>
-            <div class="c80">{{ aiSummary }}</div>
-          </div>
-        </div>
-        </sc-if>
-
-        <!-- KPI STRIP -->
-        <div class="c81">
-          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
-            <div class="c82" onClick="{{ k.onClick }}" title="{{ k.hint }}">
-              <div class="c83">
-                <span class="c84">{{ k.label }}</span>
-                <span class="c85" style="background:{{ k.tone }}"></span>
-              </div>
-              <div class="c86">
-                <span class="c87" style="color:{{ k.valTone }}">{{ k.value }}</span>
-                <span class="c88">{{ k.unit }}</span>
-              </div>
-              <div class="c89" style="color:{{ k.deltaTone }}">{{ k.delta }}</div>
-            </div>
-          </sc-for>
-
-          <!-- PPE ring card -->
-          <div class="c90" onClick="{{ openPpe }}" title="PPE compliance detail">
-            <div class="c91" style="background:conic-gradient(var(--ok) 0 {{ ppePct }}%, var(--line2) 0)">
-              <div class="c92">
-                <span class="c93">{{ ppePct }}</span>
-              </div>
-            </div>
-            <div class="c94">
-              <div class="c95">PPE Compliance</div>
-              <div class="c96">wearing vs no-PPE</div>
-              <div class="c97">{{ ppeMissing }} no-PPE detections</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- LIVE FEEDS -->
-        <div class="c98">
-          <h2 class="c99">Live Feeds</h2>
-          <span class="c100">Showing {{ shownCount }} of {{ feedTotal }} · {{ feedOnline }} online</span>
-          <div class="c101">
-            <div class="c105">
-              <sc-for list="{{ gridOpts }}" as="g" hint-placeholder-count="3">
-                <button class="c106" onClick="{{ g.onClick }}" title="{{ g.title }}" style="background:{{ g.bg }}; color:{{ g.color }}">{{ g.label }}</button>
-              </sc-for>
-            </div>
-          </div>
-        </div>
-
-        <div class="c107" style="grid-template-columns:repeat({{ gridCols }},1fr); gap:{{ gridGap }}">
-          <sc-for list="{{ cameras }}" as="cam" hint-placeholder-count="4">
-            <div class="c108" onClick="{{ cam.onOpen }}" title="Open camera" style="background:{{ cam.scene }}; opacity:{{ cam.dim }}">
-
-              <!-- placeholder shown until a frame or the live stream arrives -->
-              <sc-if value="{{ cam.showPlaceholder }}" hint-placeholder-val="{{ false }}">
-                <div class="c109">
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-                  <span class="c110">{{ cam.placeholder }}</span>
-                </div>
-              </sc-if>
-
-              <!-- live video (go2rtc bridge); falls back to the last detection frame -->
-              <sc-if value="{{ cam.hasVideo }}" hint-placeholder-val="{{ true }}">
-                <video class="c111" data-src="{{ cam.videoUrl }}" data-cam="{{ cam.camKey }}" data-mirror="{{ cam.mirrorOf }}" autoplay muted playsinline></video>
-              </sc-if>
-
-              <!-- scanlines -->
-              <div class="c112"></div>
-              <div class="c113"></div>
-              <!-- vignette -->
-              <div class="c114"></div>
-
-              <!-- detection boxes -->
-              <sc-for list="{{ cam.boxes }}" as="b" hint-placeholder-count="1">
-                <div class="c115" style="top:{{ b.top }}; left:{{ b.left }}; width:{{ b.w }}; height:{{ b.h }}; border:1.5px solid {{ b.col }}; box-shadow:0 0 0 1px rgba(0,0,0,.4), inset 0 0 12px {{ b.glow }}">
-                  <sc-if value="{{ cam.showBoxLabel }}" hint-placeholder-val="{{ true }}">
-                    <span class="c116" style="background:{{ b.col }}">{{ b.label }}</span>
-                  </sc-if>
-                </div>
-              </sc-for>
-
-              <!-- top overlay -->
-              <div class="c117">
-                <span class="c118">
-                  <span class="c119" style="background:{{ cam.liveCol }}; box-shadow:0 0 6px {{ cam.liveCol }}; animation:{{ cam.liveAnim }}"></span>{{ cam.liveLabel }}
-                </span>
-                <span class="c120">{{ cam.id }}</span>
-                <sc-if value="{{ cam.hasLbChip }}" hint-placeholder-val="{{ false }}">
-                  <span class="lb-chip" style="color:{{ cam.lbChipCol }}">{{ cam.lbChip }}</span>
-                </sc-if>
-                <span class="c121" style="background:{{ cam.tagBg }}; box-shadow:0 0 6px {{ cam.tagBg }}"></span>
-              </div>
-
-              <!-- bottom overlay -->
-              <div class="c122">
-                <div class="c123">
-                  <div class="c124" style="font-size:{{ cam.nameSize }}">{{ cam.name }}</div>
-                  <sc-if value="{{ cam.showMeta }}" hint-placeholder-val="{{ true }}">
-                    <div class="c125">{{ cam.zone }}</div>
-                  </sc-if>
-                </div>
-                <sc-if value="{{ cam.showMeta }}" hint-placeholder-val="{{ true }}">
-                  <div class="c126">
-                    <div>{{ clock }}</div>
-                    <div>{{ cam.res }} · {{ cam.fps }}fps</div>
-                  </div>
-                </sc-if>
-              </div>
-            </div>
-          </sc-for>
-        </div>
-
-        <!-- TREND CHART -->
-        <div class="c127">
-          <div class="c128">
-            <h3 class="c129">Detections · last 24h</h3>
-            <span class="c100">{{ trendTotal }} events</span>
-            <div class="c130">
-              <span class="c131"><span class="c132"></span>Fire</span>
-              <span class="c131"><span class="c133"></span>PPE</span>
-              <span class="c131"><span class="c134"></span>Intrusion</span>
-              <span class="c131"><span class="c135"></span>Face</span>
-            </div>
-          </div>
-          <div class="c136">
-            <sc-for list="{{ bars }}" as="bar" hint-placeholder-count="24">
-              <div class="c137">
-                <div class="c138" style="height:{{ bar.h4 }}"></div>
-                <div class="c139" style="height:{{ bar.h3 }}"></div>
-                <div class="c140" style="height:{{ bar.h2 }}"></div>
-                <div class="c141" style="height:{{ bar.h1 }}"></div>
-              </div>
-            </sc-for>
-          </div>
-          <div class="c142">
-            <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>now</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT RAIL: EVENT FEED -->
-      <div class="c143">
-        <div class="c144">
-          <span class="c145"></span>
-          <h2 class="c146">Live Events</h2>
-          <span class="c147">{{ openCount }} open</span>
-          <select class="sel sel-sm" title="Filter by event type" value="{{ evTypeSel.value }}" onChange="{{ evTypeSel.onChange }}">
-            <sc-for list="{{ evTypeSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <button class="c148" onClick="{{ togglePaused }}" style-hover="color:var(--text)">
-            <span class="c149">{{ pauseIcon }}</span>{{ pauseLabel }}
-          </button>
-        </div>
-
-        <div class="c150">
-          <sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
-            <div class="c151" onClick="{{ e.onOpen }}" title="View full alert" style="background:{{ e.cardBg }}; border:1px solid {{ e.cardBorder }}; border-left:3px solid {{ e.sevColor }}; opacity:{{ e.op }}">
-              <div class="c152">
-                <span class="c153" style="background:{{ e.tagBg }}">{{ e.tag }}</span>
-                <span class="c154" style="color:{{ e.sevColor }}; border:1px solid {{ e.sevColor }}">{{ e.sev }}</span>
-                <span class="c155">{{ e.ago }}</span>
-              </div>
-              <sc-if value="{{ e.hasImg }}" hint-placeholder-val="{{ true }}">
-              <div class="c156" onClick="{{ e.onExpand }}" title="Click to enlarge" style="background:{{ e.thumbBg }}">
-                <div class="c157"></div>
-                <span class="c158">⤢ expand</span>
-              </div>
-              </sc-if>
-              <div class="c159">{{ e.title }}</div>
-              <sc-if value="{{ e.hasMatch }}" hint-placeholder-val="{{ false }}">
-              <div class="mx-row">
-                <sc-if value="{{ e.hasRef }}" hint-placeholder-val="{{ true }}">
-                  <span class="mx-ref" onClick="{{ e.onExpandRef }}" title="Profile photo on file" style="background:{{ e.refBg }}"></span>
-                </sc-if>
-                <span class="mx-name">{{ e.matchName }}</span>
-                <span class="mx-pct" style="color:{{ e.matchCol }}; border-color:{{ e.matchCol }}">{{ e.matchPct }}</span>
-              </div>
-              </sc-if>
-              <sc-if value="{{ e.hasRemark }}" hint-placeholder-val="{{ false }}">
-              <div class="c160"><span class="c161">AI</span>{{ e.remark }}</div>
-              </sc-if>
-              <div class="c162">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 4.5-2.6a1 1 0 0 1 1.5.9v7.4a1 1 0 0 1-1.5.9L16 14"/></svg>
-                {{ e.camera }} · {{ e.zone }}
-              </div>
-
-              <sc-if value="{{ e.isOpen }}" hint-placeholder-val="{{ true }}">
-                <div class="c102">
-                  <button class="c163" onClick="{{ e.onAck }}">Acknowledge</button>
-                  <button class="c164" onClick="{{ e.onAssign }}" style-hover="color:var(--text)">Assign</button>
-                </div>
-              </sc-if>
-              <sc-if value="{{ e.isAck }}" hint-placeholder-val="{{ false }}">
-                <div class="c165">
-                  <span class="c166"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Ack · {{ e.assignee }}</span>
-                  <button class="c167" onClick="{{ e.onResolve }}">Resolve</button>
-                </div>
-              </sc-if>
-              <sc-if value="{{ e.isResolved }}" hint-placeholder-val="{{ false }}">
-                <div class="c168"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Resolved · {{ e.assignee }}</div>
-              </sc-if>
-            </div>
-          </sc-for>
-        </div>
-
-      </div>
       </div>
       </sc-if>
 
@@ -1268,182 +948,6 @@
               </button>
             </div>
           </sc-for>
-        </div>
-      </div>
-      </sc-if>
-
-      <!-- ===== ANALYTICS ===== -->
-      <sc-if value="{{ isAnalytics }}" hint-placeholder-val="{{ false }}">
-      <div class="c207">
-        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
-        <div class="subtabs">
-          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
-            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-        </sc-if>
-        <div class="c226">
-          <span class="c88">Time range</span>
-          <div class="c102">
-            <sc-for list="{{ rangeTabs }}" as="t" hint-placeholder-count="3">
-              <button class="c227 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-            </sc-for>
-          </div>
-        </div>
-
-        <div class="c81">
-          <sc-for list="{{ aKpis }}" as="k" hint-placeholder-count="5">
-            <div class="c228">
-              <div class="c229">{{ k.label }}</div>
-              <div class="c230">{{ k.value }}</div>
-              <div class="c231" style="color:{{ k.tone }}">{{ k.delta }}</div>
-            </div>
-          </sc-for>
-        </div>
-
-        <!-- trend full width -->
-        <div class="c127">
-          <div class="c128">
-            <h3 class="c129">Detections over time</h3>
-            <div class="c130">
-              <span class="c131"><span class="c132"></span>Fire</span>
-              <span class="c131"><span class="c133"></span>PPE</span>
-              <span class="c131"><span class="c134"></span>Intrusion</span>
-              <span class="c131"><span class="c135"></span>Face</span>
-            </div>
-          </div>
-          <div class="c232">
-            <sc-for list="{{ bars }}" as="bar" hint-placeholder-count="24">
-              <div class="c137">
-                <div class="c233" style="height:{{ bar.h4 }}"></div>
-                <div class="c234" style="height:{{ bar.h3 }}"></div>
-                <div class="c235" style="height:{{ bar.h2 }}"></div>
-                <div class="c236" style="height:{{ bar.h1 }}"></div>
-              </div>
-            </sc-for>
-          </div>
-          <div class="c142"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>now</span></div>
-        </div>
-
-        <!-- three panels -->
-        <div class="c237">
-          <!-- by type -->
-          <div class="c238">
-            <h3 class="c239">By detection type</h3>
-            <div class="c240">
-              <sc-for list="{{ byType }}" as="t" hint-placeholder-count="4">
-                <div>
-                  <div class="c241"><span class="c242">{{ t.label }}</span><span class="c243">{{ t.value }}</span></div>
-                  <div class="c244"><div class="c245" style="width:{{ t.w }}; background:{{ t.col }}"></div></div>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-
-          <!-- by camera -->
-          <div class="c238">
-            <h3 class="c239">Top cameras by events</h3>
-            <div class="c246">
-              <sc-for list="{{ byCam }}" as="c" hint-placeholder-count="6">
-                <div>
-                  <div class="c247"><span class="c248">{{ c.label }}</span><span class="c249">{{ c.value }}</span></div>
-                  <div class="c250"><div class="c251" style="width:{{ c.w }}"></div></div>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-
-          <!-- severity donut -->
-          <div class="c238">
-            <h3 class="c239">Severity mix</h3>
-            <div class="c252">
-              <div class="c253" style="background:{{ donut.style }}">
-                <div class="c254"><span class="c255">{{ openCount }}</span><span class="c256">incidents</span></div>
-              </div>
-              <div class="c257">
-                <sc-for list="{{ donutLegend }}" as="d" hint-placeholder-count="4">
-                  <div class="c258"><span class="c259" style="background:{{ d.col }}"></span><span class="c260">{{ d.label }}</span><span class="c261">{{ d.pct }}</span></div>
-                </sc-for>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- compliance trend -->
-        <div class="c127">
-          <div class="c262">
-            <h3 class="c129">PPE compliance trend</h3>
-            <span class="c179">92% this week · target 95%</span>
-          </div>
-          <div class="c263">
-            <sc-for list="{{ compTrend }}" as="d" hint-placeholder-count="7">
-              <div class="c264">
-                <span class="c265">{{ d.val }}</span>
-                <div class="c266" style="height:{{ d.h }}"></div>
-                <span class="c41">{{ d.label }}</span>
-              </div>
-            </sc-for>
-          </div>
-        </div>
-
-        <!-- Workstream C: incident / detection heatmap -->
-        <div class="c127">
-          <div class="c262">
-            <h3 class="c129">Incident heatmap <span class="c100">— {{ hmTotal }} detections in range by camera or weekday and hour · click a cell to investigate</span></h3>
-            <span class="c100">{{ hmStatus }}</span>
-          </div>
-          <div class="att-bar">
-            <sc-for list="{{ hmViewTabs }}" as="t" hint-placeholder-count="2">
-              <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-            </sc-for>
-            <sc-for list="{{ hmDaysTabs }}" as="t" hint-placeholder-count="4">
-              <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-            </sc-for>
-            <select class="sel" value="{{ hmModSel.value }}" onChange="{{ hmModSel.onChange }}">
-              <sc-for list="{{ hmModSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-            </select>
-            <select class="sel" value="{{ hmSevSel.value }}" onChange="{{ hmSevSel.onChange }}">
-              <sc-for list="{{ hmSevSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-            </select>
-            <button class="c185 chip" onClick="{{ hmOpenIncidents }}">Open in Incidents</button>
-          </div>
-          <div class="hm-wrap">
-            <div class="hm-grid">
-              <div class="hm-row hm-head">
-                <div class="hm-lab"></div>
-                <sc-for list="{{ hmHours }}" as="h" hint-placeholder-count="24"><div class="hm-hr">{{ h.label }}</div></sc-for>
-                <div class="hm-tot">Σ</div>
-              </div>
-              <sc-for list="{{ hmRows }}" as="r" hint-placeholder-count="6">
-                <div class="hm-row">
-                  <div class="hm-lab" title="{{ r.sub }}"><b>{{ r.label }}</b><span>{{ r.sub }}</span></div>
-                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="24">
-                    <div class="{{ c.cls }}" style="background:{{ c.bg }}; color:{{ c.fg }}" title="{{ c.title }}" onClick="{{ c.onClick }}">{{ c.n }}</div>
-                  </sc-for>
-                  <div class="hm-tot">{{ r.total }}</div>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-          <sc-if value="{{ hmNoData }}" hint-placeholder-val="{{ false }}">
-            <div class="c100 att-cap">No detections for these filters.</div>
-          </sc-if>
-          <sc-if value="{{ hmHasPick }}" hint-placeholder-val="{{ false }}">
-            <div class="hm-pick">
-              <div class="c247"><b>{{ hmPickLabel }}</b><span><button class="c185 chip" onClick="{{ hmOpenIncidents }}">Open in Incidents</button> <button class="c185 chip" onClick="{{ hmClearPick }}">✕</button></span></div>
-              <div class="ppe-viol-grid">
-                <sc-for list="{{ hmItems }}" as="v" hint-placeholder-count="4">
-                  <div class="ppe-viol">
-                    <div class="ppe-viol-img" style="background:{{ v.thumb }}" onClick="{{ v.onOpen }}"></div>
-                    <div class="ppe-viol-miss" style="color:{{ v.sevCol }}">{{ v.sev }} · {{ v.mod }}</div>
-                    <div class="att-name">{{ v.title }}</div>
-                    <div class="att-loc">{{ v.where }}</div>
-                    <div class="att-src">{{ v.time }}</div>
-                  </div>
-                </sc-for>
-              </div>
-            </div>
-          </sc-if>
         </div>
       </div>
       </sc-if>
@@ -2128,7 +1632,7 @@
               <div class="att-row reg-cols">
                 <div class="att-emp">
                   <div class="att-face" style="background:{{ r.photoBg }}"></div>
-                  <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.shift }}</div></div>
+                  <div><div class="att-name" data-kj-modal="{{ r.kjm }}">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.shift }}</div></div>
                 </div>
                 <div class="att-loc">{{ r.org }}</div>
                 <div><div class="att-time">{{ r.clockIn }}</div><div class="att-loc">{{ r.inLoc }}</div></div>
@@ -2149,7 +1653,7 @@
               <div class="att-rec">
                 <div class="att-rec-img" style="background:{{ e.thumb }}" onClick="{{ e.onOpen }}"></div>
                 <div class="att-rec-body">
-                  <div class="att-rec-who" style="color:{{ e.whoCol }}">{{ e.who }}</div>
+                  <div class="att-rec-who" style="color:{{ e.whoCol }}" data-kj-modal="{{ e.kjm }}">{{ e.who }}</div>
                   <div class="att-loc">{{ e.where }}</div>
                   <div class="att-src">{{ e.time }} · {{ e.tag }} · {{ e.conf }}</div>
                 </div>
@@ -2194,7 +1698,7 @@
             <div class="att-row">
               <div class="att-emp">
                 <div class="att-face" style="background:{{ r.photoBg }}" onClick="{{ r.onExpand }}"></div>
-                <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.attrs }}</div></div>
+                <div><div class="att-name" data-kj-modal="{{ r.kjm }}">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div><div class="att-attrs">{{ r.attrs }}</div></div>
               </div>
               <div><div class="att-time">{{ r.entry }}</div><div class="att-loc">{{ r.entryLoc }}</div><div class="att-src">{{ r.entrySrc }}</div></div>
               <div><div class="att-time">{{ r.latest }}</div><div class="att-loc">{{ r.latestLoc }}</div></div>
@@ -2274,7 +1778,7 @@
           <sc-for list="{{ mvRows }}" as="r" hint-placeholder-count="6">
             <div class="att-row mv-cols">
               <div class="mv-time"><b>{{ r.time }}</b><span>{{ r.date }}</span></div>
-              <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
+              <div><div class="att-name" data-kj-modal="{{ r.kjm }}">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
               <div class="mv-pt"><b>{{ r.from }}</b><span>{{ r.fromSub }}</span></div>
               <div class="mv-arrow">→</div>
               <div class="mv-pt"><b>{{ r.to }}</b><span>{{ r.toSub }}</span></div>
@@ -2283,49 +1787,6 @@
           </sc-for>
           <sc-if value="{{ mvEmpty }}" hint-placeholder-val="{{ false }}">
             <div class="c100 att-cap">{{ mvEmptyText }}</div>
-          </sc-if>
-        </div>
-      </div>
-      </sc-if>
-
-      <!-- ===== EMPLOYEES (directory + registration) ===== -->
-      <sc-if value="{{ isEmployees }}" hint-placeholder-val="{{ false }}">
-      <div class="c207">
-        <div class="att-bar">
-          <input class="c665 att-search" value="{{ empQ }}" onInput="{{ onEmpQ }}" placeholder="Search name or staff ID…">
-          <select class="sel" value="{{ regDeptSel.value }}" onChange="{{ regDeptSel.onChange }}">
-            <sc-for list="{{ regDeptSel.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <button class="c185 chip on" onClick="{{ newEmployee }}">＋ Register employee</button>
-          <span class="c100">{{ empMsg }}</span>
-        </div>
-        <div class="c100 att-cap">{{ empCount }}</div>
-        <div class="att-panel">
-          <div class="att-thead emp-cols">
-            <span>EMPLOYEE</span><span>DEPARTMENT</span><span>SHIFT</span><span>STATUS</span><span>SENSESTUDIO</span><span></span>
-          </div>
-          <sc-for list="{{ empRows }}" as="r" hint-placeholder-count="6">
-            <div class="att-row emp-cols">
-              <div class="att-emp">
-                <div class="att-face" style="background:{{ r.photoBg }}"></div>
-                <div><div class="att-name">{{ r.name }}</div><div class="att-staff">{{ r.staff }}</div></div>
-              </div>
-              <div class="att-loc">{{ r.dept }}</div>
-              <div class="att-loc">{{ r.shift }}</div>
-              <div class="att-status" style="color:{{ r.activeCol }}">{{ r.active }}</div>
-              <div class="att-status" style="color:{{ r.syncCol }}" title="{{ r.syncTip }}">{{ r.sync }}</div>
-              <div class="att-unk-btns">
-                <button class="c185 chip on" onClick="{{ r.onEdit }}">Edit</button>
-                <sc-if value="{{ canSync }}" hint-placeholder-val="{{ true }}">
-                  <button class="c185 chip" onClick="{{ r.onSync }}">Sync</button>
-                </sc-if>
-                <button class="c185 chip" onClick="{{ r.onJourney }}">Journey</button>
-                <button class="c185 chip emp-del" onClick="{{ r.onDelete }}" title="Delete this employee">Delete</button>
-              </div>
-            </div>
-          </sc-for>
-          <sc-if value="{{ empEmpty }}" hint-placeholder-val="{{ false }}">
-            <div class="c100 att-cap">No employees yet — use “Register employee”, enrol a face at the check-in kiosk, or enrol unknown personnel from Live sightings.</div>
           </sc-if>
         </div>
       </div>
@@ -2749,374 +2210,6 @@
       </div>
       </sc-if>
 
-      <!-- ===== FORECAST (prediction dashboard) ===== -->
-      <sc-if value="{{ isForecast }}" hint-placeholder-val="{{ false }}">
-      <div class="c207">
-        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
-        <div class="subtabs">
-          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
-            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-        </sc-if>
-        <div class="c174">
-          <h2 class="c146">Trend forecast</h2>
-          <span class="c100">{{ fcStatus }}</span>
-          <div class="c373">
-            <sc-for list="{{ fcDaysTabs }}" as="o" hint-placeholder-count="4">
-              <button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-            </sc-for>
-          </div>
-        </div>
-
-        <sc-if value="{{ fcHas }}" hint-placeholder-val="{{ false }}">
-        <div class="c81">
-          <sc-for list="{{ fcKpis }}" as="k" hint-placeholder-count="5">
-            <div class="c228">
-              <div class="c229">{{ k.label }}</div>
-              <div class="c374" style="color:{{ k.tone }}">{{ k.value }}</div>
-            </div>
-          </sc-for>
-        </div>
-
-        <!-- AI outlook -->
-        <sc-if value="{{ fcAiHas }}" hint-placeholder-val="{{ false }}">
-        <div class="c76">
-          <div class="c77">AI</div>
-          <div class="c64">
-            <div class="c78">AI PREDICTION · <span class="c79">{{ fcAiSource }}</span> · OUTLOOK <span class="c375" style="color:{{ fcOutlookCol }}">{{ fcOutlook }}</span></div>
-            <div class="c80">{{ fcAiSummary }}</div>
-            <sc-if value="{{ fcAiHasRisks }}" hint-placeholder-val="{{ false }}">
-            <div class="c376">
-              <sc-for list="{{ fcAiRisks }}" as="r" hint-placeholder-count="3">
-                <span class="c377"><svg class="c52" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> {{ r.text }}</span>
-              </sc-for>
-            </div>
-            </sc-if>
-            <sc-if value="{{ fcAiHasRec }}" hint-placeholder-val="{{ false }}">
-            <div class="c378"><b>Recommendation:</b> {{ fcAiRec }}</div>
-            </sc-if>
-          </div>
-        </div>
-        </sc-if>
-
-        <!-- charts: history + prediction -->
-        <div class="c379">
-          <div class="c238">
-            <h3 class="c280">Daily detections — history &amp; 7-day prediction</h3>
-            <div class="c380" id="fcTrend"></div>
-          </div>
-          <div class="c238">
-            <h3 class="c280">Hour-of-day profile &amp; expected next 24h</h3>
-            <div class="c380" id="fcHours"></div>
-          </div>
-        </div>
-
-        <!-- per-module momentum -->
-        <div class="c275">
-          <sc-for list="{{ fcTrends }}" as="t" hint-placeholder-count="4">
-            <div class="c228" style="border-left:3px solid {{ t.col }}">
-              <div class="c229">{{ t.label }}</div>
-              <div class="c381">
-                <span class="c382" style="color:{{ t.tone }}">{{ t.dir }} {{ t.pct }}</span>
-                <span class="c100">{{ t.sub }}</span>
-              </div>
-            </div>
-          </sc-for>
-        </div>
-        </sc-if>
-
-        <sc-if value="{{ fcEmpty }}" hint-placeholder-val="{{ false }}">
-        <div class="c383">Loading forecast from collected detections…</div>
-        </sc-if>
-      </div>
-      </sc-if>
-
-      <!-- ===== USERS & ROLES ===== -->
-      <sc-if value="{{ isUsers }}" hint-placeholder-val="{{ false }}">
-      <div class="c207">
-        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
-        <div class="subtabs">
-          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
-            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-        </sc-if>
-        <div class="c226">
-          <div class="c102">
-            <sc-for list="{{ umTabs }}" as="t" hint-placeholder-count="2">
-              <button class="c384 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-            </sc-for>
-          </div>
-          <span class="c100">{{ umUserCount }} accounts · changes apply immediately</span>
-          <span class="c321">{{ umMsg }}</span>
-        </div>
-
-        <sc-if value="{{ umTabUsers }}" hint-placeholder-val="{{ true }}">
-        <!-- add user -->
-        <div class="c385">
-          <div class="c386">ADD USER</div>
-          <div class="c387">
-            <input class="c388" value="{{ umDUsername }}" onInput="{{ onUmUsername }}" placeholder="username">
-            <input class="c389" value="{{ umDName }}" onInput="{{ onUmName }}" placeholder="Display name">
-            <input class="c388" value="{{ umDEmail }}" onInput="{{ onUmEmail }}" placeholder="email@company.com">
-            <input class="c388" value="{{ umDPass }}" onInput="{{ onUmPass }}" type="password" placeholder="password (8+ chars)">
-          </div>
-          <div class="c182">
-            <span class="c180">ROLE</span>
-            <sc-for list="{{ umRoleChips }}" as="o" hint-placeholder-count="4">
-              <button class="c390 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-            </sc-for>
-            <button class="c391" onClick="{{ umAddUser }}">+ Add user</button>
-          </div>
-        </div>
-
-        <!-- users table -->
-        <div class="c186">
-          <div class="c392">
-            <span>USER</span><span>EMAIL</span><span>ROLE</span><span>ACTIVE</span><span>LAST LOGIN</span><span>ACTIONS</span>
-          </div>
-          <sc-for list="{{ umRows }}" as="u" hint-placeholder-count="3">
-            <div class="c393" style-hover="background:var(--bg3)">
-              <div class="c216">
-                <span class="c394">{{ u.initials }}</span>
-                <div class="c39">
-                  <div class="c395"><span class="c21">{{ u.name }}</span>
-                    <sc-if value="{{ u.isMe }}" hint-placeholder-val="{{ false }}"><span class="c396">YOU</span></sc-if>
-                  </div>
-                  <div class="c41">{{ u.username }}</div>
-                </div>
-              </div>
-              <span class="c397">{{ u.email }}</span>
-              <div class="c398">
-                <sc-for list="{{ u.roleOpts }}" as="o" hint-placeholder-count="4">
-                  <button class="c399 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-                </sc-for>
-              </div>
-              <div class="c400" onClick="{{ u.onToggle }}" title="Toggle active" style="background:{{ u.activeBg }}"><div class="c330" style="left:{{ u.activeKnob }}"></div></div>
-              <span class="c206">{{ u.lastLogin }}</span>
-              <div class="c401">
-                <button class="c402" onClick="{{ u.onReset }}" title="Reset password"><svg class="c52" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> Reset</button>
-                <button class="c403" onClick="{{ u.onDelete }}" title="Delete user"><svg class="c52" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-              </div>
-            </div>
-          </sc-for>
-        </div>
-
-        </sc-if>
-
-        <!-- roles tab -->
-        <sc-if value="{{ umTabRoles }}" hint-placeholder-val="{{ false }}">
-        <div class="c100">click a permission to toggle it — saves instantly</div>
-        <div class="c404">
-          <sc-for list="{{ umRoleCards }}" as="c" hint-placeholder-count="4">
-            <div class="c405">
-              <div class="c332">
-                <span class="c406">{{ c.name }}</span>
-                <sc-if value="{{ c.builtin }}" hint-placeholder-val="{{ false }}"><span class="c407">BUILT-IN</span></sc-if>
-                <span class="c206">{{ c.users }}</span>
-                <sc-if value="{{ c.canDelete }}" hint-placeholder-val="{{ false }}">
-                  <button class="c408" onClick="{{ c.onDelete }}">Delete</button>
-                </sc-if>
-              </div>
-              <div class="c409">{{ c.desc }}</div>
-              <div class="c410">
-                <sc-for list="{{ c.perms }}" as="p" hint-placeholder-count="6">
-                  <button class="c411" onClick="{{ p.onClick }}" title="{{ p.title }}" style="border:1px solid {{ p.border }}; background:{{ p.bg }}; color:{{ p.color }}"><span class="c119" style="background:{{ p.dot }}"></span>{{ p.label }}</button>
-                </sc-for>
-              </div>
-            </div>
-          </sc-for>
-          <div class="c412">
-            <div class="c386">CREATE ROLE</div>
-            <div class="c413">
-              <input class="c388" value="{{ umNRName }}" onInput="{{ onUmNRName }}" placeholder="role-name">
-              <input class="c389" value="{{ umNRDesc }}" onInput="{{ onUmNRDesc }}" placeholder="Short description">
-            </div>
-            <div class="c72">New roles start with view-only access — toggle permissions after creating.</div>
-            <div><button class="c414" onClick="{{ umCreateRole }}">+ Create role</button></div>
-          </div>
-        </div>
-        </sc-if>
-      </div>
-      </sc-if>
-
-      <!-- ===== Workstream D: AI PERFORMANCE (/api/aiperf/*) ===== -->
-      <sc-if value="{{ isAiperf }}" hint-placeholder-val="{{ false }}">
-      <div class="c207">
-
-        <div class="att-bar">
-          <span class="sel-lab">From</span>
-          <input class="c665 att-date" type="date" value="{{ aipFrom }}" onChange="{{ onAipFrom }}">
-          <span class="sel-lab">To</span>
-          <input class="c665 att-date" type="date" value="{{ aipTo }}" onChange="{{ onAipTo }}">
-          <select class="sel" value="{{ aipModSel.value }}" onChange="{{ aipModSel.onChange }}">
-            <sc-for list="{{ aipModSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <select class="sel" value="{{ aipCamSel.value }}" onChange="{{ aipCamSel.onChange }}">
-            <sc-for list="{{ aipCamSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-          </select>
-          <button class="c185 chip" onClick="{{ reloadAip }}">⟳</button>
-          <span class="c100">{{ aipStatus }}</span>
-          <span class="c100 aip-msg">{{ aipMsg }}</span>
-        </div>
-
-        <div class="att-kpis att-kpis-6">
-          <sc-for list="{{ aipKpis }}" as="k" hint-placeholder-count="6">
-            <div class="att-kpi">
-              <div class="att-kpi-label">{{ k.label }}</div>
-              <div class="att-kpi-value" style="color:{{ k.tone }}">{{ k.value }}</div>
-              <div class="att-kpi-sub">{{ k.sub }}</div>
-            </div>
-          </sc-for>
-        </div>
-
-        <div class="att-panel">
-          <div class="c129">Accuracy by module <span class="c100">— click a row to filter · precision / recall with 95 % interval</span></div>
-          <div style="overflow-x:auto">
-            <table class="ov-table aip-table">
-              <thead><tr><th>MODULE</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th><th>DAY P / R</th><th>NIGHT P / R</th><th>CONFIDENCE</th></tr></thead>
-              <tbody>
-                <sc-for list="{{ aipModRows }}" as="r" hint-placeholder-count="7">
-                  <tr onClick="{{ r.onPick }}">
-                    <td><b>{{ r.label }}</b></td>
-                    <td>{{ r.det }}</td>
-                    <td>{{ r.reviewed }}<div class="aip-sub">{{ r.cov }}</div></td>
-                    <td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
-                    <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span><div class="aip-sub">{{ r.pCi }}</div></td>
-                    <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span><div class="aip-sub">{{ r.rCi }}</div></td>
-                    <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
-                    <td class="aip-mono">{{ r.day }}</td>
-                    <td class="aip-mono">{{ r.night }}</td>
-                    <td><span class="ov-pill" style="color:{{ r.confCol }}; background:{{ r.confBg }}">{{ r.conf }}</span></td>
-                  </tr>
-                </sc-for>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="aip-grid">
-          <div class="att-panel">
-            <div class="c129">Performance under factory conditions <span class="c100">— lighting period (day / night)</span></div>
-            <div style="overflow-x:auto">
-              <table class="ov-table aip-table">
-                <thead><tr><th>PERIOD</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th></tr></thead>
-                <tbody>
-                  <sc-for list="{{ aipPerRows }}" as="r" hint-placeholder-count="2">
-                    <tr>
-                      <td><b>{{ r.label }}</b></td><td>{{ r.det }}</td><td>{{ r.reviewed }}</td><td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
-                      <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span><div class="aip-sub">{{ r.pCi }}</div></td>
-                      <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span><div class="aip-sub">{{ r.rCi }}</div></td>
-                      <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="att-panel">
-            <div class="c129">Face recognition <span class="c100">— similarity of matched faces</span></div>
-            <sc-for list="{{ aipSimBars }}" as="b" hint-placeholder-count="6">
-              <div class="ppe-meter aip-meter">
-                <div class="c247"><span>{{ b.label }}</span><span class="c243">{{ b.value }}</span></div>
-                <div class="c313"><div class="c245" style="width:{{ b.w }}; background:{{ b.col }}"></div></div>
-              </div>
-            </sc-for>
-            <div class="c428 aip-gap">{{ aipFaceLine }}</div>
-            <div class="c428">{{ aipThLine }}</div>
-          </div>
-        </div>
-
-        <div class="att-panel">
-          <div class="c129">By camera <span class="c100">— each module on each camera</span></div>
-          <sc-if value="{{ aipCamEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">No detections in this range.</div></sc-if>
-          <div style="overflow-x:auto">
-            <table class="ov-table aip-table">
-              <thead><tr><th>CAMERA</th><th>MODULE</th><th>DETECTIONS</th><th>REVIEWED</th><th>TP</th><th>FP</th><th>FN</th><th>PRECISION</th><th>RECALL</th><th>F1</th><th>CONFIDENCE</th></tr></thead>
-              <tbody>
-                <sc-for list="{{ aipCamRows }}" as="r" hint-placeholder-count="5">
-                  <tr>
-                    <td><b>{{ r.name }}</b><div class="aip-sub">{{ r.sub }}</div></td>
-                    <td>{{ r.label }}</td><td>{{ r.det }}</td><td>{{ r.reviewed }}</td><td>{{ r.tp }}</td><td>{{ r.fp }}</td><td>{{ r.fn }}</td>
-                    <td><span style="color:{{ r.pCol }}; font-weight:700">{{ r.p }}</span></td>
-                    <td><span style="color:{{ r.rCol }}; font-weight:700">{{ r.r }}</span></td>
-                    <td><span style="color:{{ r.f1Col }}; font-weight:700">{{ r.f1 }}</span></td>
-                    <td><span class="ov-pill" style="color:{{ r.confCol }}; background:{{ r.confBg }}">{{ r.conf }}</span></td>
-                  </tr>
-                </sc-for>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="att-panel">
-          <div class="c129">Sampling review <span class="c100">— verify unreviewed detections to grow the sample (ground truth for every module, incl. face identity)</span></div>
-          <sc-if value="{{ aipQueueEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">Every detection in this range has a verdict.</div></sc-if>
-          <div class="ppe-viol-grid">
-            <sc-for list="{{ aipQueue }}" as="q" hint-placeholder-count="6">
-              <div class="ppe-viol">
-                <div class="ppe-viol-img" style="background:{{ q.thumb }}" onClick="{{ q.onImg }}"></div>
-                <div class="att-name">{{ q.title }}</div>
-                <div class="att-loc">{{ q.sub }}</div>
-                <div class="att-src">{{ q.time }} {{ q.sim }}</div>
-                <div class="poc-chips aip-verify">
-                  <button class="c185 chip" onClick="{{ q.onCorrect }}">✓ Correct</button>
-                  <button class="c185 chip" onClick="{{ q.onWrong }}">✕ False alarm</button>
-                </div>
-              </div>
-            </sc-for>
-          </div>
-        </div>
-
-        <div class="aip-grid">
-          <div class="att-panel">
-            <div class="c129">Log a missed detection (FN)</div>
-            <div class="aip-form">
-              <div><div class="c426">MODULE</div>
-                <select class="sel pfm-sel" value="{{ aipMissModSel.value }}" onChange="{{ aipMissModSel.onChange }}">
-                  <sc-for list="{{ aipMissModSel.options }}" as="o" hint-placeholder-count="7"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-                </select></div>
-              <div><div class="c426">CAMERA</div>
-                <select class="sel pfm-sel" value="{{ aipMissCamSel.value }}" onChange="{{ aipMissCamSel.onChange }}">
-                  <sc-for list="{{ aipMissCamSel.options }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
-                </select></div>
-              <div><div class="c426">WHEN (blank = now)</div>
-                <input class="c427" type="datetime-local" value="{{ aipMissTime }}" onInput="{{ onAipMissTime }}"></div>
-            </div>
-            <div><div class="c426">WHAT WAS MISSED</div>
-              <input class="c427" value="{{ aipMissNote }}" onInput="{{ onAipMissNote }}" placeholder="e.g. worker without helmet at 10:42, seen on NVR playback, no alert"></div>
-            <div class="poc-chips aip-gap"><button class="c429" onClick="{{ aipLogMiss }}">Log missed detection</button></div>
-          </div>
-          <div class="att-panel">
-            <div class="c129">Missed detections logged</div>
-            <sc-if value="{{ aipMissedEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">None logged in this range.</div></sc-if>
-            <div class="aip-list">
-              <sc-for list="{{ aipMissed }}" as="m" hint-placeholder-count="4">
-                <div class="aip-li">
-                  <div><div class="att-name">{{ m.label }} · {{ m.cam }}</div><div class="att-src">{{ m.time }} · {{ m.by }} {{ m.sim }}</div><div class="att-attrs">{{ m.note }}</div></div>
-                  <button class="lb-x" onClick="{{ m.onDel }}" title="Remove">✕</button>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-        </div>
-
-        <div class="att-panel">
-          <div class="c129">Latest verdicts</div>
-          <sc-if value="{{ aipRecentEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100 att-cap">No reviewed detections yet — confirm or clear detections on the module pages, close tickets, or use the sampling review above.</div></sc-if>
-          <div class="aip-list">
-            <sc-for list="{{ aipRecent }}" as="r" hint-placeholder-count="5">
-              <div class="aip-li">
-                <div><div class="att-name">{{ r.title }}</div><div class="att-src">{{ r.sub }} · {{ r.src }}</div></div>
-                <span class="ov-pill" style="color:{{ r.col }}; background:{{ r.bg }}">{{ r.verdict }}</span>
-              </div>
-            </sc-for>
-          </div>
-        </div>
-      </div>
-      </sc-if>
-
       <!-- ===== Workstream D: POC SCORECARD (/api/poc/*) ===== -->
       <sc-if value="{{ isPoc }}" hint-placeholder-val="{{ false }}">
       <div class="c207 ppx-page">
@@ -3283,803 +2376,6 @@
           </sc-if>
         </div>
         </sc-if>
-      </div>
-      </sc-if>
-
-      <!-- ===== SETTINGS ===== -->
-      <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
-      <div class="c415">
-        <sc-if value="{{ hasSubTabs }}" hint-placeholder-val="{{ false }}">
-        <div class="subtabs">
-          <sc-for list="{{ subTabs }}" as="t" hint-placeholder-count="3">
-            <button class="subtab {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-        </sc-if>
-        <div class="c416">
-          <span class="c179">{{ appMsg }}</span>
-          <span class="c417">Changes save to the server and apply immediately</span>
-        </div>
-
-        <!-- DEMO / LIVE data toggle -->
-        <div class="c418">
-          <div class="c419">◧</div>
-          <div class="c64">
-            <div class="c129">Data source · <span class="c79">{{ demoLabel }}</span></div>
-            <div class="c420">Demo shows dummy sample data for presentations. Live shows only real SenseTime detections (no seeded data).</div>
-          </div>
-          <button class="c421" onClick="{{ toggleDemo }}" title="{{ demoBtnLabel }}" style="background:{{ demoTrackBg }}">
-            <span class="c422" style="left:{{ demoKnobX }}"></span>
-          </button>
-        </div>
-
-        <!-- Detection simulator: server-side, same ingest path as a SenseStudio push -->
-        <div class="c418 sim-card">
-          <div class="c419">⚡</div>
-          <div class="c64">
-            <div class="c129">Detection simulator <span class="c100">· {{ simStatus }}</span></div>
-            <div class="c420">Generates a week of realistic SenseStudio push events through the real ingest pipeline: eight demo employees clocking in and out at the guard posts, PPE checks at Line 5 and Spot 9 with some violations, restricted-zone entries (authorised, unauthorised and unverifiable), forklift traffic on a prohibited loading dock, a cleaning window running now, smoking and stranger alerts. Cameras are named DEMOGATE1, DEMOLINE5, DEMOWASTE9, DEMODOCK… and employees KJ-0101…0108, so everything can be removed again. Simulated events send no e-mail and are not forwarded.</div>
-            <div class="c100 sim-msg">{{ simMsg }}</div>
-          </div>
-          <div class="poc-chips sim-btns">
-            <button class="c429" onClick="{{ simRun }}" disabled="{{ simBusy }}">{{ simRunLabel }}</button>
-            <button class="c185 chip" onClick="{{ simReset }}" disabled="{{ simBusy }}">Remove demo data</button>
-          </div>
-        </div>
-
-        <!-- settings tabs -->
-        <div class="c423">
-          <sc-for list="{{ spTabs }}" as="t" hint-placeholder-count="6">
-            <button class="c384 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-          </sc-for>
-        </div>
-
-        <div class="c424">
-
-          <!-- SenseTime API configuration -->
-          <sc-if value="{{ spTabSense }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">SenseTime API</h3><span class="c351">{{ spFleetLine }}</span></div>
-            <div><div class="c426">SENSESTUDIO BASE URL</div>
-              <input class="c427" value="{{ spSenseBase }}" onInput="{{ onSpSenseBase }}"></div>
-            <div class="c370">
-              <div><div class="c426">API ACCOUNT</div>
-                <input class="c427" value="{{ spSenseAcc }}" onInput="{{ onSpSenseAcc }}"></div>
-              <div><div class="c426">API PASSWORD</div>
-                <input class="c427" value="{{ spSensePass }}" onInput="{{ onSpSensePass }}" placeholder="unchanged"></div>
-            </div>
-            <div><div class="c426">IMAGE HOST BASE (trigger frames)</div>
-              <input class="c427" value="{{ spImageBase }}" onInput="{{ onSpImageBase }}"></div>
-            <div><button class="c429" onClick="{{ saveSense }}">Save SenseTime config</button></div>
-          </div>
-          </sc-if>
-
-          <!-- Live video bridge (go2rtc · RTSP → browser) -->
-          <sc-if value="{{ spTabLive }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Live video bridge (go2rtc)</h3><span class="c351">{{ lbCountsLine }}</span></div>
-            <div class="lb-status" style="border-left-color:{{ lbStatusCol }}"><span class="lb-dot" style="background:{{ lbStatusCol }}"></span><span>{{ lbStatusText }}</span></div>
-            <div class="c370">
-              <div><div class="c426">PUBLIC BASE URL (browser · {{ liveStatus }})</div>
-                <input class="c427" value="{{ spLiveBase }}" onInput="{{ onSpLiveBase }}" placeholder="https://live.example.com"></div>
-              <div><div class="c426">TOKEN (if gated)</div>
-                <input class="c427" value="{{ spLiveToken }}" onInput="{{ onSpLiveToken }}" placeholder="unchanged"></div>
-            </div>
-            <div class="c370">
-              <div><div class="c426">INTERNAL API URL (optional · server → bridge)</div>
-                <input class="c427" value="{{ spLiveApi }}" onInput="{{ onSpLiveApi }}" placeholder="http://127.0.0.1:1984"></div>
-              <div class="c370">
-                <div><div class="c426">API USER (optional)</div>
-                  <input class="c427" value="{{ spLiveUser }}" onInput="{{ onSpLiveUser }}" placeholder="go2rtc api.username"></div>
-                <div><div class="c426">API PASSWORD (optional)</div>
-                  <input class="c427" value="{{ spLivePass }}" onInput="{{ onSpLivePass }}" placeholder="unchanged"></div>
-              </div>
-            </div>
-            <div class="c428">The browser plays {base}/api/stream.mp4?src={stream}&amp;token=… — the base must be HTTPS. The server talks to the internal API URL when set (else the public base) to register sources. Blank base = tiles show detection frames.</div>
-            <div><div class="c426">AUTO-REGISTER FLEET RTSP SOURCES</div>
-              <div class="poc-chips">
-                <sc-for list="{{ lbAutoChips }}" as="t" hint-placeholder-count="2">
-                  <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-                </sc-for>
-              </div>
-              <div class="c428">On: every camera RTSP URL known to VisionAI is registered on the bridge automatically — on the fleet refresh (at most every 5 minutes) and when a camera is added or edited.</div>
-            </div>
-            <div class="lb-actions">
-              <button class="c429" onClick="{{ saveLive }}" disabled="{{ lbBusy }}">Save live video config</button>
-              <button class="c185 chip" onClick="{{ testLive }}" disabled="{{ lbBusy }}">Test bridge</button>
-              <button class="c185 chip" onClick="{{ syncLive }}" disabled="{{ lbSyncDisabled }}">Register all RTSP sources</button>
-              <span class="c47">{{ lbMsg }}</span>
-            </div>
-          </div>
-
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">RTSP sources</h3><span class="c351">{{ lbSyncLine }}</span></div>
-            <sc-if value="{{ lbRowsEmpty }}" hint-placeholder-val="{{ false }}"><div class="c431">{{ lbEmptyText }}</div></sc-if>
-            <sc-if value="{{ lbHasRows }}" hint-placeholder-val="{{ true }}">
-            <div style="overflow-x:auto">
-              <table class="ov-table lb-table">
-                <thead><tr><th>STREAM</th><th>CAMERA</th><th>SOURCE</th><th>ORIGIN</th><th>STATE</th><th>PROBE</th><th></th></tr></thead>
-                <tbody>
-                  <sc-for list="{{ lbRows }}" as="r" hint-placeholder-count="4">
-                    <tr>
-                      <td class="lb-mono">{{ r.name }}</td>
-                      <td>{{ r.cam }}</td>
-                      <td class="lb-src">{{ r.source }}</td>
-                      <td>{{ r.origin }}</td>
-                      <td><span class="ov-pill" style="color:{{ r.pillCol }}; background:{{ r.pillBg }}">{{ r.pill }}</span></td>
-                      <td>
-                        <div class="lb-probe">
-                          <sc-if value="{{ r.canProbe }}" hint-placeholder-val="{{ true }}"><button class="c185 chip" onClick="{{ r.onProbe }}" disabled="{{ r.probeBusy }}">{{ r.probeLabel }}</button></sc-if>
-                          <span style="color:{{ r.probeCol }}">{{ r.probeText }}</span>
-                          <sc-if value="{{ r.hasSnap }}" hint-placeholder-val="{{ false }}"><div class="lb-thumb" onClick="{{ r.onSnap }}" title="Bridge snapshot" style="background:{{ r.snapBg }}"></div></sc-if>
-                        </div>
-                      </td>
-                      <td><sc-if value="{{ r.canRemove }}" hint-placeholder-val="{{ false }}"><button class="lb-x" onClick="{{ r.onRemove }}" title="Remove manual source">✕</button></sc-if></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
-            </div>
-            </sc-if>
-            <div><div class="c426">ADD MANUAL RTSP SOURCE</div>
-              <div class="lb-add">
-                <input class="c427" value="{{ lbNewName }}" onInput="{{ onLbNewName }}" placeholder="stream label, e.g. gate1">
-                <input class="c427" value="{{ lbNewUrl }}" onInput="{{ onLbNewUrl }}" placeholder="rtsp://user:pass@10.0.0.21:554/Streaming/Channels/102">
-                <button class="c429" onClick="{{ addLiveSource }}" disabled="{{ lbBusy }}">Add</button>
-              </div>
-            </div>
-            <div class="c428 lb-help">Hikvision: rtsp://user:pass@IP:554/Streaming/Channels/101 (main) · …/102 (sub-stream, lighter for walls). Dahua: rtsp://user:pass@IP:554/cam/realmonitor?channel=1&amp;subtype=0 (main) · subtype=1 (sub). Browsers need H.264 — for H.265 cameras use an ffmpeg: source. An https://…/index.m3u8 HLS link (e.g. an ngrok URL) is played directly in the browser, without the bridge. The label must match the camera's stream label (serial, lower-case, letters and digits only). Bridge setup: live-bridge/README.md in the repository.</div>
-          </div>
-
-          <!-- Workstream D: network / stream load test (INF-01 / INF-02) -->
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Network test</h3><span class="c351">{{ netSummary }}</span></div>
-            <div class="c431">Measured from the dashboard server to the SenseStudio API, the live bridge and every live source: TCP connect latency over 5 attempts (failed attempts = packet-loss proxy, no raw ICMP from PHP), RTSP OPTIONS handshake, HTTP time-to-first-byte and the download throughput of one short media sample (≤ 3 s, ≤ 2 MB — an HLS segment or a bridge MP4 sample). Thresholds: TCP ≤ 100 ms pass / ≤ 300 ms warn · loss 0 % pass / ≤ 20 % warn · TTFB ≤ 500 ms pass / ≤ 1.5 s warn · throughput ≥ 4 Mbps pass (1080p H.264 main stream) / ≥ 1.5 Mbps warn (720p / sub-stream).</div>
-            <div class="lb-actions">
-              <button class="c429" onClick="{{ netRun }}" disabled="{{ netBusy }}">{{ netRunLabel }}</button>
-              <span class="c47">{{ netMsg }}</span>
-            </div>
-            <sc-if value="{{ netHas }}" hint-placeholder-val="{{ false }}">
-            <div style="overflow-x:auto">
-              <table class="ov-table lb-table net-table">
-                <thead><tr><th>TARGET</th><th>TCP LATENCY</th><th>LOSS (N=5)</th><th>TTFB</th><th>THROUGHPUT</th><th>RTSP</th><th>RESULT</th><th></th></tr></thead>
-                <tbody>
-                  <sc-for list="{{ netRows }}" as="r" hint-placeholder-count="4">
-                    <tr>
-                      <td><div class="lb-mono">{{ r.name }}</div><div class="lb-src">{{ r.host }} · {{ r.kind }}</div><div class="net-note">{{ r.note }}</div></td>
-                      <td><span style="color:{{ r.tcpCol }}">{{ r.tcp }}</span><div class="net-note">{{ r.jitter }}</div></td>
-                      <td><span style="color:{{ r.lossCol }}">{{ r.loss }}</span></td>
-                      <td><span style="color:{{ r.ttfbCol }}">{{ r.ttfb }}</span></td>
-                      <td><span style="color:{{ r.mbpsCol }}">{{ r.mbps }}</span></td>
-                      <td>{{ r.rtsp }}</td>
-                      <td><span class="ov-pill" style="color:{{ r.col }}; background:{{ r.bg }}">{{ r.overall }}</span></td>
-                      <td><sc-if value="{{ r.canRetest }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ r.onRetest }}" disabled="{{ netBusy }}">Re-test</button></sc-if></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
-            </div>
-            </sc-if>
-            <div class="c428">The last full run is attached to test case INF-02 on the POC Scorecard. Run it during the busiest shift with the live wall open to see the network under load.</div>
-          </div>
-          </sc-if>
-
-          <!-- POC camera points (attendance + movement tracking) -->
-          <sc-if value="{{ spTabPoc }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">POC Camera Points</h3><span class="c351">{{ spFleetLine }}</span></div>
-            <div class="c431">Map each camera to its agreed POC camera point. Attendance and movement tracking use facial-recognition events <b>only at mapped points</b> — Plant 1 / Plant 2 Guard Posts, Lobby Entrance, 8 Color Entrance and Conventional Entrance (entry + exit cameras), plus Line 5 and Waste Area Spot 9 for PPE, restricted-area and behavioural analytics.</div>
-            <sc-for list="{{ pocRows }}" as="c" hint-placeholder-count="5">
-              <div class="poc-cam">
-                <div class="poc-cam-head"><b>{{ c.name }}</b><span class="c243">{{ c.key }}</span><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
-                <div class="poc-chips">
-                  <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="8">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                </div>
-              </div>
-            </sc-for>
-            <div><div class="c426">INACTIVITY INTERVAL — latest-known-location rule</div>
-              <div class="poc-chips">
-                <sc-for list="{{ spInact }}" as="t" hint-placeholder-count="5">
-                  <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-                </sc-for>
-              </div>
-              <div class="c428">The last detected location is never treated as an automatic exit — an employee may leave by vehicle without another facial detection. After this interval the dashboard shows "latest known location" instead of on-site.</div>
-            </div>
-          </div>
-          </sc-if>
-
-          <!-- Attendance rules (shifts, clock cameras, plants) -->
-          <sc-if value="{{ spTabAtt }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Attendance Rules</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Official attendance is calculated from detections at <b>clock cameras</b> under these shift rules — not from every camera sighting. Clock-in = first clock-camera detection from 2 h before shift start; clock-out = last clock-camera detection at least 30 min later, up to 4 h after shift end.</div>
-
-            <div><div class="c426">SHIFTS</div>
-              <sc-for list="{{ attShiftRows }}" as="s" hint-placeholder-count="1">
-                <div class="poc-cam">
-                  <div class="att-shift-grid">
-                    <div><div class="c426">NAME</div><input class="c427" value="{{ s.name }}" onInput="{{ s.onName }}"></div>
-                    <div><div class="c426">START</div><input class="c427" type="time" value="{{ s.start }}" onInput="{{ s.onStart }}"></div>
-                    <div><div class="c426">END</div><input class="c427" type="time" value="{{ s.end }}" onInput="{{ s.onEnd }}"></div>
-                    <div><div class="c426">GRACE (MIN)</div><input class="c427" type="number" min="0" value="{{ s.grace }}" onInput="{{ s.onGrace }}"></div>
-                    <div><div class="c426">ABSENT AFTER (MIN)</div><input class="c427" type="number" min="15" value="{{ s.absent }}" onInput="{{ s.onAbsent }}"></div>
-                  </div>
-                  <div class="poc-chips att-shift-days">
-                    <sc-for list="{{ s.days }}" as="d" hint-placeholder-count="7">
-                      <button class="c185 {{ d.cls }}" onClick="{{ d.onClick }}">{{ d.label }}</button>
-                    </sc-for>
-                    <sc-if value="{{ s.canRemove }}" hint-placeholder-val="{{ false }}">
-                      <button class="c185 chip att-shift-rm" onClick="{{ s.onRemove }}">✕ Remove shift</button>
-                    </sc-if>
-                  </div>
-                </div>
-              </sc-for>
-              <div class="poc-chips">
-                <button class="c185 chip" onClick="{{ addShift }}">＋ Add shift</button>
-                <button class="c429" onClick="{{ saveShifts }}">Save shifts</button>
-              </div>
-              <div class="c428">An end time earlier than the start time is an overnight shift — its attendance belongs to the start date. Late = clock-in after start + grace. Absent = no clock-in by start + absent-after on a working day.</div>
-            </div>
-
-            <div class="c370">
-              <div><div class="c426">PLANTS (comma-separated)</div>
-                <input class="c427" value="{{ attPlantsVal }}" onInput="{{ onAttPlants }}"></div>
-              <div><div class="c426">DEPARTMENTS (comma-separated)</div>
-                <input class="c427" value="{{ attDeptsVal }}" onInput="{{ onAttDepts }}"></div>
-            </div>
-            <div><button class="c429" onClick="{{ saveAttLists }}">Save plants &amp; departments</button></div>
-
-            <div><div class="c426">CLOCK CAMERAS</div>
-              <div class="c428">{{ attRolesLine }}</div>
-              <sc-for list="{{ attCamRows }}" as="c" hint-placeholder-count="4">
-                <div class="poc-cam">
-                  <div class="poc-cam-head"><b>{{ c.name }}</b><span class="c243">{{ c.key }}</span><span class="c100">{{ c.loc }}</span><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
-                  <div class="poc-chips">
-                    <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="4">
-                      <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                    </sc-for>
-                  </div>
-                </div>
-              </sc-for>
-              <div class="poc-chips">
-                <sc-for list="{{ attKioskChips }}" as="t" hint-placeholder-count="2">
-                  <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-                </sc-for>
-              </div>
-            </div>
-
-            <div><div class="c426">CAMERA POINT → PLANT</div>
-              <div class="c428">Used for the plant shown on each detection and for plant filters on movement reports. Names containing “Plant 1”, “Plant 2”… are matched automatically.</div>
-              <sc-for list="{{ attLocRows }}" as="c" hint-placeholder-count="5">
-                <div class="poc-cam">
-                  <div class="poc-cam-head"><b>{{ c.name }}</b><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
-                  <div class="poc-chips">
-                    <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="2">
-                      <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                    </sc-for>
-                  </div>
-                </div>
-              </sc-for>
-            </div>
-          </div>
-          </sc-if>
-
-          <!-- Restricted zones -->
-          <sc-if value="{{ spTabRa }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Restricted Zones</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Draw the virtual boundary or zone on the camera in <b>SenseStudio</b> (intrusion / cross-line policy), then mark the camera as a restricted zone here and set who may enter. Each entry is judged: an enrolled employee on the access list (staff ID or department) is <b>authorized</b>; an enrolled employee not on it is an <b>unauthorized entry</b> (High alert); an unidentified or unknown person is marked <b>needs review</b> — never confirmed automatically. Outside the restricted hours entries are only logged.</div>
-            <sc-for list="{{ raZoneRows }}" as="z" hint-placeholder-count="4">
-              <div class="poc-cam">
-                <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="c100">{{ z.loc }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
-                <div class="c428" style="color:{{ z.polsCol }}">{{ z.pols }}</div>
-                <div class="poc-chips">
-                  <sc-for list="{{ z.enableChips }}" as="l" hint-placeholder-count="2">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                  <sc-for list="{{ z.hoursChips }}" as="l" hint-placeholder-count="2">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                </div>
-                <div class="ra-zone-grid">
-                  <div><div class="c426">ZONE NAME</div><input class="c427" value="{{ z.name }}" onInput="{{ z.onName }}" placeholder="e.g. Waste Area — Spot 9"></div>
-                  <div><div class="c426">RESTRICTED HOURS (HH:MM-HH:MM, blank = 24 h)</div><input class="c427" value="{{ z.hours }}" onInput="{{ z.onHours }}" placeholder="e.g. 18:00-07:00"></div>
-                  <div><div class="c426">AUTHORIZED STAFF IDS (comma-separated)</div><input class="c427" value="{{ z.staff }}" onInput="{{ z.onStaff }}" placeholder="e.g. KJ-0142, KJ-0200"></div>
-                </div>
-                <div class="c426">AUTHORIZED DEPARTMENTS</div>
-                <div class="poc-chips">
-                  <sc-for list="{{ z.deptChips }}" as="l" hint-placeholder-count="4">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                  <button class="c429 ra-save" onClick="{{ z.onSave }}">Save zone</button>
-                </div>
-              </div>
-            </sc-for>
-          </div>
-          </sc-if>
-
-          <!-- Forklift zones -->
-          <sc-if value="{{ spTabFk }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Forklift Zones</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Turn a camera into a forklift zone, choose its rule, then save.</div>
-            <div class="fkz-rules">
-              <div><b>Prohibited</b><span>No forklifts allowed</span></div>
-              <div><b>Restricted hours</b><span>Forklifts only outside the set hours</span></div>
-              <div><b>Forklift only</b><span>No pedestrians allowed</span></div>
-            </div>
-            <div class="c426">OPERATOR WINDOW (seconds)</div>
-            <div class="poc-chips">
-              <sc-for list="{{ fkOpWinChips }}" as="l" hint-placeholder-count="4">
-                <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-              </sc-for>
-            </div>
-            <sc-for list="{{ fkZoneRows }}" as="z" hint-placeholder-count="4">
-              <div class="poc-cam">
-                <div class="poc-cam-head"><b>{{ z.camName }}</b><span class="c243">{{ z.key }}</span><span class="poc-cur" style="color:{{ z.stateCol }}">{{ z.state }}</span></div>
-                <div class="poc-chips">
-                  <sc-for list="{{ z.enableChips }}" as="l" hint-placeholder-count="2">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                  <sc-for list="{{ z.ruleChips }}" as="l" hint-placeholder-count="2">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                </div>
-                <div class="c426">OPERATOR PPE</div>
-                <div class="poc-chips">
-                  <sc-for list="{{ z.opChips }}" as="l" hint-placeholder-count="7">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                </div>
-                <div class="fk-zone-grid">
-                  <div><div class="c426">ZONE NAME</div><input class="c427" value="{{ z.name }}" onInput="{{ z.onName }}" placeholder="e.g. Warehouse aisle 3"></div>
-                  <div><div class="c426">HOURS (blank = all day)</div><input class="c427" value="{{ z.hours }}" onInput="{{ z.onHours }}" placeholder="e.g. 07:00-19:00"></div>
-                  <div><div class="c426">NOTE</div><input class="c427" value="{{ z.note }}" onInput="{{ z.onNote }}" placeholder="e.g. Pedestrian walkway — no forklifts"></div>
-                </div>
-                <div class="poc-chips">
-                  <button class="c429 ra-save" onClick="{{ z.onSave }}">Save zone</button>
-                </div>
-              </div>
-            </sc-for>
-          </div>
-          </sc-if>
-
-          <!-- Workstream C: Behaviour rules -->
-          <sc-if value="{{ spTabBeh }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Behaviour Rules</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Behaviour analytics watches the cameras at the selected camera points (default <b>Line 5</b>) plus any camera picked below. <b>Chit-chat / loitering</b> is raised when the set number of people are seen together for the dwell time while no cleaning session is scheduled, or one identified person stays past the idle threshold. Headcount comes from detections: an identified person is "present" between sightings no further apart than the presence gap, each anonymous detection counts for one minute. <b>Cleaning activity</b> is detected from a SenseStudio custom algorithm named clean / mop / sweep / wipe, or — as an attribute proxy — people wearing the cleaning PPE below during a scheduled cleaning window. <b>Fighting</b> and <b>falls</b> need a SenseStudio behaviour / custom algorithm on the camera (policy name containing fight / altercation / fall); they alert as <b>Critical</b> / High through the normal alert pipeline.</div>
-            <div class="c426">BEHAVIOUR ANALYTICS</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.enableChips }}" as="l" hint-placeholder-count="2"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">CAMERAS MONITORED</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.locChips }}" as="l" hint-placeholder-count="7"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">CHIT-CHAT — PEOPLE TOGETHER</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.groupChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">CHIT-CHAT — DWELL THRESHOLD</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.dwellChips }}" as="l" hint-placeholder-count="6"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">SINGLE PERSON IDLE THRESHOLD</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.idleChips }}" as="l" hint-placeholder-count="5"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">PRESENCE GAP (sightings closer than this = still present)</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.gapChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="c426">CLEANING PPE PROXY (worn during a scheduled cleaning window)</div>
-            <div class="poc-chips"><sc-for list="{{ behSet.cleanChips }}" as="l" hint-placeholder-count="4"><button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button></sc-for></div>
-            <div class="poc-chips">
-              <button class="c429" onClick="{{ behSave }}">Save behaviour rules</button>
-              <sc-if value="{{ behSet.dirty }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ behDiscard }}">Discard changes</button></sc-if>
-              <button class="c185 chip" onClick="{{ behRescan }}">Re-scan last 7 days</button>
-            </div>
-            <div class="c428">Saved thresholds apply to new detections within a minute. "Re-scan" re-derives unreviewed chit-chat, idle and cleaning-proxy events with the current thresholds; reviewed events and SenseStudio algorithm events are kept.</div>
-          </div>
-          </sc-if>
-
-          <!-- PPE area rules -->
-          <sc-if value="{{ spTabPpe }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">PPE Area Rules</h3><span class="c351">{{ appMsg }}</span></div>
-            <div class="c431">Pick the PPE required at each camera point. Everyone detected at that point is checked; a person missing a required item becomes a <b>PPE incident</b> (High severity) with the captured frame, and is emailed under Alert Rules. Items the model did not report are listed as “not checked”, never as violations. Safety goggles use the model’s glasses estimate until a dedicated goggles attribute is available.</div>
-            <sc-for list="{{ ppeRuleRows }}" as="c" hint-placeholder-count="5">
-              <div class="poc-cam">
-                <div class="poc-cam-head"><b>{{ c.name }}</b><span class="c100" style="color:{{ c.camsCol }}">{{ c.cams }}</span><span class="poc-cur" style="color:{{ c.curCol }}">{{ c.cur }}</span></div>
-                <div class="poc-chips">
-                  <sc-for list="{{ c.chips }}" as="l" hint-placeholder-count="4">
-                    <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-                  </sc-for>
-                </div>
-              </div>
-            </sc-for>
-            <div class="c428">Areas come from Settings → POC Camera Points. Map a camera to a point there before its people can be checked.</div>
-            <!-- Workstream B: hair-net proxy + new-item detection notes -->
-            <div class="c426">HAIR NET PROXY — head covers (SenseStudio HatsType) that count as hair covered</div>
-            <div class="poc-chips">
-              <sc-for list="{{ ppeHairChips }}" as="l" hint-placeholder-count="3">
-                <button class="c185 {{ l.cls }}" onClick="{{ l.onClick }}">{{ l.label }}</button>
-              </sc-for>
-            </div>
-            <div class="c428"><b>Safety boots</b> — attribute proxy: ShoesType = Boots is compliant, any other shoe type is missing, no shoe attribute = not checked. <b>Hair net</b> — attribute proxy (the head covers above) or a custom SenseStudio algorithm / policy named “hairnet / hair net / haircap”. <b>Ear protection</b> — custom model required (no native attribute): detected only from a custom algorithm / policy named “ear / earmuff / ear plug / hearing”. A custom policy named “No …” (or an alarm policy named after the item) reports it missing; one named “… OK / wearing” reports it worn. Such custom policies are checked even where the area rule does not list the item.</div>
-          </div>
-          </sc-if>
-
-          <!-- API endpoints & tokens -->
-          <sc-if value="{{ spTabApi }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c430"></span><h3 class="c129">API Endpoints &amp; Tokens</h3></div>
-            <div class="c431">One push URL per VisionAI feed — paste each into that policy's Push action <b>exactly as shown</b>. Don't append a camera name: VisionAI sends the URL verbatim, so the camera is read from the payload's <span class="c243">deviceSerial</span>. The feed tag tells this dashboard which pipeline the detection came from.</div>
-            <div><div class="c432">① FACE-RECOGNITION FEED — face policies (identity / person group)</div>
-              <div class="c433">{{ spPushFaceUrl }}</div></div>
-            <div><div class="c434">② BODY-ATTRIBUTION FEED — human attribute policies (vest, helmet, mask…)</div>
-              <div class="c433">{{ spPushBodyUrl }}</div></div>
-            <div><div class="c426">LEGACY / UNTAGGED PUSH URL — still accepted, feed is auto-detected</div>
-              <div class="c435">{{ spPushUrl }}</div></div>
-            <div><div class="c426">EVENTS API (read)</div>
-              <div class="c433">{{ spEventsUrl }}</div></div>
-            <div class="c436">
-              <button class="c437" onClick="{{ regenIngest }}">↻ Regenerate ingest token</button>
-              <button class="c437" onClick="{{ regenRead }}">↻ Regenerate read token</button>
-            </div>
-            <div class="c438">Regenerating the ingest token invalidates existing VisionAI Push URLs — update every policy after rotating. Rotating the read token reloads this dashboard.</div>
-          </div>
-
-          <!-- danger zone: wipe every stored detection -->
-          <div class="c439">
-            <div class="c332"><span class="c440"></span><h3 class="c129">Danger Zone</h3><span class="c351">{{ purgeCount }}</span></div>
-            <div class="c431">Deletes every stored detection, its attributes, incident tickets and comment history. Cameras, users, tokens and settings are kept. This cannot be undone.</div>
-            <div class="c174">
-              <button class="c441" onClick="{{ purgeEvents }}" style="color:{{ purgeColor }}; background:{{ purgeBg }}; border:1px solid {{ purgeColor }}">{{ purgeLabel }}</button>
-              <sc-if value="{{ purgeArmed }}" hint-placeholder-val="{{ false }}">
-                <button class="c442" onClick="{{ purgeCancel }}">Cancel</button>
-              </sc-if>
-              <span class="c47">{{ purgeMsg }}</span>
-            </div>
-          </div>
-          </sc-if>
-
-          <!-- AI source -->
-          <sc-if value="{{ spTabAi }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c443"></span><h3 class="c129">AI Source</h3><span class="c351">shift review + forecasting</span></div>
-            <div class="c339">
-              <sc-for list="{{ spAiChips }}" as="o" hint-placeholder-count="3">
-                <button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-              </sc-for>
-            </div>
-            <sc-if value="{{ spIsAnthropic }}" hint-placeholder-val="{{ false }}">
-            <div class="c444">
-              <div><div class="c426">ANTHROPIC API KEY</div>
-                <input class="c427" value="{{ spAnthKey }}" onInput="{{ onSpAnthKey }}" placeholder="sk-ant-…"></div>
-              <div><div class="c426">MODEL</div>
-                <input class="c427" value="{{ spAnthModel }}" onInput="{{ onSpAnthModel }}" placeholder="claude-opus-4-8"></div>
-            </div>
-            <div><button class="c429" onClick="{{ saveAi }}">Save AI config</button></div>
-            </sc-if>
-          </div>
-
-          <!-- Assistant LLM — exactly one provider active -->
-          <div class="c425">
-            <div class="c332"><span class="c443"></span><h3 class="c129">Assistant LLM</h3><span class="c351">powers the chat assistant · tick one</span></div>
-            <div class="llm-list">
-              <sc-for list="{{ llmRows }}" as="l" hint-placeholder-count="4">
-                <div class="{{ l.rowCls }}">
-                  <button class="{{ l.boxCls }}" onClick="{{ l.onPick }}" title="Use this provider">{{ l.tick }}</button>
-                  <div class="llm-main">
-                    <div class="llm-head">
-                      <span class="llm-name" onClick="{{ l.onPick }}">{{ l.label }}</span>
-                      <span class="llm-state" style="color:{{ l.keyCol }}; border-color:{{ l.keyCol }}">{{ l.keyState }}</span>
-                    </div>
-                    <div class="llm-note">{{ l.note }}</div>
-                    <input class="c427 llm-key" type="password" value="{{ l.value }}" onInput="{{ l.onKey }}" placeholder="{{ l.placeholder }}" autocomplete="off">
-                  </div>
-                </div>
-              </sc-for>
-            </div>
-            <div><button class="c429" onClick="{{ saveLlm }}">Save assistant LLM</button></div>
-            <sc-if value="{{ spIsWeststar }}" hint-placeholder-val="{{ false }}">
-            <div class="c445">middleware: {{ spAiBase }}</div>
-            </sc-if>
-          </div>
-          </sc-if>
-
-          <!-- Auto reports -->
-          <sc-if value="{{ spTabReports }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c446"></span><h3 class="c129">Auto Reports</h3><span class="c351">email summary + forecast</span></div>
-            <div><div class="c335">FREQUENCY</div>
-              <div class="c339">
-                <sc-for list="{{ spFreq }}" as="o" hint-placeholder-count="5">
-                  <button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-                </sc-for>
-              </div></div>
-            <div><div class="c335">SEND AT</div>
-              <div class="c339">
-                <sc-for list="{{ spHour }}" as="o" hint-placeholder-count="5">
-                  <button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button>
-                </sc-for>
-              </div></div>
-            <div><div class="c426">RECIPIENTS (blank = alert recipients)</div>
-              <div class="c336">
-                <input class="c447" value="{{ spRepTo }}" onInput="{{ onSpRepTo }}" placeholder="management@company.com">
-                <button class="c338" onClick="{{ applySpRepTo }}">Apply</button>
-              </div></div>
-            <div><button class="c448" onClick="{{ sendReportNow }}"><svg class="c52" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> Send report now</button></div>
-          </div>
-          </sc-if>
-
-          <!-- detection models (info) -->
-          <sc-if value="{{ spTabModels }}" hint-placeholder-val="{{ false }}">
-          <div class="c449">
-            <div class="c450"><span class="c430"></span><h3 class="c129">Detection Models</h3></div>
-            <div class="c451">{{ setModelsNote }}</div>
-            <sc-for list="{{ setModels }}" as="row" hint-placeholder-count="4">
-              <div class="c452"><span class="c312">{{ row.k }}</span><span class="c226"><span class="c100">{{ row.model }}</span><span class="c453" style="color:{{ row.tone }}">{{ row.v }}</span><span class="c191" style="background:{{ row.dot }}"></span></span></div>
-            </sc-for>
-          </div>
-          </sc-if>
-
-          <!-- Workstream D: model customisation (thresholds + training samples) -->
-          <sc-if value="{{ spTabModels }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Model customisation</h3><span class="c351">{{ thMsg }}</span></div>
-            <div class="c431">Model training happens in SenseStudio (custom algorithms, retraining on site imagery). This dashboard tunes the decision thresholds applied when a push arrives, and curates the retraining dataset from what reviewers marked wrong or missed.</div>
-            <div class="c370">
-              <div><div class="c426">FACE MATCH — MINIMUM SIMILARITY % (0 = SenseStudio decides)</div>
-                <input class="c427" type="number" min="0" max="100" step="0.5" value="{{ thFace }}" onInput="{{ onThFace }}">
-                <div class="c428 thc-help">A match below this is stored as an unknown person (tagged FaceBelowThreshold, candidate name kept) — attendance, restricted zones and alerts treat it as unidentified.</div></div>
-              <div><div class="c426">PPE ATTRIBUTE — MINIMUM CONFIDENCE % (0 = off)</div>
-                <input class="c427" type="number" min="0" max="100" step="0.5" value="{{ thPpe }}" onInput="{{ onThPpe }}">
-                <div class="c428 thc-help">Helmet / vest / gloves / glasses / shoes attributes below this confidence count as "not reported", so they never raise a PPE violation.</div></div>
-            </div>
-            <div class="poc-chips">
-              <button class="c429" onClick="{{ thSave }}">Save thresholds</button>
-            </div>
-          </div>
-          </sc-if>
-
-          <!-- Workstream D: Integrations (HRMS / MES API, webhooks) -->
-          <sc-if value="{{ spTabInt }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Integration API key</h3><span class="c351">{{ intMsg }}</span></div>
-            <div class="c431">Read-only JSON API for HRMS / MES / enterprise systems. Send the key as <b>X-Api-Key: …</b> or <b>Authorization: Bearer …</b>. Every endpoint is paginated (page, per_page ≤ 500), accepts <b>plant=</b> and returns the plant on each row. Full reference: docs/INTEGRATION_API.md.</div>
-            <div class="int-key"><span class="lb-mono">{{ intKeyLine }}</span></div>
-            <sc-if value="{{ intHasNewKey }}" hint-placeholder-val="{{ false }}">
-              <div class="int-newkey"><div class="c426">NEW KEY — COPY IT NOW, IT IS NOT SHOWN AGAIN</div><input class="c427" value="{{ intNewKey }}" readonly></div>
-            </sc-if>
-            <div class="poc-chips">
-              <button class="c429" onClick="{{ intRegen }}">{{ intRegenLabel }}</button>
-              <sc-if value="{{ intHasKey }}" hint-placeholder-val="{{ false }}"><button class="c185 chip" onClick="{{ intRevoke }}">Revoke key</button></sc-if>
-            </div>
-            <div style="overflow-x:auto">
-              <table class="ov-table int-table">
-                <thead><tr><th>METHOD</th><th>ENDPOINT</th><th>PARAMETERS</th><th>PURPOSE</th></tr></thead>
-                <tbody>
-                  <sc-for list="{{ intCat }}" as="c" hint-placeholder-count="5">
-                    <tr><td class="lb-mono">{{ c.method }}</td><td class="lb-src">{{ c.url }}</td><td class="int-params">{{ c.params }}</td><td>{{ c.purpose }}</td></tr>
-                  </sc-for>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Outbound webhooks</h3><span class="c351">{{ intMsg }}</span></div>
-            <div class="c431">New detections are POSTed as JSON to each URL for the event types ticked. Each delivery is signed: <b>X-VisionAI-Signature: sha256=HMAC_SHA256(secret, X-VisionAI-Timestamp + "." + body)</b>, with <b>X-VisionAI-Event</b> naming the type. Delivery runs at ingest with a 2-second budget for all hooks together and never delays SenseStudio beyond that; failures are logged below. Simulated detections are not sent.</div>
-            <sc-if value="{{ intHooksEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100">No webhooks configured.</div></sc-if>
-            <sc-for list="{{ intHooks }}" as="h" hint-placeholder-count="1">
-              <div class="poc-cam">
-                <div class="poc-cam-head"><b>Webhook</b><span class="c243">{{ h.idLabel }}</span></div>
-                <div class="c370">
-                  <div><div class="c426">URL</div><input class="c427" value="{{ h.url }}" onInput="{{ h.onUrl }}" placeholder="https://hrms.example.com/hooks/visionai"></div>
-                  <div><div class="c426">SIGNING SECRET (blank = generate)</div><input class="c427" value="{{ h.secret }}" onInput="{{ h.onSecret }}" placeholder="generated on save"></div>
-                </div>
-                <div class="c426">EVENT TYPES</div>
-                <div class="poc-chips">
-                  <sc-for list="{{ h.events }}" as="e" hint-placeholder-count="4">
-                    <button class="c185 {{ e.cls }}" onClick="{{ e.onClick }}" title="{{ e.title }}">{{ e.label }}</button>
-                  </sc-for>
-                  <button class="c185 {{ h.enabledCls }}" onClick="{{ h.onEnabled }}">{{ h.enabledLabel }}</button>
-                  <button class="c185 chip" onClick="{{ h.onTest }}">Send test webhook</button>
-                  <button class="c185 chip att-shift-rm" onClick="{{ h.onRemove }}">✕ Remove</button>
-                </div>
-              </div>
-            </sc-for>
-            <div class="poc-chips">
-              <button class="c185 chip" onClick="{{ intAddHook }}">＋ Add webhook</button>
-              <button class="c429" onClick="{{ intSaveHooks }}">Save webhooks</button>
-            </div>
-            <div class="c426">DELIVERY LOG (latest 25)</div>
-            <sc-if value="{{ intLogEmpty }}" hint-placeholder-val="{{ false }}"><div class="c100">No deliveries yet.</div></sc-if>
-            <div style="overflow-x:auto">
-              <table class="ov-table int-table">
-                <tbody>
-                  <sc-for list="{{ intLog }}" as="l" hint-placeholder-count="3">
-                    <tr><td class="lb-mono">{{ l.at }}</td><td>{{ l.type }}</td><td class="lb-src">{{ l.url }}</td><td>{{ l.code }} · {{ l.ms }}</td>
-                      <td><span class="ov-pill" style="color:{{ l.col }}; background:{{ l.bg }}">{{ l.state }}</span> <span class="net-note">{{ l.error }}</span></td></tr>
-                  </sc-for>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          </sc-if>
-
-          <!-- Workstream D: Data retention + storage estimate -->
-          <sc-if value="{{ spTabRet }}" hint-placeholder-val="{{ false }}">
-          <div class="c425">
-            <div class="c332"><span class="c360"></span><h3 class="c129">Data retention</h3><span class="c351">{{ retMsg }}</span></div>
-            <div class="c431">Detections older than the retention window are purged automatically once a day (cron and the dashboard poll): the event, its attributes, PPE / restricted / forklift rows, incident log and ticket attachments. Detection frames themselves are stored on the SenseStudio box under its own retention — the dashboard keeps only their links.</div>
-            <div class="c426">KEEP EVENTS &amp; EVIDENCE FOR</div>
-            <div class="poc-chips">
-              <sc-for list="{{ retChips }}" as="t" hint-placeholder-count="6">
-                <button class="c185 {{ t.cls }}" onClick="{{ t.onClick }}">{{ t.label }}</button>
-              </sc-for>
-            </div>
-            <div class="att-kpis ret-kpis">
-              <sc-for list="{{ retKpis }}" as="k" hint-placeholder-count="4">
-                <div class="att-kpi">
-                  <div class="att-kpi-label">{{ k.label }}</div>
-                  <div class="att-kpi-value">{{ k.value }}</div>
-                  <div class="att-kpi-sub">{{ k.sub }}</div>
-                </div>
-              </sc-for>
-            </div>
-            <div class="c428">{{ retDueLine }} · {{ retLastLine }}</div>
-            <div class="poc-chips">
-              <button class="c185 chip" onClick="{{ reloadRet }}">⟳ Refresh</button>
-              <button class="c185 chip att-shift-rm" onClick="{{ retPurge }}">Purge expired now</button>
-            </div>
-            <div class="c428">Sizing guidance for continuous recording on the NVR (not stored here) is in docs/ARCHITECTURE_AND_INFRASTRUCTURE.md: per camera ≈ bitrate (Mbps) × 10.8 GB per day.</div>
-          </div>
-          </sc-if>
-
-          <!-- NOTIFICATIONS: escalation-matrix routing -->
-          <sc-if value="{{ spTabNotify }}" hint-placeholder-val="{{ false }}">
-          <!-- Workstream A: channel status (Email ✓ / Telegram ✓) -->
-          <div class="c425">
-            <div class="c332"><span class="c440" style="background:var(--brand)"></span><h3 class="c129">Alert channels</h3>
-              <span class="c321">{{ wsA.ntMsg }}</span></div>
-            <div class="esc-chans">
-              <div class="esc-chan-card">
-                <div class="esc-chan-head"><span class="esc-chan-mark" style="color:{{ wsA.chEmail.col }}; border-color:{{ wsA.chEmail.col }}">{{ wsA.chEmail.mark }}</span><b>Email</b><span class="esc-chan-line">{{ wsA.chEmail.line }}</span></div>
-                <div class="esc-chan-stat">{{ wsA.chEmail.stat }}</div>
-                <div class="esc-chan-err">{{ wsA.chEmail.err }}</div>
-                <div><button class="esc-btn" onClick="{{ wsA.testEmail }}">Send test email</button></div>
-              </div>
-              <div class="esc-chan-card">
-                <div class="esc-chan-head"><span class="esc-chan-mark" style="color:{{ wsA.chTg.col }}; border-color:{{ wsA.chTg.col }}">{{ wsA.chTg.mark }}</span><b>Telegram</b><span class="esc-chan-line">{{ wsA.chTg.line }}</span></div>
-                <div class="esc-chan-stat">{{ wsA.chTg.stat }}</div>
-                <div class="esc-chan-err">{{ wsA.chTg.err }}</div>
-                <div><button class="esc-btn" onClick="{{ wsA.testTg }}">Send test message</button></div>
-              </div>
-            </div>
-            <div class="c431">Each channel is gated independently: Telegram keeps alerting when SMTP is down or not configured, and vice versa. Both share the alert rules, minimum severity and per-camera interval from the Alert Rules page.</div>
-          </div>
-
-          <!-- Workstream A: Telegram bot -->
-          <div class="c425">
-            <div class="c332"><span class="c440" style="background:#229ED9"></span><h3 class="c129">Telegram</h3>
-              <span class="c351" style="color:{{ wsA.tgTokenCol }}">{{ wsA.tgTokenState }}</span>
-              <div class="c329" onClick="{{ wsA.onTgToggle }}" title="Telegram alerts on / off" style="background:{{ wsA.tgToggleBg }}"><div class="c330" style="left:{{ wsA.tgKnob }}"></div></div></div>
-            <div class="c431">Create a bot with @BotFather, add it to your safety group, then paste the bot token and the group chat ID (e.g. -1001234567890 or @channelname). Alerts include the detection photo when the image URL is publicly reachable; otherwise a text message with a dashboard link is sent.</div>
-            <div class="c370">
-              <div><div class="c426">BOT TOKEN (stored server-side, shown masked)</div>
-                <input class="c427" value="{{ wsA.tgToken }}" onInput="{{ wsA.onTgToken }}" placeholder="123456789:AA…" autocomplete="off"></div>
-              <div><div class="c426">DEFAULT CHAT ID(S) — every alert</div>
-                <input class="c427" value="{{ wsA.tgChats }}" onInput="{{ wsA.onTgChats }}" placeholder="-1001234567890, @kj_safety"></div>
-            </div>
-            <div class="esc-row">
-              <div class="c329" onClick="{{ wsA.onTgPhoto }}" style="background:{{ wsA.tgPhotoBg }}"><div class="c330" style="left:{{ wsA.tgPhotoKnob }}"></div></div>
-              <span class="c458">Attach the detection photo</span>
-              <span class="esc-grow"></span>
-              <button class="esc-btn" onClick="{{ wsA.testTg }}">Send test message</button>
-              <button class="c429" onClick="{{ wsA.saveTg }}">Save Telegram</button>
-            </div>
-          </div>
-
-          <!-- Workstream A: escalation workflow -->
-          <div class="c425">
-            <div class="c332"><span class="c440" style="background:var(--high)"></span><h3 class="c129">Escalation workflow</h3>
-              <span class="c351">unattended alerts · L1 → L2 → L3</span>
-              <div class="c329" onClick="{{ wsA.onEscToggle }}" title="Escalation workflow on / off" style="background:{{ wsA.escToggleBg }}"><div class="c330" style="left:{{ wsA.escKnob }}"></div></div></div>
-            <div class="c431">{{ wsA.escFlow }}</div>
-            <div class="c370">
-              <div><div class="c335">UNATTENDED MINUTES PER LEVEL</div>
-                <div class="c339"><sc-for list="{{ wsA.escMinChips }}" as="o" hint-placeholder-count="4"><button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button></sc-for></div></div>
-              <div><div class="c335">APPLIES TO SEVERITY</div>
-                <div class="c339"><sc-for list="{{ wsA.escSevChips }}" as="o" hint-placeholder-count="3"><button class="c340 {{ o.cls }}" onClick="{{ o.onClick }}">{{ o.label }}</button></sc-for></div></div>
-            </div>
-            <div class="esc-levels">
-              <sc-for list="{{ wsA.escLevels }}" as="l" hint-placeholder-count="3">
-                <div class="esc-level" style="box-shadow:inset 3px 0 0 {{ l.col }}">
-                  <div class="esc-level-head"><span class="esc-level-tag" style="background:{{ l.col }}">{{ l.tag }}</span><span class="esc-level-after">{{ l.after }}</span><span class="esc-level-warn">{{ l.warn }}</span></div>
-                  <div class="esc-level-grid">
-                    <div><div class="c426">NAME</div><input class="c427" value="{{ l.name }}" onInput="{{ l.onName }}" placeholder="Supervisor"></div>
-                    <div><div class="c426">EMAIL(S)</div><input class="c427" value="{{ l.emails }}" onInput="{{ l.onEmails }}" placeholder="supervisor@kianjoo.com"></div>
-                    <div><div class="c426">TELEGRAM CHAT ID(S)</div><input class="c427" value="{{ l.chats }}" onInput="{{ l.onChats }}" placeholder="-1001234567890"></div>
-                  </div>
-                </div>
-              </sc-for>
-            </div>
-            <div class="esc-row">
-              <span class="c458">{{ wsA.escOpenLine }}</span>
-              <span class="esc-grow"></span>
-              <button class="esc-btn" onClick="{{ wsA.runDry }}">Run escalation check now (preview)</button>
-              <button class="esc-btn esc-btn-warn" onClick="{{ wsA.runNow }}">Escalate due alerts now</button>
-              <button class="c429" onClick="{{ wsA.saveLevels }}">Save levels</button>
-            </div>
-            <div class="esc-note">{{ wsA.escLastLine }}</div>
-            <sc-if value="{{ wsA.escResHas }}" hint-placeholder-val="{{ false }}">
-              <div class="esc-res">
-                <div class="c335">{{ wsA.escResTitle }}</div>
-                <sc-if value="{{ wsA.escResNone }}" hint-placeholder-val="{{ false }}"><div class="c458">Nothing due — every open alert is either acknowledged or still inside its unattended window.</div></sc-if>
-                <sc-for list="{{ wsA.escResRows }}" as="x" hint-placeholder-count="3">
-                  <div class="esc-res-row">
-                    <span class="esc-level-tag" style="background:{{ x.col }}">{{ x.lv }}</span>
-                    <div class="cond-main"><div class="cond-name">{{ x.title }} <span style="color:{{ x.sevCol }}">· {{ x.sev }}</span></div><div class="cond-desc">{{ x.camera }} · {{ x.sub }}</div></div>
-                    <span class="cond-ch">{{ x.chan }}</span>
-                  </div>
-                </sc-for>
-                <sc-if value="{{ wsA.escPendHas }}" hint-placeholder-val="{{ false }}">
-                  <div class="c335" style="margin-top:8px">UPCOMING</div>
-                  <sc-for list="{{ wsA.escPendRows }}" as="x" hint-placeholder-count="2">
-                    <div class="esc-res-row">
-                      <span class="esc-level-tag" style="background:var(--text3)">{{ x.lv }}</span>
-                      <div class="cond-main"><div class="cond-name">{{ x.title }}</div><div class="cond-desc">{{ x.camera }} {{ x.sub }}</div></div>
-                    </div>
-                  </sc-for>
-                </sc-if>
-              </div>
-            </sc-if>
-          </div>
-
-          <!-- Workstream A: delivery log -->
-          <div class="c449">
-            <div class="c454"><span class="c360"></span><h3 class="c129">Recent deliveries</h3></div>
-            <sc-if value="{{ wsA.recentNone }}" hint-placeholder-val="{{ false }}"><div class="c458">No alerts sent yet.</div></sc-if>
-            <sc-for list="{{ wsA.recent }}" as="r" hint-placeholder-count="3">
-              <div class="c455">
-                <span class="esc-log-ok" style="color:{{ r.col }}">{{ r.ok }}</span>
-                <span class="esc-log-ch">{{ r.ch }} · {{ r.kind }}</span>
-                <span class="c312 esc-log-note">{{ r.note }}</span>
-                <span class="esc-log-at">{{ r.at }}</span>
-              </div>
-            </sc-for>
-          </div>
-
-          <div class="c425">
-            <div class="c332"><span class="c440"></span><h3 class="c129">Notification Routing</h3><span class="c351">escalation matrix targets</span></div>
-            <div class="c431">Comma-separated email lists. These are added on top of the base alert recipients (Alert Rules page) according to detection severity and ticket escalations — leave a field blank to skip that tier.</div>
-            <div class="c370">
-              <div><div class="c426">EMERGENCY RESPONSE TEAM EMAIL(S)</div>
-                <input class="c427" value="{{ spTmforce }}" onInput="{{ onSpTmforce }}" placeholder="force@tm.com.my"></div>
-              <div><div class="c426">SOC EMAIL(S)</div>
-                <input class="c427" value="{{ spSoc }}" onInput="{{ onSpSoc }}" placeholder="soc@company.com"></div>
-              <div><div class="c426">SUPERVISOR EMAIL(S)</div>
-                <input class="c427" value="{{ spSupervisor }}" onInput="{{ onSpSupervisor }}" placeholder="supervisor@company.com"></div>
-              <div><div class="c426">ADMIN EMAIL(S)</div>
-                <input class="c427" value="{{ spAdmin }}" onInput="{{ onSpAdmin }}" placeholder="admin@company.com"></div>
-            </div>
-            <div><button class="c429" onClick="{{ saveRouting }}">Save notification routing</button></div>
-          </div>
-
-          <!-- who gets notified for what -->
-          <div class="c449">
-            <div class="c454"><span class="c360"></span><h3 class="c129">Routing Matrix</h3></div>
-            <sc-for list="{{ spMatrix }}" as="row" hint-placeholder-count="6">
-              <div class="c455">
-                <span class="c456" style="color:{{ row.col }}">{{ row.k }}</span>
-                <span class="c312">{{ row.v }}</span>
-              </div>
-            </sc-for>
-          </div>
-
-          <!-- email channel status + alert rules pointer -->
-          <div class="c425">
-            <div class="c332"><span class="c333" style="background:{{ mailDot }}"></span><h3 class="c129">Email Channel</h3></div>
-            <div class="c457">{{ mailLine }}</div>
-            <div class="c458">Per-module rules, base recipients, send interval and the intrusion armed window are managed on the Alert Rules page.</div>
-            <div><button class="c429" onClick="{{ goRules }}">Open Alert Rules →</button></div>
-          </div>
-          </sc-if>
-        </div>
       </div>
       </sc-if>
 

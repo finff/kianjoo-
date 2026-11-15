@@ -1,0 +1,76 @@
+/* ==========================================================================
+ * Image viewer + on-demand Enhance (KJModal 'image' type)
+ * Injected by kj-modal.js the first time an enhanceable image modal opens.
+ * kj-* tokens only; the stage stays dark in both themes (photo backdrop).
+ * ========================================================================== */
+
+.kj-iv { display: flex; flex-direction: column; gap: var(--kj-s-3); }
+
+/* ── stage: original in flow, enhanced stacked on top ───────────────────── */
+.kj-iv-stage { --iv-split: 50%; position: relative; aspect-ratio: auto; min-height: 160px; max-height: 70vh; background: #0B1220; display: grid; place-items: center; }
+.kj-iv-stage img { width: 100%; height: 100%; max-height: 70vh; object-fit: contain; display: block; }
+.kj-iv-stage .kj-iv-enh { position: absolute; inset: 0; }
+.kj-iv-stage .kj-iv-enh[hidden] { display: none; }
+.kj-iv[data-mode="orig"] .kj-iv-enh { visibility: hidden; }
+.kj-iv[data-mode="split"] .kj-iv-enh { clip-path: inset(0 0 0 var(--iv-split)); }
+
+/* compare divider (the range input is the invisible full-stage handle) */
+.kj-iv-divider { position: absolute; top: 0; bottom: 0; left: var(--iv-split); width: 2px; margin-left: -1px; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(11, 18, 32, .35); pointer-events: none; display: none; }
+.kj-iv-divider::after { content: ''; position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: var(--kj-r-full); background: #FFFFFF; box-shadow: var(--kj-shadow-md); }
+.kj-iv[data-mode="split"] .kj-iv-divider { display: block; }
+.kj-iv-split { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+.kj-iv-split[hidden] { display: none; }
+.kj-iv-stage:has(.kj-iv-split:focus-visible) { box-shadow: var(--kj-shadow-focus); }
+.kj-iv-tag { position: absolute; top: var(--kj-s-2); padding: 2px var(--kj-s-2); border-radius: var(--kj-r-full); font-size: var(--kj-fs-xs); font-weight: var(--kj-fw-semi); color: #FFFFFF; background: rgba(11, 18, 32, .62); pointer-events: none; display: none; }
+.kj-iv-tag-l { left: var(--kj-s-2); }
+.kj-iv-tag-r { right: var(--kj-s-2); }
+.kj-iv[data-mode="split"] .kj-iv-tag { display: block; }
+
+/* loading shimmer over the stage while a render is in flight */
+.kj-iv-shimmer { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity var(--kj-dur) var(--kj-ease);
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .16) 45%, rgba(76, 139, 255, .22) 50%, rgba(255, 255, 255, .16) 55%, transparent 80%) 0 0 / 250% 100% no-repeat; }
+.kj-iv-stage.is-loading .kj-iv-shimmer { opacity: 1; animation: kj-iv-sweep 1.2s linear infinite; }
+.kj-iv-stage.is-loading img { filter: saturate(.85) brightness(.9); }
+@keyframes kj-iv-sweep { from { background-position: 125% 0; } to { background-position: -125% 0; } }
+
+/* ── toolbar ────────────────────────────────────────────────────────────── */
+.kj-iv-bar[hidden] { display: none; }
+.kj-iv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--kj-s-2) var(--kj-s-3); }
+.kj-iv-go[disabled] { opacity: .75; cursor: progress; }
+.kj-iv-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--kj-r-full); background: var(--kj-bg-subtle); border: 1px solid var(--kj-border); }
+.kj-iv-seg[hidden] { display: none; }
+.kj-iv-seg button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 var(--kj-s-3); border: 0; border-radius: var(--kj-r-full); background: transparent; color: var(--kj-text-2); font: inherit; font-size: var(--kj-fs-sm); font-weight: var(--kj-fw-medium); cursor: pointer; transition: background var(--kj-dur-fast), color var(--kj-dur-fast); }
+.kj-iv-seg button:hover { color: var(--kj-text); }
+.kj-iv-seg button[aria-pressed="true"] { background: var(--kj-surface); color: var(--kj-primary); box-shadow: var(--kj-shadow-xs); }
+.kj-iv-seg button:focus-visible { outline: none; box-shadow: var(--kj-shadow-focus); }
+.kj-iv-seg .kj-ico { width: 14px; height: 14px; }
+.kj-iv-cap { margin-left: auto; font-family: var(--kj-font-mono); font-size: var(--kj-fs-xs); color: var(--kj-text-3); white-space: nowrap; }
+
+/* ── adjustment controls ───────────────────────────────────────────────── */
+.kj-iv-ctls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--kj-s-3) var(--kj-s-5); padding: var(--kj-s-3) var(--kj-s-4); border-radius: var(--kj-r-md); background: var(--kj-surface); border: 1px solid var(--kj-border); }
+.kj-iv-ctls[hidden] { display: none; }
+.kj-iv-ctl { flex: 1 1 150px; min-width: 130px; display: flex; flex-direction: column; gap: 4px; font-size: var(--kj-fs-sm); color: var(--kj-text-2); }
+.kj-iv-ctl-top { display: flex; justify-content: space-between; gap: var(--kj-s-2); }
+.kj-iv-ctl output { font-family: var(--kj-font-mono); color: var(--kj-text); min-width: 3ch; text-align: right; }
+.kj-iv-ctl input[type="range"] { width: 100%; margin: 0; accent-color: var(--kj-primary); min-height: 24px; }
+.kj-iv-check { display: inline-flex; align-items: center; gap: var(--kj-s-2); min-height: 32px; font-size: var(--kj-fs-sm); color: var(--kj-text); cursor: pointer; }
+.kj-iv-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--kj-primary); }
+.kj-iv-reset { margin-left: auto; }
+.kj-iv-dl[hidden] { display: none; }
+
+/* ── narrow screens (the modal is already a bottom sheet there) ─────────── */
+@media (max-width: 640px) {
+  .kj-iv-stage, .kj-iv-stage img { max-height: 56vh; }
+  .kj-iv-bar { gap: var(--kj-s-2); }
+  .kj-iv-go { flex: 1 1 auto; justify-content: center; }
+  .kj-iv-seg { flex: 1 1 100%; justify-content: space-between; }
+  .kj-iv-seg button { flex: 1 1 0; justify-content: center; padding: 0 var(--kj-s-2); }
+  .kj-iv-cap { margin-left: 0; flex: 1 1 100%; white-space: normal; }
+  .kj-iv-ctls { padding: var(--kj-s-3); gap: var(--kj-s-3); }
+  .kj-iv-ctl { flex-basis: 100%; }
+  .kj-iv-reset { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kj-iv-stage.is-loading .kj-iv-shimmer { animation: none; opacity: .6; }
+}

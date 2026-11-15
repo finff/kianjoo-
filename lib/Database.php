@@ -12,6 +12,7 @@ final class Database
 {
     private static ?PDO $pdo = null;
     private static string $driver = 'mysql';
+    private static ?string $storageDir = null;
 
     /**
      * @param array $storage The config['storage'] block:
@@ -31,6 +32,8 @@ final class Database
             : self::connectMysql($storage['mysql'] ?? []);
 
         self::$pdo = $pdo;
+        $log = (string) ($storage['raw_log'] ?? '');
+        self::$storageDir = $log !== '' ? dirname($log) : null;
         self::migrate($pdo);
         return $pdo;
     }
@@ -98,6 +101,18 @@ final class Database
         self::migrateEscalation($pdo);
         self::migrateForkliftSafety($pdo);
         self::migrateBehaviour($pdo);
+        // AI layer + ITSM tickets (M7/M8/M9/M12) — see lib/AiSchema.php.
+        require_once __DIR__ . '/AiSchema.php';
+        AiSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // M14 floor plans + camera pins (movement playback) — see lib/FloorplanSchema.php.
+        require_once __DIR__ . '/FloorplanSchema.php';
+        FloorplanSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Leave workflow, profile self-service, notifications (M6) — see lib/HrSchema.php.
+        require_once __DIR__ . '/HrSchema.php';
+        HrSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Per-user widget dashboard layout (M3) — see lib/DashboardSchema.php.
+        require_once __DIR__ . '/DashboardSchema.php';
+        DashboardSchema::migrate($pdo, self::$driver, self::$storageDir);
     }
 
     /**

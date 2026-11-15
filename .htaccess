@@ -24,7 +24,7 @@
 <FilesMatch "\.dc\.html$">
     Require all denied
 </FilesMatch>
-RedirectMatch 403 ^/(storage|config|lib|tests|live-bridge)(/|$)
+RedirectMatch 403 ^/(storage|config|lib|tests|live-bridge|bin)(/|$)
 # cPanel Git Version Control clones the repo straight into this document
 # root — block the .git internals (history, refs) from being served.
 RedirectMatch 403 ^/\.git(/|$)

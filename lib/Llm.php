@@ -2,283 +2,354 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/Claude.php';
+
 /**
- * Assistant LLM providers.
+ * Provider-neutral LLM layer for the in-dashboard assistant and AI reports.
  *
- * Exactly one is active at a time (Settings → AI Source → Assistant LLM).
- * 'weststar' is the default and the only one with retrieval + live-data tools:
- * it goes to a Weststar AI agent that reads /api/ai/* itself. The direct
- * providers get the same persona plus a live-context block injected here, so
- * their answers stay grounded even without tools.
+ * ┌──────────────── provider-neutral ────────────────┐   ┌──── provider seam ────┐
+ *  AiRoutes / AiReports / AiTools / app.js            │   │ LlmAdapter (interface) │
+ *    tools   = [{name, description, parameters}]      │──▶│  ClaudeAdapter ─▶ lib/Claude.php
+ *    reply   = {answer, refs, tools_called, model}    │   │  (future) XyzAdapter   │
+ *  Llm::chat() — the tool loop, refs, RBAC via AiTools │   └────────────────────────┘
+ *
+ * Everything vendor-specific (message/content blocks, tool_use/tool_result
+ * shapes, model ids, headers) lives in an adapter class at the bottom of this
+ * file and in lib/Claude.php. Nothing else in the app may build or parse a
+ * provider wire format.
+ *
+ * Adding a provider = one new class implementing LlmAdapter + one case in
+ * Llm::adapterFor() (config ai.source picks it). See docs/plan/AI_LAYER.md
+ * "How to add another provider".
+ *
+ * The assistant reads live data exclusively through the RBAC-filtered AiTools
+ * whitelist: the model is only told about the tools the signed-in user may
+ * call, every call is re-authorised server-side, and tool input is validated
+ * by AiTools. The only write-ish tool is generate_report (AI_LAYER §3).
  */
 final class Llm
 {
-    public const PROVIDERS = ['weststar', 'anthropic', 'gemini', 'openai'];
+    /** Source ids accepted from settings. Legacy ids (weststar/gemini/openai) still resolve to Claude until they get an adapter. */
+    public const PROVIDERS = ['claude', 'weststar', 'anthropic', 'gemini', 'openai'];
 
     public const LABEL = [
-        'weststar'  => 'Weststar AI Agent',
-        'anthropic' => 'Anthropic (Claude)',
-        'gemini'    => 'Google Gemini',
-        'openai'    => 'OpenAI (ChatGPT)',
+        'claude'    => 'Claude (Anthropic)',
+        'weststar'  => 'Claude (Anthropic)',
+        'anthropic' => 'Claude (Anthropic)',
+        'gemini'    => 'Claude (Anthropic)',
+        'openai'    => 'Claude (Anthropic)',
     ];
 
-    /** Which settings key holds each provider's secret. */
     public const KEY_FIELD = [
-        'weststar'  => 'agent_key',
-        'anthropic' => 'anthropic_key',
-        'gemini'    => 'gemini_key',
-        'openai'    => 'openai_key',
+        'claude' => 'claude_key', 'weststar' => 'claude_key', 'anthropic' => 'claude_key',
+        'gemini' => 'claude_key', 'openai' => 'claude_key',
     ];
+
+    private const MAX_TOOL_ROUNDS = 5;
+    private const MAX_REFS        = 12;
+    private const TOOL_JSON_CAP   = 30000;
 
     private const PERSONA = <<<'TXT'
-You are the Kian Joo VisionAI Assistant inside Kian Joo Group's VisionAI CCTV monitoring dashboard, operated by Weststar.
+You are the Kian Joo VisionAI Assistant inside Kian Joo Group's VisionAI factory monitoring and attendance platform, operated by Weststar.
 
-Only answer questions about this dashboard, the VisionAI platform behind it (policies, attributes, push feeds, cameras, people/face profiles, incidents and tickets), Kian Joo Group, and the Weststar engineering AI initiative. For anything else, reply in one short sentence that you only cover Kian Joo VisionAI and Weststar AI, and point the operator at what you can help with.
+Only answer questions about this platform (attendance, leave, tickets, people on record, reports and — for roles allowed to see them — cameras, detections, PPE and forklift safety), Kian Joo Group, and the Weststar AI initiative. For anything else, reply in one short sentence that you only cover Kian Joo VisionAI.
 
 The platform is called VisionAI — never call it SenseStudio, SenseFoundry or SenseTime.
 
-Be concise: two or three short paragraphs at most, or a short list. Operators are watching live cameras while they read you. Answer in English unless the operator writes in another language. Never invent policy names, attribute keys, camera serials, person ids, thresholds or figures — if the live context below does not contain it, say so and name the dashboard page where they can check. Never reveal API tokens, passwords or RTSP credentials.
+Data access: you can ONLY see data through the tools provided to you, and those tools are already limited to what the signed-in user's role permits. If a question needs data you have no tool for, say plainly that their role does not have access to that information — do not guess, do not hint at it, and do not describe other people's records. Never invent names, ids, figures, thresholds or camera details. Never reveal API keys, tokens, passwords or RTSP credentials.
+
+Actions: you cannot change records. The one exception is generate_report — call it only when the user explicitly asks you to generate / create / produce a report, and at most once per message. Pick the scope from their words (personal = only their own records; standard = everything their role may see; comprehensive = deep cross-section analysis) and a range like today, 7d, 30d, month or YYYY-MM-DD..YYYY-MM-DD (default 7d). When it succeeds, say the report is ready and give its report number — the app shows Open and Download PDF buttons under your answer. For any other change, explain where in the app the user can do it.
+
+Finding people: when asked to find, look up or show a person, call find_person. If it returns no matches, answer plainly that this person was not found in the records — do not guess or suggest other people. When it returns matches, name each one with their staff id; the app shows their photos and recent face captures under your answer automatically.
+
+Referencing records: refer to records by their ids in plain text exactly as the tools return them — ticket numbers (TKT-…), leave numbers (LV-…), report numbers (RPT-…), camera labels, and people by their full name. The app turns these into clickable links, so never write URLs, image links or HTML yourself.
+
+Formatting: use light Markdown — **bold** for key figures, short "### " headings only when an answer has several parts, "- " bullet lists, and a small table only when comparing a few rows. Be concise: two or three short paragraphs at most, or a short list. Answer in English unless the user writes in another language.
 TXT;
 
-    public function __construct(private array $cfg)
+    private LlmAdapter $adapter;
+
+    /**
+     * @param array                   $cfg      config['ai'] (claude_key, storage_dir, source …)
+     * @param LlmAdapter|Claude|null  $adapter  explicit adapter (tests), a Claude client (legacy), or null = pick from ai.source
+     */
+    public function __construct(private array $cfg, LlmAdapter|Claude|null $adapter = null)
     {
+        if ($adapter instanceof LlmAdapter) {
+            $this->adapter = $adapter;
+        } elseif ($adapter instanceof Claude) {
+            $this->adapter = new ClaudeAdapter($adapter);
+        } else {
+            $this->adapter = self::adapterFor((string) ($cfg['source'] ?? 'claude'), ['ai' => $cfg]);
+        }
     }
 
-    /** The active provider, defaulting to the Weststar agent. */
+    /** Build from the whole app config. */
+    public static function fromConfig(array $config): self
+    {
+        return new self((array) ($config['ai'] ?? []), self::adapterFor((string) ($config['ai']['source'] ?? 'claude'), $config));
+    }
+
+    /**
+     * THE provider switch. To add a provider: implement LlmAdapter in a new
+     * class and add one case here keyed by its ai.source id.
+     */
+    public static function adapterFor(string $source, array $config): LlmAdapter
+    {
+        switch (strtolower(trim($source))) {
+            // case 'openai': return OpenAiAdapter::fromConfig($config);   ← example of a future provider
+            case 'claude':
+            case 'anthropic':
+            case 'off':          // 'off' is enforced by the routes; keep a valid adapter for diagnostics
+            default:
+                return new ClaudeAdapter(Claude::fromConfig($config));
+        }
+    }
+
     public function provider(): string
     {
-        $p = (string) ($this->cfg['provider'] ?? 'weststar');
-        return in_array($p, self::PROVIDERS, true) ? $p : 'weststar';
+        return $this->adapter->id();
     }
 
     public function keyFor(string $provider): string
     {
-        return (string) ($this->cfg[self::KEY_FIELD[$provider] ?? ''] ?? '');
+        return (string) ($this->cfg['claude_key'] ?? '');
     }
 
-    /** Is the active provider usable (key present, and agent id for weststar)? */
     public function ready(): bool
     {
-        $p = $this->provider();
-        if ($this->keyFor($p) === '') {
-            return false;
-        }
-        return $p !== 'weststar' || (string) ($this->cfg['agent_id'] ?? '') !== '';
+        return $this->adapter->ready();
+    }
+
+    /** Model id a use case runs on (for logging / persistence only — never parse it). */
+    public function modelFor(string $useCase): string
+    {
+        return $this->adapter->modelFor($useCase);
     }
 
     /**
-     * @param  array $messages  [['role' => 'user'|'assistant', 'content' => …], …]
-     * @param  string $context  Live dashboard facts for the direct providers.
-     * @return array{ok:bool, answer?:string, citations?:array, model?:string, used_tools?:bool, error?:string, upstream?:int}
+     * Strict-JSON completion (reports).
+     * @return array{ok:bool, data?:array, model?:string, usage:array{in:?int,out:?int}, error?:string, status?:int}
      */
-    public function chat(array $messages, string $context = ''): array
+    public function structured(string $useCase, string $system, string $prompt, array $schema): array
     {
-        return match ($this->provider()) {
-            'anthropic' => $this->anthropic($messages, $context),
-            'gemini'    => $this->gemini($messages, $context),
-            'openai'    => $this->openai($messages, $context),
-            default     => $this->weststar($messages),
-        };
+        return $this->adapter->structured($useCase, $system, $prompt, $schema);
     }
 
-    // ── providers ────────────────────────────────────────────
-
-    /** Weststar AI agent — retrieval over the ingested docs + its own http tool. */
-    private function weststar(array $messages): array
+    /**
+     * Assistant chat with the RBAC-scoped tool loop.
+     *
+     * @param array        $messages  [['role'=>'user'|'assistant','content'=>string], …]
+     * @param string       $context   Extra system context (e.g. who the user is).
+     * @param AiTools|null $tools     RBAC-scoped fetchers for this user; null = no data access.
+     * @return array{ok:bool, answer?:string, refs?:array, citations?:array, model?:string, used_tools?:bool, tools_called?:array, error?:string, upstream?:int}
+     */
+    public function chat(array $messages, string $context = '', ?object $tools = null): array
     {
-        $id  = (string) ($this->cfg['agent_id'] ?? '');
-        $url = rtrim((string) ($this->cfg['agent_base'] ?? ''), '/') . '/' . rawurlencode($id) . '/chat';
-        $r   = $this->post($url, ['messages' => $messages],
-            ['Authorization: Bearer ' . $this->keyFor('weststar'), 'Content-Type: application/json']);
-        $d = $r['json'];
-        if ($r['status'] === 200 && isset($d['answer'])) {
-            $cites = [];
-            foreach ((array) ($d['citations'] ?? []) as $c) {
-                $cites[] = ['n' => $c['n'] ?? null, 'title' => (string) ($c['title'] ?? ''),
-                            'source' => (string) ($c['source'] ?? ''), 'score' => $c['score'] ?? null];
+        $system = self::PERSONA . ($context !== '' ? "\n\n" . $context : '');
+        $thread = $this->adapter->thread(array_map(static fn ($m) => [
+            'role'    => ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user',
+            'content' => (string) ($m['content'] ?? ''),
+        ], $messages));
+        $defs   = $tools ? $tools->toolDefs() : [];
+        $called = [];
+        $refs   = [];
+        $model  = $this->adapter->modelFor('chat');
+
+        for ($round = 0; $round <= self::MAX_TOOL_ROUNDS; $round++) {
+            $turn = $this->adapter->turn('chat', $system, $thread, $defs && $round < self::MAX_TOOL_ROUNDS ? $defs : []);
+            if (!$turn['ok']) {
+                return ['ok' => false, 'error' => $turn['error'] ?? 'The assistant could not answer.', 'upstream' => $turn['status'] ?? 0];
             }
-            return ['ok' => true, 'answer' => (string) $d['answer'], 'citations' => $cites,
-                    'model' => (string) ($d['model'] ?? ''), 'used_tools' => !empty($d['tool_trace'])];
-        }
-        return $this->fail($r, 'Weststar AI');
-    }
-
-    private function anthropic(array $messages, string $context): array
-    {
-        $model = (string) ($this->cfg['anthropic_model'] ?? 'claude-opus-4-8');
-        $r = $this->post('https://api.anthropic.com/v1/messages', [
-            'model'      => $model,
-            'max_tokens' => 900,
-            'system'     => $this->system($context),
-            'messages'   => array_map(static fn ($m) => [
-                'role'    => $m['role'] === 'assistant' ? 'assistant' : 'user',
-                'content' => $m['content'],
-            ], $messages),
-        ], ['x-api-key: ' . $this->keyFor('anthropic'), 'anthropic-version: 2023-06-01', 'Content-Type: application/json']);
-
-        $text = '';
-        foreach ((array) ($r['json']['content'] ?? []) as $blk) {
-            if (($blk['type'] ?? '') === 'text') {
-                $text .= (string) $blk['text'];
-            }
-        }
-        return $text !== ''
-            ? ['ok' => true, 'answer' => trim($text), 'citations' => [], 'model' => $model, 'used_tools' => false]
-            : $this->fail($r, 'Anthropic');
-    }
-
-    private function gemini(array $messages, string $context): array
-    {
-        $body = [
-            'system_instruction' => ['parts' => [['text' => $this->system($context)]]],
-            'contents' => array_map(static fn ($m) => [
-                'role'  => $m['role'] === 'assistant' ? 'model' : 'user',
-                'parts' => [['text' => $m['content']]],
-            ], $messages),
-            'generationConfig' => ['maxOutputTokens' => 900, 'temperature' => 0.2],
-        ];
-        $call = function (string $model) use ($body): array {
-            return $this->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model)
-                . ':generateContent?key=' . rawurlencode($this->keyFor('gemini')),
-                $body, ['Content-Type: application/json']
-            );
-        };
-        $read = static function (array $r): string {
-            $t = '';
-            foreach ((array) ($r['json']['candidates'][0]['content']['parts'] ?? []) as $p) {
-                $t .= (string) ($p['text'] ?? '');
-            }
-            return trim($t);
-        };
-
-        $model = (string) ($this->cfg['gemini_model'] ?? '') ?: $this->geminiCached() ?: 'gemini-flash-latest';
-        $r     = $call($model);
-        $text  = $read($r);
-        // Google retires model ids without notice ("no longer available"). Ask
-        // the key which models it can actually use, then retry once and cache.
-        if ($text === '' && in_array($r['status'], [400, 404], true)) {
-            $fresh = $this->geminiDiscover();
-            if ($fresh !== '' && $fresh !== $model) {
-                $r2 = $call($fresh);
-                $t2 = $read($r2);
-                if ($t2 !== '') {
-                    $this->geminiCache($fresh);
-                    return ['ok' => true, 'answer' => $t2, 'citations' => [], 'model' => $fresh, 'used_tools' => false];
+            $model = $turn['model'] ?: $model;
+            if (!$turn['calls'] || !$tools) {
+                $text = trim((string) $turn['text']);
+                if ($text === '') {
+                    return ['ok' => false, 'error' => 'The assistant returned an empty answer.', 'upstream' => 200];
                 }
-                $r = $r2;
+                return ['ok' => true, 'answer' => $text, 'refs' => self::finalRefs($refs, $text), 'citations' => [], 'model' => $model,
+                        'used_tools' => (bool) $called, 'tools_called' => array_values(array_unique($called))];
+            }
+            $results = [];
+            foreach ($turn['calls'] as $c) {
+                $out      = $tools->call((string) $c['name'], (array) $c['args']);
+                $called[] = (string) $c['name'];
+                foreach ((array) ($out['refs'] ?? []) as $r) {
+                    $refs[] = $r;
+                }
+                // refs are for the UI (photos, urls) — the model already has the ids in the data.
+                unset($out['refs']);
+                $results[] = ['id' => (string) $c['id'], 'name' => (string) $c['name'],
+                              'content' => self::toolJson($out), 'is_error' => isset($out['error'])];
+            }
+            $thread = $this->adapter->appendToolResults($thread, $turn, $results);
+        }
+        return ['ok' => false, 'error' => 'The assistant needed too many lookups — try a narrower question.', 'upstream' => 200];
+    }
+
+    private static function toolJson(array $out): string
+    {
+        $json = json_encode($out, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}';
+        if (strlen($json) > self::TOOL_JSON_CAP) {
+            $json = mb_strcut($json, 0, self::TOOL_JSON_CAP) . '…(truncated)';
+        }
+        return $json;
+    }
+
+    /**
+     * Dedupe refs (type+id), then order: reports, people with photos, records
+     * the answer actually mentions, the rest. Capped.
+     */
+    public static function finalRefs(array $refs, string $answer = ''): array
+    {
+        $seen = [];
+        $out  = [];
+        foreach ($refs as $i => $r) {
+            if (!is_array($r) || empty($r['type']) || !isset($r['id']) || (string) $r['id'] === '') {
+                continue;
+            }
+            $k = $r['type'] . ':' . $r['id'];
+            if (isset($seen[$k])) {
+                // keep the richer one (e.g. find_person's photo card over a roster chip)
+                if (count($r) > count($out[$seen[$k]][1])) {
+                    $out[$seen[$k]][1] = $r;
+                }
+                continue;
+            }
+            $seen[$k] = count($out);
+            $out[]    = [$i, $r];
+        }
+        $lc   = mb_strtolower($answer);
+        $rank = static function (array $r) use ($lc): int {
+            if ($r['type'] === 'report') {
+                return 0;
+            }
+            if ($r['type'] === 'person' && (!empty($r['shots']) || !empty($r['photo'])) && !empty($r['match'])) {
+                return 1;
+            }
+            $id = mb_strtolower((string) $r['id']);
+            $lb = mb_strtolower((string) ($r['label'] ?? ''));
+            if ($lc !== '' && ((mb_strlen($id) >= 3 && str_contains($lc, $id)) || (mb_strlen($lb) >= 4 && str_contains($lc, $lb)))) {
+                return 2;
+            }
+            return 3;
+        };
+        usort($out, static fn ($a, $b) => ($rank($a[1]) <=> $rank($b[1])) ?: ($a[0] <=> $b[0]));
+        return array_slice(array_map(static fn ($x) => $x[1], $out), 0, self::MAX_REFS);
+    }
+}
+
+/**
+ * The provider seam. Neutral in, neutral out:
+ *   tools    [{name, description, parameters (JSON schema object)}]
+ *   messages [{role: user|assistant, content: string}]
+ *   turn     {ok, text, calls:[{id, name, args}], model, usage:{in, out}, error?, status?, native?}
+ * A "thread" is the adapter's own opaque transcript; callers only pass it back.
+ */
+interface LlmAdapter
+{
+    public function id(): string;
+
+    public function ready(): bool;
+
+    public function modelFor(string $useCase): string;
+
+    /** Provider-native transcript from neutral messages. */
+    public function thread(array $messages): array;
+
+    /** One model turn over the transcript, optionally offering tools. */
+    public function turn(string $useCase, string $system, array $thread, array $tools): array;
+
+    /** Transcript + this turn's tool requests + neutral results [{id, name, content:string, is_error:bool}]. */
+    public function appendToolResults(array $thread, array $turn, array $results): array;
+
+    /** Strict-JSON output: {ok, data?, model?, usage:{in, out}, error?, status?}. */
+    public function structured(string $useCase, string $system, string $prompt, array $schema): array;
+}
+
+/** Anthropic Messages API adapter — the ONLY place outside lib/Claude.php that knows Claude's wire format. */
+final class ClaudeAdapter implements LlmAdapter
+{
+    public function __construct(private Claude $claude)
+    {
+    }
+
+    public function id(): string
+    {
+        return 'claude';
+    }
+
+    public function ready(): bool
+    {
+        return $this->claude->ready();
+    }
+
+    public function modelFor(string $useCase): string
+    {
+        return Claude::modelFor($useCase);
+    }
+
+    public function thread(array $messages): array
+    {
+        return array_map(static fn ($m) => ['role' => $m['role'], 'content' => (string) $m['content']], $messages);
+    }
+
+    public function turn(string $useCase, string $system, array $thread, array $tools): array
+    {
+        $opts = $tools ? ['tools' => array_map(static fn ($t) => [
+            'name' => $t['name'], 'description' => $t['description'], 'input_schema' => $t['parameters'],
+        ], $tools)] : [];
+        $res = $this->claude->send($useCase, $this->claude->body($useCase, $system, $thread, $opts));
+        if (!$res['ok']) {
+            return ['ok' => false, 'text' => '', 'calls' => [], 'model' => (string) ($res['model'] ?? ''), 'usage' => self::usage($res),
+                    'error' => $res['error'] ?? 'The assistant could not answer.', 'status' => $res['status'] ?? 0];
+        }
+        $calls = [];
+        if (($res['stop_reason'] ?? '') === 'tool_use') {
+            foreach ((array) $res['content'] as $b) {
+                if (($b['type'] ?? '') === 'tool_use') {
+                    $calls[] = ['id' => (string) ($b['id'] ?? ''), 'name' => (string) ($b['name'] ?? ''),
+                                'args' => is_array($b['input'] ?? null) ? $b['input'] : []];
+                }
             }
         }
-        return $text !== ''
-            ? ['ok' => true, 'answer' => $text, 'citations' => [], 'model' => $model, 'used_tools' => false]
-            : $this->fail($r, 'Gemini');
+        return ['ok' => true, 'text' => Claude::textOf($res['json']), 'calls' => $calls, 'model' => (string) ($res['model'] ?? ''),
+                'usage' => self::usage($res), 'native' => (array) $res['content']];
     }
 
-    /** Newest usable Gemini chat model for this key; '' when discovery fails. */
-    private function geminiDiscover(): string
+    public function appendToolResults(array $thread, array $turn, array $results): array
     {
-        $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key='
-            . rawurlencode($this->keyFor('gemini')));
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8]);
-        $raw = curl_exec($ch);
-        curl_close($ch);
-        $names = [];
-        foreach ((json_decode((string) $raw, true) ?: [])['models'] ?? [] as $m) {
-            if (in_array('generateContent', $m['supportedGenerationMethods'] ?? [], true)) {
-                $names[] = str_replace('models/', '', (string) ($m['name'] ?? ''));
+        // Echo the assistant turn unchanged (incl. thinking blocks), then answer
+        // every tool_use in ONE user message. A tool_use with empty input decodes
+        // to PHP [] which re-encodes as a JSON array — the API requires an
+        // object, so cast empty inputs back to {}.
+        $echo = (array) ($turn['native'] ?? []);
+        foreach ($echo as $i => $blk) {
+            if (($blk['type'] ?? '') === 'tool_use' && is_array($blk['input'] ?? null) && $blk['input'] === []) {
+                $echo[$i]['input'] = new \stdClass();
             }
         }
-        // Prefer the rolling aliases — they survive the next deprecation.
-        foreach (['gemini-flash-latest', 'gemini-pro-latest'] as $alias) {
-            if (in_array($alias, $names, true)) {
-                return $alias;
-            }
+        $thread[] = ['role' => 'assistant', 'content' => $echo];
+        $thread[] = ['role' => 'user', 'content' => array_map(static fn ($r) => [
+            'type' => 'tool_result', 'tool_use_id' => (string) $r['id'], 'content' => (string) $r['content'],
+        ] + (!empty($r['is_error']) ? ['is_error' => true] : []), $results)];
+        return $thread;
+    }
+
+    public function structured(string $useCase, string $system, string $prompt, array $schema): array
+    {
+        $res = $this->claude->json($useCase, $system, [['role' => 'user', 'content' => $prompt]], $schema);
+        $out = ['ok' => (bool) $res['ok'], 'model' => (string) ($res['model'] ?? ''), 'usage' => self::usage($res)];
+        if (!$res['ok']) {
+            return $out + ['error' => (string) ($res['error'] ?? 'The AI service failed.'), 'status' => (int) ($res['status'] ?? 0)];
         }
-        $flash = array_values(array_filter($names, static fn ($n) => str_contains($n, 'flash')
-            && !str_contains($n, 'preview') && !str_contains($n, 'image')
-            && !str_contains($n, 'tts') && !str_contains($n, 'lite')));
-        rsort($flash, SORT_NATURAL);
-        return $flash[0] ?? ($names[0] ?? '');
+        return $out + ['data' => $res['data']];
     }
 
-    private function cacheFile(): string
+    private static function usage(array $res): array
     {
-        return rtrim((string) ($this->cfg['storage_dir'] ?? sys_get_temp_dir()), '/') . '/llm_models.json';
-    }
-
-    private function geminiCached(): string
-    {
-        $c = is_file($this->cacheFile())
-            ? (json_decode((string) file_get_contents($this->cacheFile()), true) ?: []) : [];
-        return (time() - (int) ($c['at'] ?? 0) < 86400) ? (string) ($c['gemini'] ?? '') : '';
-    }
-
-    private function geminiCache(string $model): void
-    {
-        @file_put_contents($this->cacheFile(), json_encode(['gemini' => $model, 'at' => time()]));
-    }
-
-    private function openai(array $messages, string $context): array
-    {
-        $model = (string) ($this->cfg['openai_model'] ?? 'gpt-4o-mini');
-        $msgs  = [['role' => 'system', 'content' => $this->system($context)]];
-        foreach ($messages as $m) {
-            $msgs[] = ['role' => $m['role'] === 'assistant' ? 'assistant' : 'user', 'content' => $m['content']];
-        }
-        $r = $this->post('https://api.openai.com/v1/chat/completions', [
-            'model' => $model, 'messages' => $msgs, 'max_tokens' => 900, 'temperature' => 0.2,
-        ], ['Authorization: Bearer ' . $this->keyFor('openai'), 'Content-Type: application/json']);
-
-        $text = (string) ($r['json']['choices'][0]['message']['content'] ?? '');
-        return $text !== ''
-            ? ['ok' => true, 'answer' => trim($text), 'citations' => [], 'model' => $model, 'used_tools' => false]
-            : $this->fail($r, 'OpenAI');
-    }
-
-    // ── internals ────────────────────────────────────────────
-
-    private function system(string $context): string
-    {
-        return $context === ''
-            ? self::PERSONA
-            : self::PERSONA . "\n\nLIVE DASHBOARD CONTEXT (generated just now — trust these numbers):\n" . $context;
-    }
-
-    private function post(string $url, array $body, array $headers): array
-    {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT        => 150,
-            CURLOPT_HTTPHEADER     => $headers,
-            CURLOPT_POSTFIELDS     => json_encode($body, JSON_UNESCAPED_SLASHES),
-        ]);
-        $raw    = curl_exec($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err    = curl_error($ch);
-        curl_close($ch);
-        return ['status' => $status, 'err' => $err, 'raw' => $raw,
-                'json' => is_string($raw) ? (json_decode($raw, true) ?: []) : []];
-    }
-
-    /** Turn an upstream failure into something an operator can act on. */
-    private function fail(array $r, string $who): array
-    {
-        $msg = (string) ($r['json']['error']['message'] ?? $r['json']['error'] ?? $r['json']['detail'] ?? '');
-        if ($r['err'] !== '') {
-            $why = $who . ' did not respond in time — try again in a moment.';
-        } elseif ($r['status'] === 401 || $r['status'] === 403) {
-            $why = 'The ' . $who . ' API key was rejected (HTTP ' . $r['status'] . '). Check it in Settings → AI Source.';
-        } elseif ($r['status'] === 429) {
-            $why = $who . ' is rate-limiting this key — try again shortly.';
-        } elseif ($r['status'] >= 500) {
-            $why = $who . ' is temporarily unreachable (HTTP ' . $r['status'] . '). Try again shortly.';
-        } else {
-            $why = $who . ' returned an unexpected response (HTTP ' . $r['status'] . ')'
-                 . ($msg !== '' ? ': ' . mb_substr($msg, 0, 160) : '.');
-        }
-        return ['ok' => false, 'error' => $why, 'upstream' => $r['status']];
+        $u = (array) ($res['usage'] ?? []);
+        return ['in' => isset($u['input_tokens']) ? (int) $u['input_tokens'] : null,
+                'out' => isset($u['output_tokens']) ? (int) $u['output_tokens'] : null];
     }
 }

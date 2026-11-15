@@ -143,23 +143,6 @@ class Component extends DCLogic {
     this.camPool = this.buildCamPool();  // placeholder tiles until live cams arrive
   }
 
-  // ── Detection simulator (Settings) — POST /api/simulate, signed in + settings permission ──
-  simPost(action){
-    if(this.state.simBusy) return;
-    if(action==='reset' && !window.confirm('Remove every simulated detection (DEMO… cameras), the demo employees and the demo zones?')) return;
-    this.setState({simBusy:true, simMsg:action==='reset'?'Removing demo data…':'Generating a week of detections through the ingest pipeline… this takes a few seconds'});
-    fetch(`${this.API}/simulate`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify({action, days:7})})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Simulation failed');
-        const c=d.counts||{};
-        this.setState({simBusy:false, ov:null, simMsg: action==='reset'
-          ? ('Removed '+(c.events||0)+' simulated events and '+(c.employees||0)+' demo employees ✓')
-          : ('Generated '+(c.events||0)+' detections over '+(d.days||7)+' days — '+(c.face||0)+' face, '+(c.ppe||0)+' PPE, '+(c.restricted||0)+' restricted-zone, '+(c.forklift||0)+' forklift ✓ Open the Overview.')});
-        this.fetchFeed(); this.loadPeople(); this.loadApp(); if(this.state.reg.data) this.loadRegister(); })
-      .catch(e=>this.setState({simBusy:false, simMsg:'✗ '+((e&&e.message)||'Simulation failed')}));
-  }
-
   // ── Live video bridge (go2rtc) — /api/live/* (Settings → Live Video, camera detail) ──
   // Full status payload → st.lb. net=false asks for the cached summary only and is
   // skipped when any status was fetched in the last 30 s.
@@ -172,86 +155,10 @@ class Component extends DCLogic {
       .then(d=>{ const lb=(d&&d.ok)?d:{ok:false, error:(d&&(d.error||d.msg))||'Status unavailable'}; this.setState({lb}); return lb; })
       .catch(e=>{ const lb={ok:false, error:(e&&e.message)||'Network error'}; this.setState({lb}); return lb; });
   }
-  testLive(){
-    if(this.state.lbBusy) return;
-    this.setState({lbBusy:true, lbMsg:'Contacting the bridge…'});
-    this.loadLive(true, true).then(lb=>{ const b=(lb&&lb.bridge)||{};
-      let msg;
-      if(lb && lb.ok && !lb.configured) msg='✗ Not configured — set the public base URL and save first';
-      else if(lb && lb.ok && b.reachable) msg='✓ Bridge reachable · go2rtc '+(b.version||'?')+(b.ms!=null&&b.ms!==''?(' · '+b.ms+' ms'):'');
-      else msg='✗ Unreachable: '+((lb&&(lb.ok?b.error:lb.error))||'no response');
-      this.setState({lbBusy:false, lbMsg:msg}); });
-  }
-  syncLive(){
-    if(this.state.lbBusy) return;
-    this.setState({lbBusy:true, lbMsg:'Registering RTSP sources on the bridge…'});
-    fetch(`${this.API}/live/sync?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:'{}'})
-      .then(r=>r.json())
-      .then(d=>{ if(!d || (!d.ok && !d.status)) throw new Error((d&&(d.error||d.msg))||'Sync failed');
-        const n=(k)=>Number(d[k])||0, errs=Array.isArray(d.errors)?d.errors:[];
-        let msg=(d.ok?'✓ ':'✗ ')+n('registered')+' registered · '+n('updated')+' updated · '+n('unchanged')+' unchanged'+(n('failed')?(' · '+n('failed')+' failed'):'');
-        if(errs.length) msg+=' — '+errs.slice(0,3).map(e=>((e&&e.name)||'?')+': '+((e&&e.error)||'error')).join('; ');
-        if(d.status){ this._lbAt=Date.now(); this.setState({lbBusy:false, lbMsg:msg, lb:d.status}); }
-        else { this.setState({lbBusy:false, lbMsg:msg}); this.loadLive(true, true); }
-        this.fetchFeed(); })
-      .catch(e=>this.setState({lbBusy:false, lbMsg:'✗ '+((e&&e.message)||'Sync failed')}));
-  }
   // Browser URL for an /api/... path returned by the server (snapshot), with the read token.
   liveApiUrl(path){
     const rel=String(path||'').replace(/^\/api(?=\/)/, '');
     return this.API+rel+(rel.indexOf('?')>=0?'&':'?')+'token='+encodeURIComponent(this.TOK);
-  }
-  probeLive(stream){
-    if(!stream) return; const cur=(this.state.lbProbe||{})[stream];
-    if(cur && cur.busy) return;
-    const put=(v)=>this.setState(s=>({lbProbe:{...s.lbProbe, [stream]:v}}));
-    put({busy:true});
-    fetch(`${this.API}/live/probe?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stream})})
-      .then(r=>r.json())
-      .then(d=>{ if(!d || !d.ok) throw new Error((d&&(d.error||d.msg))||'Probe failed');
-        put({busy:false, ready:!!d.ready, ms:d.ms, error:d.error||'', snapshot:(d.ready&&d.snapshot)?this.liveApiUrl(d.snapshot):''}); })
-      .catch(e=>put({busy:false, ready:false, error:(e&&e.message)||'Network error', snapshot:''}));
-  }
-  // Probe state → {busy, text, col, snap} for a table row / the camera page.
-  probeView(p){
-    if(!p) return {busy:false, text:'', col:'var(--text3)', snap:''};
-    if(p.busy) return {busy:true, text:'', col:'var(--text3)', snap:''};
-    if(p.ready) return {busy:false, text:'✓ frame'+((p.ms!=null&&p.ms!=='')?(' '+(Number(p.ms)/1000).toFixed(1)+' s'):''), col:'var(--ok)', snap:p.snapshot||''};
-    return {busy:false, text:'✗ '+(p.error||'no frame'), col:'var(--crit)', snap:''};
-  }
-  saveLiveSource(stream, rtsp){
-    stream=String(stream||'').trim(); rtsp=String(rtsp||'').trim();
-    if(!stream || !rtsp){ this.setState({lbMsg:'✗ Stream label and RTSP URL are required.'}); return; }
-    if(/\s/.test(rtsp) || !/^(rtsps?|rtmps?|https?|onvif|ffmpeg|isapi|dvrip|tapo|kasa|webrtc):/i.test(rtsp)){
-      this.setState({lbMsg:'✗ Not a supported source URL (rtsp://user:pass@host:554/…).'}); return; }
-    this.liveSourcePost({stream, rtsp}, 'Source saved', true);
-  }
-  removeLiveSource(stream){
-    if(!stream || !window.confirm('Remove the manual RTSP source "'+stream+'"? It is also removed from the bridge.')) return;
-    this.liveSourcePost({stream, remove:true}, 'Source removed', false);
-  }
-  liveSourcePost(body, okMsg, clear){
-    if(this.state.lbBusy) return;
-    this.setState({lbBusy:true, lbMsg: body.remove?'Removing source…':'Saving source and registering it on the bridge…'});
-    fetch(`${this.API}/live/source?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)})
-      .then(r=>r.json())
-      .then(d=>{ if(!d || !d.ok) throw new Error((d&&(d.error||d.msg))||'Save failed');
-        const b=d.bridge;
-        const note = b ? (b.ok ? (body.remove?' · removed from the bridge':(b.direct?' · plays directly in the browser (HLS)':' · registered on the bridge')) : (' · bridge: '+(b.error||'failed'))) : ' · saved (bridge not configured)';
-        this.setState({lbBusy:false, lbMsg:'✓ '+okMsg+' ('+(d.stream||body.stream)+')'+note, ...(clear?{lbNewName:'', lbNewUrl:''}:{})});
-        this.loadLive(true, true); this.loadApp(); })
-      .catch(e=>this.setState({lbBusy:false, lbMsg:'✗ '+((e&&e.message)||'Network error')}));
-  }
-  // Settings → Live Video "Save": the browser base/token plus the server→bridge connection.
-  saveLive(){
-    const ad=this.state.appDraft||{}, ap=this.state.appCfg||{};
-    const v=(k)=>String(ad[k]!=null?ad[k]:(ap[k]!=null?ap[k]:'')).trim();
-    const secret=(k)=>(ad[k] && !String(ad[k]).includes('•')) ? String(ad[k]) : '';
-    const auto = ad.live_auto_sync!=null ? !!ad.live_auto_sync : (ap.live_auto_sync!=null ? !!ap.live_auto_sync : true);
-    const p=this.saveApp({live_stream_base:v('live_stream_base'), live_stream_token:secret('live_stream_token'),
-      live_bridge_api:v('live_bridge_api'), live_api_user:v('live_api_user'), live_api_pass:secret('live_api_pass'),
-      live_auto_sync:auto}, 'Live video config saved ✓');
-    if(p && p.then) p.then(()=>{ this.loadLive(true, true); this.fetchFeed(); });
   }
   // Camera create / update response → note about the bridge registration.
   bridgeNote(d){ const b=d&&d.bridge; return b ? (b.ok?' · live bridge updated':(' · bridge: '+(b.error||'failed'))) : ''; }
@@ -673,14 +580,21 @@ class Component extends DCLogic {
     ];
   }
 
+  // KJModal bridge (assets/js/kj-modal.js): typed detail modals read this
+  // instance's live state; kjOpen() is what render values call.
+  kjOpen(type, id, data){ if(window.KJModal && id!=null && id!=='') window.KJModal.open(type, id, data||null); }
   componentDidMount(){
+    window.KJApp = this;
+    try{ this.asBindRich(); }catch(e){ console.error('[assistant] bind', e); }
+    // Top-bar date box opens the dashboard's historical date/time picker.
+    this._tbDate = (e)=>{ const d = e.target.closest && e.target.closest('.tb-date'); if(d && window.KJDash && window.KJDash.openTimeTravel){ e.preventDefault(); window.KJDash.openTimeTravel(); } };
+    document.addEventListener('click', this._tbDate);
     this.clockT = setInterval(()=>{ this.tickStills(); this.setState({now:Date.now()}); this.mountVideos(); }, 1000);
     if(this.state.demo){ this.applyDemo(); } else { this.fetchFeed(); }
-    this._tick = 0;
+    // 5 s feed poll. Each payload is forwarded to the active page module's onFeed
+    // (KJPages.dispatchFeed in fetchFeed); the 30 s overview refresh lives in pages/dashboard.js.
     this.pollT = setInterval(()=>{
       if(!this.state.paused && !this.state.demo) this.fetchFeed();
-      this._tick++;
-      if(this._tick%6===0 && this.state.page==='overview' && !this.state.paused) this.loadOverview();   // every 30 s
     }, 5000);
     // ⌘K / Ctrl-K focuses search; Esc closes modal/lightbox.
     this._keys = (e)=>{
@@ -688,18 +602,12 @@ class Component extends DCLogic {
       if(e.key==='Escape'){ if(this.state.lightbox) this.closeLightbox(); else if(this.state.modal) this.closeModal(); else if(this.state.search) this.setSearch(''); }
     };
     document.addEventListener('keydown', this._keys);
-    // ── Hash routing: restore page on load + refresh; sync Back/Forward ──
-    const initial=this.pageFromHash();
-    if(initial==='camera'){ const cs=this.camSelFromHash(); if(cs){ this.setState({camSel:cs}); this.applyPage('camera'); } }
-    else if(initial && initial!==this.state.page){ this.applyPage(initial); }
-    if((initial||this.state.page)==='overview') this.loadOverview();   // default page has no applyPage call
-    try{ history.replaceState({page:initial||this.state.page}, '', location.hash||('#'+(initial||this.state.page))); }catch(e){}
-    this._pop=()=>{ const p=this.pageFromHash()||'overview';
-      if(p==='camera'){ const cs=this.camSelFromHash(); this.setState({camSel:cs}); this.applyPage('camera'); }
-      else if(p!==this.state.page){ this.applyPage(p); } };
-    window.addEventListener('popstate', this._pop);
+    // ── Hash routing (assets/js/kj-pages.js + kj-router.js): resolves the initial
+    // hash (legacy #fire etc. redirect to #detections/fire), renders the sidebar
+    // from the canonical nav config, and owns Back/Forward (popstate + hashchange).
+    if(window.KJPages) window.KJPages.boot(this);
   }
-  componentWillUnmount(){ clearInterval(this.clockT); clearInterval(this.pollT); if(this._keys) document.removeEventListener('keydown', this._keys); if(this._pop) window.removeEventListener('popstate', this._pop); }
+  componentWillUnmount(){ if(window.KJApp===this) window.KJApp=null; clearInterval(this.clockT); clearInterval(this.pollT); if(this._keys) document.removeEventListener('keydown', this._keys); if(this._tbDate) document.removeEventListener('click', this._tbDate); if(window.KJPages) window.KJPages.stop(); }
 
   // Pull live SenseTime detections from the same-origin feed and map them into
   // the incident + camera-tile shapes the UI already renders.
@@ -721,9 +629,15 @@ class Component extends DCLogic {
         // Live mode owns the pool outright — an empty list means "no camera has
         // reported a detection", not "keep the seeded demo cameras".
         if(Array.isArray(d.cams)) this.camPool = d.cams;
-        // Re-apply local triage actions on top of freshly fetched incidents.
-        const events = (Array.isArray(d.events)?d.events:[]).map(e =>
-          this._over[e.id] ? {...e, ...this._over[e.id]} : e);
+        // Re-apply local triage actions on top of freshly fetched incidents —
+        // only while the server is still behind. Once the server status has
+        // caught up (or moved past it, e.g. resolved via the Closing tab), the
+        // override is dropped so a stale local 'ack' never masks 'resolved'.
+        const _rk={open:0,ack:1,resolved:2};
+        const events = (Array.isArray(d.events)?d.events:[]).map(e => {
+          const o=this._over[e.id]; if(!o) return e;
+          if(!o.status || (_rk[e.status]||0) >= (_rk[o.status]||0)){ delete this._over[e.id]; return e; }
+          return {...e, ...o}; });
         this.setState({
           events, live: d.meta || {},
           trend: Array.isArray(d.trend)?d.trend:[],
@@ -748,6 +662,8 @@ class Component extends DCLogic {
         // Redraw a module dashboard (fire/ppe/intr) when its report changes.
         const rj = JSON.stringify(d.report || null);
         if((p==='fire'||p==='ppe'||p==='intr') && rj !== this._reportJson){ this._reportJson = rj; this.scheduleCharts(); }
+        // Forward the payload to the active page module (onFeed) + shell badges.
+        if(window.KJPages) window.KJPages.dispatchFeed(d, this);
       })
       .catch(()=>{});
   }
@@ -780,84 +696,28 @@ class Component extends DCLogic {
   setFilter(f){ this.setState({filter:f}); }
   setGrid(n){ this.setState({gridCols:n}); }
   // Switch page + run its side effects (no history push — used by nav & Back/Forward).
+  // Called by the router (KJPages) for routes whose sub has a `legacy` page; the
+  // page's data loaders live in that hub module's enter(app, page) (assets/js/pages/*.js).
   applyPage(p){ if(p==='aiperf') p='overview';   // AI Performance is hidden
     this.setState({page:p}); this.openNavSecFor(p);
-    if(p==='camdash') this.loadApp();                // camera-point / plant mappings for the camera dashboard
-    if(this.state.demo && (p==='fire'||p==='ppe'||p==='intr')){ this.setState({report:this.demoReport(p)}); }
-    else if(p==='fire'||p==='ppe'||p==='intr'){ this._reportJson=null; this.fetchFeed(); }  // pull that module's report now
-    if(p==='face'||p==='fire'||p==='ppe'||p==='intr') this.scheduleCharts();
-    if(p==='face') this.loadPeople();
-    if(p==='attendance'){ this.loadAttendance(); this.loadPeople(); this.loadRegister(); }
-    if(p==='overview') this.loadOverview();
-    if(p==='employees'){ this.loadPeople(); if(!this.state.reg.data) this.loadRegister(); }
-    if(p==='faces') this.loadPeople();                // unknown / registered people roster
-    if(p==='forklift'){ this.loadFk(); this.loadApp(); }
-    if(p==='ppe'){ this.loadApp(); this.loadPpe(); }   // area rules + violation history
-    if(p==='intr'){ this.loadRa(); }                   // restricted zones + entry review
-    if(p==='movement'){ this.loadMv(); }
-    if(p==='cleaning'){ this.loadCl(); }               // cleaning schedules + PPE during cleaning
-    if(p==='behaviour'){ this.loadBeh(); }             // Workstream C: Line 5 behaviour analytics
-    if(p==='analytics'){ this.loadHm(); }              // Workstream C: incident heatmap
-    if(p==='rules'){ this.loadAlerts(); this.loadNotify(); }   // + condition rules / channels (Workstream A)
-    if(p==='settings'){ this.loadApp(); this.loadAlerts(); this.loadLive(true); this.loadNotify(); }
-    if(p==='camera') this.loadLive(true);               // live-bridge readiness on the camera page
-    if(p==='forecast') this.loadForecast();
-    if(p==='users'){ this.loadUsers(); this.loadRoles(); }
-    if(p==='aiperf') this.loadAip();                 // Workstream D: AI performance metrics
-    if(p==='settings') this.wsdLoadSettings();       // Workstream D: integrations, retention, model thresholds
-    if(p==='poc') this.loadPoc(); }                  // Workstream D: POC scorecard
-  // Nav click → navigate + push a browser history entry (URL hash) so refresh + Back work.
-  setPage(p){ if(p===this.state.page) return; this.applyPage(p); try{ history.pushState({page:p}, '', '#'+p); }catch(e){} }
-  // ── Movement log (camera → camera) ──
-  loadMv(patch){
-    const st=this.state, today=new Date(), d=(x)=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
-    const f={from:st.mvFrom||d(new Date(today.getTime()-6*86400000)), to:st.mvTo||d(today), q:st.mvQ||'', unknown:!!st.mvUnknown, ...(patch||{})};
-    this.setState({mvFrom:f.from, mvTo:f.to, mvQ:f.q, mvUnknown:f.unknown, mvBusy:true});
-    const qs='from='+f.from+'&to='+f.to+(f.q?'&q='+encodeURIComponent(f.q):'')+(f.unknown?'&unknown=1':'');
-    const seq=(this._mvSeq=(this._mvSeq||0)+1);
-    fetch(`${this.API}/movement/log?${qs}&token=${this.TOK}`).then(r=>r.json())
-      .then(d=>{ if(seq!==this._mvSeq) return; this.setState({mv:(d&&d.ok)?d:null, mvBusy:false, mvErr:(d&&d.ok)?'':((d&&d.error)||'Could not load movements')}); })
-      .catch(()=>{ if(seq===this._mvSeq) this.setState({mvBusy:false, mvErr:'Could not load movements'}); });
-  }
-  pageFromHash(){ const P=['overview','camdash','live','attendance','employees','faces','forklift','incidents','cameras','analytics','forecast','fire','ppe','cleaning','behaviour','intr','face','rules','settings','users','camera','poc','movement'];
-    const raw=(location.hash||'').replace(/^#\/?/,''); const h=raw.split('/')[0]; return P.indexOf(h)>=0?h:null; }
-  camSelFromHash(){ const raw=(location.hash||'').replace(/^#\/?/,''); const s=raw.split('/'); return s[0]==='camera'?decodeURIComponent(s[1]||''):''; }
+    if(window.KJPages) window.KJPages.enterLegacy(this, p); }
+  // Legacy navigation by old page name (setPage('fire'), setPage('cameras') = Camera Fleet):
+  // the router maps it to the canonical hash (#detections/fire, #cameras/manage) and pushes history.
+  setPage(p){ if(p===this.state.page) return; if(window.KJPages) window.KJPages.goLegacy(p); else this.applyPage(p); }
+  // Legacy page name for the current hash (legacy or canonical), e.g. #detections/fire → 'fire'.
+  pageFromHash(){ const r=window.KJPages?window.KJPages.resolve(location.hash):null; return (r&&r.legacy)||null; }
+  // Hash minus the "&modal=type:id" deep-link suffix owned by KJModal.
+  hashRoute(){ return (location.hash||'').replace(/^#\/?/,'').replace(/(^|&)modal=[^&]*/,'').replace(/&+$/,''); }
+  camSelFromHash(){ const raw=this.hashRoute(); const s=raw.split('/');
+    if(s[0]==='camera') return decodeURIComponent(s[1]||'');
+    return (s[0]==='cameras'&&s[1]==='view')?decodeURIComponent(s[2]||''):''; }
   // Open a camera's detail page (live stream + VisionAI config + edit).
+  // Route #cameras/view/<stream>; pages/cameras.js (subs.view.prepare) seeds camSel + the edit draft.
   openCamera(stream){ if(!stream) return;
+    if(window.KJPages){ window.KJPages.go('cameras/view/'+encodeURIComponent(stream)); return; }
     const f=(this.state.fleet||[]).find(x=>x.stream===stream)||{};
     this.setState({page:'camera', camSel:stream, camMsg:'', lbMsg:'', camEdit:{name:f.name||'', rtsp:f.rtsp||'', tag:'', desc:''}});
-    try{ history.pushState({page:'camera'}, '', '#camera/'+encodeURIComponent(stream)); }catch(e){}
     this.loadLive(true); }
-  setCamEdit(patch){ this.setState(s=>({camEdit:{...s.camEdit, ...patch}})); }
-  saveCamera(){ const stream=this.state.camSel;
-    const f=(this.state.fleet||[]).find(x=>x.stream===stream);
-    if(!f || !f.did){ this.setState({camMsg:'✗ No VisionAI device id for this camera — cannot update.'}); return; }
-    const e=this.state.camEdit||{}; this.setState({camMsg:'Saving to VisionAI…'});
-    fetch(`${this.API}/cameras/${encodeURIComponent(f.did)}?token=${this.TOK}`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:e.name, rtsp:e.rtsp, tag:e.tag, desc:e.desc})})
-      .then(r=>r.json()).then(d=>{ this.setState({camMsg: d&&d.ok?('✓ Updated in VisionAI'+this.bridgeNote(d)):'✗ '+((d&&(d.msg||d.error))||'Update failed')});
-        if(d&&d.ok){ this.fetchFeed(); if(d.bridge) this.loadLive(true, true); } })
-      .catch(()=>this.setState({camMsg:'✗ Network error'})); }
-  setIncFilter(f){ this.setState({incFilter:f, incPage:0}); }
-  setIncSev(s){ this.setState({incSev:s, incPage:0}); }
-  selectInc(id){ this.setState({incSel:id}); }
-  setCamFilter(f){ this.setState({camFilter:f}); }
-  setRange(r){
-    this.setState({aRange:r});
-    const days={'7d':7,'30d':30}[r];
-    if(!days){ this.setState({aRangeD:null, aRangeBusy:false}); return; }
-    this.setState({aRangeBusy:true});
-    const seq=(this._arSeq=(this._arSeq||0)+1);
-    const one=(mod)=>fetch(`${this.API}/behaviour/heatmap?days=${days}&module=${mod}&token=${this.TOK}`, {cache:'no-store'})
-      .then(x=>x.json()).then(d=>{ const hours=Array(24).fill(0);
-        ((d&&d.cam)||[]).forEach(c=>(c.cells||[]).forEach((n,h)=>{ if(h<24) hours[h]+=Number(n)||0; }));
-        return {mod, total:Number(d&&d.total)||0, hours}; });
-    Promise.all(['fire','ppe','intr','face'].map(one))
-      .then(rs=>{ if(seq!==this._arSeq) return; const byMod={}, hourly=Array.from({length:24},()=>({fire:0,ppe:0,intr:0,face:0}));
-        rs.forEach(r=>{ byMod[r.mod]=r.total; r.hours.forEach((n,h)=>{ hourly[h][r.mod]=n; }); });
-        this.setState({aRangeD:{days, byMod, hourly}, aRangeBusy:false}); })
-      .catch(()=>{ if(seq===this._arSeq) this.setState({aRangeD:null, aRangeBusy:false}); });
-  }
   togglePaused(){ this.setState(s=>({paused:!s.paused})); }
   select(id){ this.setState({selectedId:id}); }
   // Triage actions persist locally (this._over) so they survive the 5s refetch.
@@ -901,13 +761,192 @@ class Component extends DCLogic {
       .then(r=>r.json())
       .then(d=>{
         if(!(d && d.ok && d.answer)) throw new Error((d && d.error) || 'No answer came back.');
-        this.setState(s=>({asMsgs:[...s.asMsgs, {role:'bot', text:d.answer, cites:d.citations||[]}], asBusy:false}));
+        this.setState(s=>({asMsgs:[...s.asMsgs, {role:'bot', text:d.answer, cites:d.citations||[], refs:Array.isArray(d.refs)?d.refs:[]}], asBusy:false}));
         setTimeout(()=>this.asScroll(), 30);
       })
       .catch(e=>{ this.setState({asBusy:false, asErr:(e&&e.message)||'Could not reach the assistant.'});
         setTimeout(()=>this.asScroll(), 30); });
   }
   asClear(){ this.setState({asMsgs:[], asErr:'', asDraft:''}); }
+
+  // ── Assistant rich answers ───────────────────────────────
+  // Bot answers are Markdown. The template binds the raw text into .as-txt;
+  // after every render asEnhance() inserts a sibling .as-md (CSS hides the raw
+  // .as-txt that follows it) holding the rendered answer + entity chips, photo
+  // cards and the report card from the response's `refs`. Safety: the model
+  // text is HTML-escaped FIRST; only tags this renderer emits are produced, and
+  // every URL / attribute value is escaped (and scheme-checked for href/src).
+  asEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  asSafeUrl(u){ u=String(u||'').trim(); return /^(https?:\/\/|\/(?!\/))/i.test(u) ? u : ''; }
+  asIco(n){ return (window.KJIcon && window.KJIcon.svg) ? window.KJIcon.svg(n) : ''; }
+  asMdRender(src, refs){
+    const esc=s=>this.asEsc(s);
+    const stash=[]; const put=h=>'\u0001'+(stash.push(h)-1)+'\u0001';
+    const text=String(src==null?'':src).replace(/\r\n?/g,'\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,'');
+    const ent=(type,id,label)=> type==='report'
+      ? put('<button type="button" class="as-ent as-ent-report" data-as-report="'+esc(id)+'">'+label+'</button>')
+      : put('<button type="button" class="as-ent as-ent-'+esc(type)+'" data-kj-modal="'+esc(type+':'+id)+'">'+label+'</button>');
+    // Names / camera labels the tools returned → links (longest first, ≥4 chars, never "Person #…").
+    const named=[];
+    (refs||[]).forEach(r=>{ if(!r||!r.id||(r.type!=='person'&&r.type!=='camera')) return;
+      [r.label, r.type==='camera'?r.id:null].forEach(l=>{ l=String(l||'').trim();
+        if(l.length>=4 && !/^(person|unknown)\s*#/i.test(l) && !named.some(x=>x[2]===l)) named.push([r.type, r.id, l]); }); });
+    named.sort((a,b)=>b[2].length-a[2].length);
+    const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const inline=(raw)=>{
+      let s=String(raw);
+      s=s.replace(/`([^`\n]+)`/g,(m,c)=>put('<code>'+esc(c)+'</code>'));
+      s=s.replace(/\[([^\]\n]{1,200})\]\(([^)\s]{1,500})\)/g,(m,t,u)=>{ const url=this.asSafeUrl(u)||(/^#[\w\/\-:.]*$/.test(u)?u:'');
+        return url ? put('<a href="'+esc(url)+'"'+(url[0]==='#'?'':' target="_blank" rel="noopener noreferrer"')+'>'+esc(t)+'</a>') : t; });
+      s=esc(s);
+      s=s.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g,'<strong>$1</strong>').replace(/__(?=\S)([\s\S]*?\S)__/g,'<strong>$1</strong>');
+      s=s.replace(/(^|[^*\w])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?![*\w])/g,'$1<em>$2</em>');
+      s=s.replace(/(^|[^\w])_(?=[^\s_])([^_\n]*?[^\s_])_(?![\w])/g,'$1<em>$2</em>');
+      s=s.replace(/~~(?=\S)([^~\n]*?\S)~~/g,'<del>$1</del>');
+      named.forEach(([type,id,label])=>{ const el=esc(label);
+        s=s.replace(new RegExp('(^|[^\\w&#;-])('+reEsc(el)+')(?![\\w])','g'),(m,pre,hit)=>pre+ent(type,id,hit)); });
+      s=s.replace(/\b(TKT|LV|RPT)-\d{6}-\d{3,6}\b/g,(m,k)=>ent(k==='TKT'?'ticket':(k==='LV'?'leave':'report'),m,m));
+      return s;
+    };
+    const lines=text.split('\n'), out=[]; let para=[], lists=[], i=0;
+    const flushPara=()=>{ if(para.length){ out.push('<p>'+para.map(inline).join('<br>')+'</p>'); para=[]; } };
+    const closeLists=(toIndent)=>{ while(lists.length && (toIndent==null || lists[lists.length-1].indent>toIndent)){ const l=lists.pop(); out.push('</li></'+l.tag+'>'); } };
+    const isTableSep=l=>/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l) && l.indexOf('-')>=0;
+    const cells=l=>{ let t=l.trim(); if(t[0]==='|') t=t.slice(1); if(t.slice(-1)==='|') t=t.slice(0,-1); return t.split('|').map(c=>c.trim()); };
+    while(i<lines.length){
+      const line=lines[i];
+      const fence=/^\s*```/.exec(line);
+      if(fence){ flushPara(); closeLists(); const code=[]; i++;
+        while(i<lines.length && !/^\s*```/.test(lines[i])){ code.push(lines[i]); i++; }
+        i++; out.push('<pre class="as-pre"><code>'+esc(code.join('\n'))+'</code></pre>'); continue; }
+      if(!line.trim()){ flushPara(); closeLists(); i++; continue; }
+      const h=/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+      if(h){ flushPara(); closeLists(); out.push('<div class="as-h as-h'+(h[1].length<=2?1:2)+'">'+inline(h[2])+'</div>'); i++; continue; }
+      if(/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)){ flushPara(); closeLists(); out.push('<hr class="as-hr">'); i++; continue; }
+      if(line.indexOf('|')>=0 && i+1<lines.length && isTableSep(lines[i+1])){
+        flushPara(); closeLists(); const head=cells(line); i+=2; const rows=[];
+        while(i<lines.length && lines[i].indexOf('|')>=0 && lines[i].trim()){ rows.push(cells(lines[i])); i++; }
+        out.push('<div class="as-table-wrap"><table class="as-table"><thead><tr>'+head.map(c=>'<th>'+inline(c)+'</th>').join('')+'</tr></thead><tbody>'+
+          rows.map(r=>'<tr>'+head.map((_,k)=>'<td>'+inline(r[k]||'')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>');
+        continue; }
+      const q=/^\s{0,3}>\s?(.*)$/.exec(line);
+      if(q){ flushPara(); closeLists(); const ql=[q[1]]; i++;
+        while(i<lines.length && /^\s{0,3}>\s?/.test(lines[i])){ ql.push(lines[i].replace(/^\s{0,3}>\s?/,'')); i++; }
+        out.push('<blockquote class="as-quote">'+ql.map(inline).join('<br>')+'</blockquote>'); continue; }
+      const li=/^(\s*)([-*+•]|\d{1,3}[.)])\s+(.*)$/.exec(line);
+      if(li){ flushPara(); const ind=li[1].replace(/\t/g,'  ').length, tag=/\d/.test(li[2])?'ol':'ul';
+        const top=lists[lists.length-1];
+        if(top && ind>top.indent){ out.push('<'+tag+' class="as-list">'); lists.push({tag, indent:ind}); }
+        else { closeLists(ind); const t2=lists[lists.length-1];
+          if(t2 && t2.indent===ind && t2.tag===tag) out.push('</li>');
+          else { if(t2 && t2.indent===ind) { lists.pop(); out.push('</li></'+t2.tag+'>'); }
+            const start=tag==='ol'?parseInt(li[2],10):1;
+            out.push('<'+tag+' class="as-list"'+(tag==='ol'&&start>1?' start="'+start+'"':'')+'>'); lists.push({tag, indent:ind}); } }
+        out.push('<li>'+inline(li[3])); i++; continue; }
+      if(lists.length && /^\s+\S/.test(line)){ out.push('<br>'+inline(line.trim())); i++; continue; }
+      closeLists(); para.push(line.trim()); i++;
+    }
+    flushPara(); closeLists();
+    return out.join('').replace(/\u0001(\d+)\u0001/g,(m,n)=>stash[+n]||'');
+  }
+  // refs → report card(s), person photo cards, entity chips.
+  asRefsHtml(refs){
+    const esc=s=>this.asEsc(s), list=(Array.isArray(refs)?refs:[]).filter(r=>r&&r.type&&r.id!=null&&String(r.id)!=='');
+    if(!list.length) return '';
+    const TYPES={ticket:['ticket','Ticket'], person:['user-round','Person'], event:['radar','Detection'], leave:['plane','Leave'], camera:['cctv','Camera'], report:['file-chart-column','Report']};
+    let h='';
+    list.filter(r=>r.type==='report').forEach(r=>{
+      const pdf=this.asSafeUrl(r.pdf_url||('/api/reports/'+encodeURIComponent(r.id)+'/pdf'));
+      h+='<div class="as-report"><span class="as-report-ico">'+this.asIco('file-chart-column')+'</span><div class="as-report-main">'+
+        '<div class="as-report-kicker">Report ready</div><div class="as-report-title">'+esc(r.label||r.report_no||'AI report')+'</div>'+
+        '<div class="as-report-sub">'+esc([r.report_no, r.sub].filter(Boolean).join(' · '))+'</div></div>'+
+        '<div class="as-report-btns"><button type="button" class="as-rbtn" data-as-report="'+esc(r.id)+'">'+this.asIco('external-link')+'Open</button>'+
+        '<button type="button" class="as-rbtn as-rbtn-primary" data-as-pdf="'+esc(pdf)+'" data-as-report-id="'+esc(r.id)+'" data-as-name="'+esc((r.report_no||('report-'+r.id))+'.pdf')+'">'+this.asIco('download')+'Download PDF</button></div></div>';
+    });
+    const cards=list.filter(r=>r.type==='person' && r.match && (r.photo||(r.shots&&r.shots.length)));
+    if(cards.length){
+      h+='<div class="as-people">'+cards.map(r=>{
+        const photo=this.asSafeUrl(r.photo), shots=(r.shots||[]).map(u=>this.asSafeUrl(u)).filter(Boolean).slice(0,3);
+        const ini=String(r.label||'?').split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+        const seed=JSON.stringify({name:r.label||'', photo:photo||'', staffId:r.staff_id||''});
+        return '<button type="button" class="as-pcard" data-kj-modal="'+esc('person:'+r.id)+'" data-kj-seed="'+esc(seed)+'" title="Open '+esc(r.label||'person')+'">'+
+          '<span class="as-pcard-photo">'+(photo?'<img class="as-img" src="'+esc(photo)+'" alt="'+esc(r.label||'')+'" loading="lazy">':'')+'<span class="as-pcard-ini">'+esc(ini)+'</span></span>'+
+          '<span class="as-pcard-info"><span class="as-pcard-name">'+esc(r.label||('Person #'+r.id))+'</span>'+
+          '<span class="as-pcard-sub">'+esc(r.sub||r.staff_id||('#'+r.id))+'</span>'+
+          (shots.length?'<span class="as-pcard-shots">'+shots.map(u=>'<img class="as-img" src="'+esc(u)+'" alt="Recent capture" loading="lazy">').join('')+'</span>'
+            :'<span class="as-pcard-none">No recent captures</span>')+'</span></button>';
+      }).join('')+'</div>';
+    }
+    const chips=list.filter(r=>r.type!=='report' && cards.indexOf(r)<0 && TYPES[r.type]);
+    if(chips.length){
+      h+='<div class="as-refs"><div class="as-refs-h">Open records</div><div class="as-refs-row">'+chips.map(r=>{
+        const t=TYPES[r.type];
+        return '<button type="button" class="as-ref as-ref-'+esc(r.type)+'" data-kj-modal="'+esc(r.type+':'+r.id)+'" title="'+esc(t[1]+(r.sub?' · '+r.sub:''))+'">'+
+          this.asIco(t[0])+'<span class="as-ref-l">'+esc(r.label||r.id)+'</span></button>';
+      }).join('')+'</div></div>';
+    }
+    return h;
+  }
+  asEnhance(){
+    const st=this.state; if(!st.asMsgs || !st.asMsgs.length) return;
+    const body=document.getElementById('as-body'); if(!body) return;
+    const els=body.getElementsByClassName('as-rich');
+    for(let k=0;k<els.length;k++){
+      const el=els[k], mm=/\bas-mi-(\d+)\b/.exec(el.className||''); if(!mm) continue;
+      const msg=st.asMsgs[+mm[1]]; if(!msg || msg.role==='user') continue;
+      const sig=String(msg.text||'')+'\u0002'+JSON.stringify(msg.refs||[]).length;
+      let box=null, raw=null;
+      for(const c of el.children){ if(c.classList.contains('as-md')) box=c; else if(c.classList.contains('as-txt')) raw=c; }
+      if(box && box._asSig===sig) continue;
+      if(!box){ box=document.createElement('div'); box.className='as-md'; el.insertBefore(box, raw||el.firstChild); }
+      box._asSig=sig;
+      box.innerHTML=this.asMdRender(msg.text, msg.refs)+this.asRefsHtml(msg.refs);
+    }
+  }
+  asBindRich(){
+    if(this._asRich) return; this._asRich=true;
+    if(!document.getElementById('kj-assistant-css')){
+      const l=document.createElement('link'); l.id='kj-assistant-css'; l.rel='stylesheet';
+      l.href='assets/css/kj-assistant.css?v='+encodeURIComponent((window.TMNS&&window.TMNS.build)||'1');
+      document.head.appendChild(l);
+    }
+    // Broken photo / thumb → show the initials / hide the slot (no inline onerror).
+    document.addEventListener('error', e=>{ const t=e.target; if(t && t.classList && t.classList.contains('as-img')) t.classList.add('as-img-broken'); }, true);
+    document.addEventListener('click', e=>{
+      const t=e.target; if(!(t instanceof Element)) return;
+      const rep=t.closest('[data-as-report]'); if(rep){ e.preventDefault(); this.asOpenReport(rep.getAttribute('data-as-report')); return; }
+      const pdf=t.closest('[data-as-pdf]'); if(pdf){ e.preventDefault(); this.asDownloadPdf(pdf); }
+    });
+  }
+  asToast(msg, tone){ if(window.KJModal && window.KJModal.toast) window.KJModal.toast(msg, tone||'info'); else this.setState({asErr:msg}); }
+  asOpenReport(id){
+    const has=()=>!!(window.KJModal && window.KJModal.types && window.KJModal.types().indexOf('report')>=0);
+    if(has()){ window.KJModal.open('report', String(id)); return; }
+    // The report modal registers with the analytics page — go there, then open it.
+    window.location.hash='#analytics/reports';
+    let n=0; const tick=()=>{ if(has()) window.KJModal.open('report', String(id)); else if(++n<20) setTimeout(tick, 150); };
+    setTimeout(tick, 150);
+  }
+  asDownloadPdf(btn){
+    if(btn.disabled) return;
+    const url=this.asSafeUrl(btn.getAttribute('data-as-pdf')), id=btn.getAttribute('data-as-report-id'), name=btn.getAttribute('data-as-name')||'report.pdf';
+    if(!url) return;
+    const label=btn.innerHTML; btn.disabled=true; btn.classList.add('is-busy'); btn.textContent='Preparing PDF…';
+    const done=()=>{ btn.disabled=false; btn.classList.remove('is-busy'); btn.innerHTML=label; };
+    fetch(url, {credentials:'same-origin'})
+      .then(r=>{
+        const ct=(r.headers && r.headers.get && r.headers.get('content-type'))||'';
+        if(r.ok && ct.indexOf('pdf')>=0) return r.blob().then(b=>{
+          const u=URL.createObjectURL(b), a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+          setTimeout(()=>{ URL.revokeObjectURL(u); a.remove(); }, 1500); done(); });
+        return r.json().catch(()=>({})).then(d=>{ done();
+          if(r.status===503 || (d && d.fallback==='print')){
+            this.asToast('PDF export is unavailable — opening the printable report instead.', 'warn'); this.asOpenReport(id); }
+          else this.asToast((d && d.error) || 'The PDF could not be downloaded.', 'danger'); });
+      })
+      .catch(()=>{ done(); this.asToast('Could not reach the server for the PDF.', 'danger'); });
+  }
+  componentDidUpdate(){ try{ this.asEnhance(); }catch(e){ console.error('[assistant] render', e); } }
 
   // Drag a photo onto the panel (or paste, or use the clip) → 1:N face search
   // in VisionAI. Native listeners bind once per node; dc-runtime keeps the
@@ -975,156 +1014,6 @@ class Component extends DCLogic {
     });
   }
 
-  // Unique tracked people (grouped by personId) for the People roster.
-  loadPeople(){
-    this.setState(st=>({people:{...st.people, loading:true}}));
-    fetch(`${this.API}/persons?token=${this.TOK}&days=7&limit=200`, {cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad');
-        this.setState({people:{rows:d.people||[], profiles:d.profiles||{}, loading:false, msg:''}}); })
-      .catch(()=>this.setState(st=>({people:{...st.people, loading:false, msg:'Could not load people'}})));
-  }
-
-  // Open the profile editor for a tracked person, pre-filled when one exists.
-  // Capture thumbnails are pulled so the operator can pick the profile picture.
-  openProfile(person){
-    const existing=(this.state.people.profiles||{})[person.personId]||null;
-    this.setState({modal:{type:'profile', data:null}, pf:{
-      personId:person.personId,
-      name: existing?existing.name:'',
-      staff: existing?(existing.staffId||''):'',
-      age: existing?(existing.age||''):'',
-      gender: existing?(existing.gender||''):'',
-      about: existing?(existing.about||existing.notes||''):'',
-      photo: (existing&&existing.photo)||person.image||'',
-      shots: person.image?[person.image]:[],
-      department: existing?(existing.department||''):'',
-      plant: existing?(existing.plant||''):'',
-      shift: existing?(existing.shift||''):'',
-      active: existing?existing.active!==false:true,
-      isEdit: !!existing, msg:'', saving:false,
-    }});
-    if(!this.state.reg.data) this.loadRegister();   // plant / department / shift options
-    fetch(`${this.API}/events?token=${this.TOK}&person_id=${encodeURIComponent(person.personId)}&limit=60`, {cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) return;
-        const shots=[...new Set((d.events||[]).map(e=>(e.images&&e.images.trigger)||null).filter(Boolean))];
-        this.setState(st=>(st.pf && st.pf.personId===person.personId)
-          ? {pf:{...st.pf, shots:shots.length?shots:st.pf.shots, photo:st.pf.photo||shots[0]||''}} : {});
-      }).catch(()=>{});
-  }
-  pfSet(k,v){ this.setState(st=>({pf:{...st.pf, [k]:v, msg:''}})); }
-  // Attach (or phone-camera capture) a profile picture. VisionAI capture URLs
-  // expire, so an operator-supplied photo is uploaded to /uploads/profiles and
-  // the stored URL points at our own host.
-  pfBrowse(){
-    const inp=document.getElementById('pf-file'); if(!inp) return;
-    if(!inp._tmns){ inp._tmns=1;
-      inp.addEventListener('change', ()=>{ const f=inp.files&&inp.files[0]; if(f) this.pfUploadPhoto(f); });
-    }
-    inp.click();
-  }
-  pfUploadPhoto(file){
-    const f=this.state.pf; if(!f||!file) return;
-    if(!/^image\//.test(file.type||'')){ this.setState(st=>({pf:{...st.pf, msg:'Pick an image file (JPG/PNG/WEBP)'}})); return; }
-    if(file.size>6*1024*1024){ this.setState(st=>({pf:{...st.pf, msg:'Image is larger than 6 MB'}})); return; }
-    this.setState(st=>({pf:{...st.pf, uploading:true, msg:'Uploading photo…'}}));
-    const fd=new FormData(); fd.append('file', file); fd.append('person_id', f.personId||'new');
-    fetch(`${this.API}/persons/photo?token=${this.TOK}`, {method:'POST', body:fd})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok&&d.url)) throw new Error((d&&(d.error||d.msg))||'upload failed');
-        this.setState(st=>{ if(!st.pf) return {};
-          const shots=[d.url, ...(st.pf.shots||[]).filter(u=>u!==d.url)];
-          return {pf:{...st.pf, photo:d.url, shots, uploading:false, msg:'Photo attached ✓ — save to apply'}}; });
-        const inp=document.getElementById('pf-file'); if(inp) inp.value=''; })
-      .catch(e=>this.setState(st=>({pf:{...st.pf, uploading:false, msg:'Upload failed — '+(e&&e.message||'error')}})));
-  }
-  pfSave(){
-    const f=this.state.pf; if(!f) return;
-    const name=String(f.name||'').trim();
-    if(!name){ this.setState(st=>({pf:{...st.pf, msg:'Full name is required'}})); return; }
-    if(f.isNew && !String(f.staff||'').trim()){ this.setState(st=>({pf:{...st.pf, msg:'Staff / employee ID is required'}})); return; }
-    this.setState(st=>({pf:{...st.pf, saving:true, msg:'Saving…'}}));
-    fetch(`${this.API}/persons?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({person_id:f.personId, new_employee:!!f.isNew, name, staff_id:f.staff||'', age:f.age, gender:f.gender, about:f.about,
-        department:f.department||'', plant:f.plant||'', shift:f.shift||'', active:f.active!==false,
-        photo_url:f.photo||'', actor:this.UNAME})})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&(d.error||d.msg))||'Save failed');
-        this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}, modal:null, pf:null}));
-        this.loadPeople(); this.fetchFeed();
-        if(this.state.page==='attendance'||this.state.page==='employees') this.loadRegister();
-        // Push the employee to SenseStudio person group 88 when there is a staff
-        // ID and a photo (or when deactivating an already-pushed person).
-        const prof=(d.profiles||{})[d.person_id]||{};
-        if(this.PERMS.settings && (prof.ssUid || (prof.staffId && prof.photo))) this.syncEmployee(d.person_id); })
-      .catch(e=>this.setState(st=>({pf:{...st.pf, saving:false, msg:(e&&e.message&&e.message!=='bad')?e.message:'Save failed'}})));
-  }
-
-  // Enrol (or rename) a tracked person. The latest capture becomes the profile
-  // photo, so every later detection of this personId renders with it.
-  saveProfile(person){
-    const existing=(this.state.people.profiles||{})[person.personId];
-    const name=window.prompt(
-      existing ? ('Rename person #'+person.personId) : ('Create a profile for person #'+person.personId+'\n\nThis name and photo will be shown on every future detection of this person.'),
-      existing ? existing.name : '');
-    if(name===null) return;                       // cancelled
-    const clean=String(name).trim();
-    if(!clean){ this.setState(st=>({people:{...st.people, msg:'Name cannot be empty'}})); return; }
-    const notes=window.prompt('Optional note (role, department, watchlist reason…)', existing?existing.notes:'')||'';
-    this.setState(st=>({people:{...st.people, msg:'Saving…'}}));
-    fetch(`${this.API}/persons?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({person_id:person.personId, name:clean, notes, photo_url:person.image||'', actor:this.UNAME})})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad');
-        this.setState(st=>({people:{...st.people, profiles:d.profiles||st.people.profiles, msg:'Profile saved ✓'}}));
-        this.loadPeople(); this.fetchFeed();
-        if(this._pfT) clearTimeout(this._pfT);
-        this._pfT=setTimeout(()=>this.setState(st=>({people:{...st.people, msg:''}})), 2500); })
-      .catch(()=>this.setState(st=>({people:{...st.people, msg:'Save failed'}})));
-  }
-
-  removeProfile(person){
-    const who=person.name||('#'+person.personId);
-    const inSs=!!person.ssUid;
-    if(!window.confirm('Delete employee '+who+(person.staffId?(' ('+person.staffId+')'):'')+'?\n\n'
-      +(inSs?'They will also be deactivated in SenseStudio, so the cameras stop recognising them.\n':'')
-      +'Past detections stay; they just show as an unidentified person.')) return;
-    this.setState({empMsg:'Deleting '+who+'…'});
-    fetch(`${this.API}/persons/delete?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({person_id:person.personId})})
-      .then(r=>r.json())
-      .then(d=>{
-        if(!(d&&d.ok)) throw new Error((d&&d.error)||'Delete failed');
-        const ss=d.sensestudio||{};
-        this.setState({empMsg:'Deleted '+who+' ✓'+(ss.uid?(ss.deactivated?' · removed from SenseStudio':' · ⚠ SenseStudio: '+(ss.error||'not removed')):'')});
-        this.loadPeople(); this.fetchFeed(); if(this.state.page==='employees'||this.state.page==='attendance') this.loadRegister(); })
-      .catch(e=>this.setState({empMsg:'✗ '+((e&&e.message)||'Delete failed')}));
-  }
-
-  // Every stored capture of one tracked person (VisionAI personId — set even
-  // for strangers). The dashboard feed only holds the recent window, so the
-  // face gallery reads the full record straight from the events API.
-  loadPersonCaptures(personId){
-    if(!personId) return;
-    if(this.state.evPerson && this.state.evPerson.id===personId) return;   // already loaded/loading
-    this.setState({evPerson:{id:personId, loading:true, rows:[]}});
-    fetch(`${this.API}/events?token=${this.TOK}&person_id=${encodeURIComponent(personId)}&limit=300`, {cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{
-        if(!(d&&d.ok)) throw new Error('bad response');
-        if(!this.state.evPerson || this.state.evPerson.id!==personId) return;  // modal moved on
-        const rows=(Array.isArray(d.events)?d.events:[]).map(e=>({
-          id:e.uuid||String(e.id), trig:(e.images&&e.images.trigger)||null, bk:(e.images&&e.images.background)||null,
-          camera:String(e.stream||e.device_serial||'').toUpperCase(),
-          sim:e.similarity||'', match:e.match_image_url||(e.images&&e.images.match)||null,
-          time:e.trigger_time||e.received_at||'', ts:Date.parse((e.trigger_time||e.received_at||'').replace(' ','T'))||0,
-        })).filter(r=>r.trig||r.bk);
-        this.setState({evPerson:{id:personId, loading:false, rows}});
-      })
-      .catch(()=>{ if(this.state.evPerson && this.state.evPerson.id===personId)
-        this.setState({evPerson:{id:personId, loading:false, rows:[], failed:true}}); });
-  }
   // Open the live player in a new top-level tab — works through Cloudflare Access
   // (the embedded iframe can't, being cross-site third-party).
   openLiveTab(url){ if(url) window.open(url, '_blank', 'noopener,noreferrer'); }
@@ -1212,22 +1101,7 @@ class Component extends DCLogic {
   // ── Notifications (bell) — driven by live detections ─────
   toggleNotif(){ this.setState(s=>({notifOpen:!s.notifOpen})); }
   markAllRead(){ const seen={...this.state.notifSeen}; this.state.events.forEach(e=>{seen[e.id]=1;}); this.setState({notifSeen:seen}); }
-  openFromNotif(e){ this.setState(s=>({notifOpen:false, page:'incidents', incSel:e.id, notifSeen:{...s.notifSeen, [e.id]:1}})); }
-
-  // ── Find people in records (attribute search on the feed) ─
-  setFind(k,v){ this.setState(s=>({find:{...s.find, [k]:v}})); }
-  runFind(){
-    const f=this.state.find;
-    const base=(window.TMNS && window.TMNS.feed) || '/feed.php';
-    const sep=base.includes('?')?'&':'?';
-    const qs=['find=1','hours='+(f.hours||24),'limit=24'];
-    [['gender',f.gender],['age',f.age],['tops_color',f.tops_color],['mask',f.mask],['vest',f.vest]]
-      .forEach(([k,v])=>{ if(v) qs.push(k+'='+encodeURIComponent(v)); });
-    this.setState(s=>({find:{...s.find, busy:true}}));
-    fetch(base+sep+qs.join('&'), {cache:'no-store'}).then(r=>r.json())
-      .then(d=>this.setState(s=>({find:{...s.find, busy:false, ran:true, results:(d&&d.ok&&Array.isArray(d.results))?d.results:[]}})))
-      .catch(()=>this.setState(s=>({find:{...s.find, busy:false, ran:true, results:[]}})));
-  }
+  openFromNotif(e){ this.setState(s=>({notifOpen:false, incSel:e.id, notifSeen:{...s.notifSeen, [e.id]:1}})); this.setPage('incidents'); }
 
   // ── Report charts (Highcharts) ───────────────────────────
   scheduleCharts(){ if(this._hcT) clearTimeout(this._hcT); this._hcT=setTimeout(()=>this.drawCharts(), 90); }
@@ -1245,925 +1119,15 @@ class Component extends DCLogic {
       tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}},
     }};
   }
-  // Fire / PPE / Intrusion dashboards — same chart language as Face & Body.
-  drawModCharts(){
-    const p=this.state.page, r=this.state.report;
-    if(!(p==='fire'||p==='ppe'||p==='intr') || !window.Highcharts || !r) return;
-    const {dark, muted, base}=this.hcBase();
-    const text2=(getComputedStyle(document.querySelector('[data-theme]')||document.documentElement).getPropertyValue('--text2')||'').trim()||'#9AA1BD';
-    const MOD = {fire:dark?'#FF8A3D':'#E77320', ppe:dark?'#FDBF57':'#D89A16', intr:dark?'#FF4D4D':'#E23434'}[p];
-    const SEVCOL={Low:dark?'#4DA6FF':'#2E7FD6', Medium:dark?'#FDBF57':'#D89A16', High:dark?'#FF8A3D':'#E77320', Severe:dark?'#FF4D4D':'#E23434'};
-    this._hc=this._hc||{};
-    const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
-      if(this._hc[id]){ try{ this._hc[id].destroy(); }catch(e){} }
-      this._hc[id]=Highcharts.chart(el, Highcharts.merge({}, base, cfg)); };
-    const hrs=[...Array(24)].map((_,i)=>{ const h=new Date(Date.now()-(23-i)*3600e3).getHours(); return String(h).padStart(2,'0')+':00'; });
-    mk('mdTrend',{chart:{type:'areaspline', height:215}, xAxis:{categories:hrs, tickInterval:3},
-      plotOptions:{areaspline:{marker:{enabled:false}, lineWidth:2, fillOpacity:0.18, color:MOD}},
-      series:[{name:'Detections', data:r.hourly||[]}]});
-    const sev=r.bySeverity||{}; const sevCats=['Low','Medium','High','Severe'];
-    mk('mdSev',{chart:{type:'column', height:215}, xAxis:{categories:sevCats},
-      plotOptions:{column:{borderWidth:0, borderRadius:4, pointPadding:0.1, groupPadding:0.12, colorByPoint:true,
-        dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-      colors:sevCats.map(s=>SEVCOL[s]),
-      series:[{name:'Detections', data:sevCats.map(s=>sev[s]||0)}]});
-    const bc=Object.entries(r.byCam||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    mk('mdCams',{chart:{type:'bar', height:215}, xAxis:{categories:bc.map(x=>x[0])},
-      plotOptions:{bar:{borderWidth:0, borderRadius:4, color:MOD, dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-      series:[{name:'Detections', data:bc.map(x=>x[1])}]});
-    // Module-specific breakdown (4th chart).
-    const attr=r.attr||{};
-    if(p==='fire'){
-      const sm=attr.Smoking||{}; const d=Object.entries(sm).map(([name,y])=>({name,y}));
-      mk('mdAttr',{chart:{type:'pie', height:215},
-        tooltip:{pointFormat:'<b>{point.y}</b> ({point.percentage:.0f}%)'},
-        plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#0E1122':'#fff', borderWidth:2,
-          dataLabels:{enabled:true, format:'{point.name}: {point.y}', style:{color:text2, textOutline:'none', fontSize:'11px'}}}},
-        colors:[dark?'#FF4D4D':'#E23434', dark?'#33C08A':'#199468', muted],
-        series:[{name:'Smoking', data:d.length?d:[{name:'None',y:0}]}]});
-    } else if(p==='ppe'){
-      const vest=attr.WithReflectiveVest||{}, hat=attr.HatsType||{}, mask=attr.WithMask||{};
-      const wearing=(vest.ReflectiveVest||0), noVest=(vest.NoReflectiveVest||0);
-      const noHat=(hat.NoHat||0), hasHat=Object.entries(hat).reduce((s,[k,v])=>s+(k==='NoHat'?0:v),0);
-      const masked=(mask.WithMask||0), noMask=(mask.NoMask||0);
-      mk('mdAttr',{chart:{type:'column', height:215}, xAxis:{categories:['Vest','Helmet/Hat','Mask']},
-        plotOptions:{column:{borderWidth:0, borderRadius:3, stacking:'normal',
-          dataLabels:{enabled:true, style:{color:text2, textOutline:'none', fontSize:'10px'}}}},
-        legend:{enabled:true, itemStyle:{color:text2, fontSize:'10px'}},
-        colors:[dark?'#33C08A':'#199468', dark?'#FF4D4D':'#E23434'],
-        series:[{name:'Compliant', data:[wearing, hasHat, masked]},{name:'Non-compliant', data:[noVest, noHat, noMask]}]});
-    } else {
-      const g=attr.Gender||{}, ang=attr.Angle||{};
-      const cats=Object.keys(g).length?Object.keys(g):Object.keys(ang);
-      const vals=Object.keys(g).length?Object.values(g):Object.values(ang);
-      mk('mdAttr',{chart:{type:'column', height:215}, xAxis:{categories:cats},
-        plotOptions:{column:{borderWidth:0, borderRadius:4, color:MOD, pointPadding:0.12,
-          dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-        series:[{name:'Intruders', data:vals}]});
-    }
-  }
-  // ── Face & Body report charts (Highcharts, official demo configs) ─
-  scheduleFaceCharts(){ if(this._hcT) clearTimeout(this._hcT); this._hcT=setTimeout(()=>this.drawFaceCharts(), 90); }
-  drawFaceCharts(){
-    if(this.state.page!=='face' || !window.Highcharts) return;
-    const f=this.state.faceR; if(!f) return;
-    const dark=this.state.theme==='dark';
-    // Dark/light categorical steps validated against the dashboard surfaces.
-    const BLUE=dark?'#3987e5':'#2a78d6', ORANGE=dark?'#d95926':'#eb6834', VIOLET=dark?'#9085e9':'#4a3aa7';
-    const host=document.querySelector('[data-theme]')||document.documentElement;
-    const css=getComputedStyle(host);
-    const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9ECF6'), text2=cv('--text2','#9AA1BD'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
-    const base={
-      chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[8,4,4,4]},
-      title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false}, legend:{enabled:false},
-      xAxis:{labels:{style:{color:muted, fontSize:'10px'}}, lineColor:line, tickColor:line},
-      yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'10px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}},
-    };
-    this._hc=this._hc||{};
-    const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
-      if(this._hc[id]){ try{ this._hc[id].destroy(); }catch(e){} }
-      this._hc[id]=Highcharts.chart(el, Highcharts.merge({}, base, cfg)); };
-    const hrs=[...Array(24)].map((_,i)=>{ const h=new Date(Date.now()-(23-i)*3600e3).getHours(); return String(h).padStart(2,'0')+':00'; });
-    mk('fbTrend',{chart:{type:'areaspline', height:215}, xAxis:{categories:hrs, tickInterval:3},
-      plotOptions:{areaspline:{marker:{enabled:false}, lineWidth:2, fillOpacity:0.18}},
-      series:[{name:'Person detections', data:f.hourly||[], color:BLUE}]});
-    const gData=Object.entries(f.gender||{}).map(([name,y],i)=>({name, y, color:[BLUE,ORANGE,VIOLET][i%3]}));
-    mk('fbGender',{chart:{type:'pie', height:215},
-      tooltip:{pointFormat:'<b>{point.y}</b> ({point.percentage:.0f}%)'},
-      plotOptions:{pie:{innerSize:'58%', borderColor:dark?'#0E1122':'#ffffff', borderWidth:2,
-        dataLabels:{enabled:true, format:'{point.name}: {point.y}', style:{color:text2, textOutline:'none', fontSize:'11px', fontWeight:'500'}}}},
-      series:[{name:'Gender', data:gData}]});
-    mk('fbAge',{chart:{type:'column', height:215}, xAxis:{categories:Object.keys(f.age||{})},
-      plotOptions:{column:{borderWidth:0, borderRadius:4, color:BLUE, pointPadding:0.12, groupPadding:0.12,
-        dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-      series:[{name:'Age band', data:Object.values(f.age||{})}]});
-    const tc=Object.entries(f.topsColor||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    mk('fbTops',{chart:{type:'bar', height:215}, xAxis:{categories:tc.map(x=>x[0])},
-      plotOptions:{bar:{borderWidth:0, borderRadius:4, color:BLUE, dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-      series:[{name:'Tops colour', data:tc.map(x=>x[1])}]});
-    const bc=Object.entries(f.byCam||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    mk('fbCams',{chart:{type:'bar', height:215}, xAxis:{categories:bc.map(x=>x[0])},
-      plotOptions:{bar:{borderWidth:0, borderRadius:4, color:BLUE, dataLabels:{enabled:true, style:{color:text2, textOutline:'none'}}}},
-      series:[{name:'Detections', data:bc.map(x=>x[1])}]});
-  }
 
-  // Onboard a camera to VisionAI via our API (§3.3.1 device/create).
-  submitCamera(){
-    const a=this.state.addCam;
-    if(!a.name || !a.rtsp){ this.setState({addCam:{...a,msg:'Name and RTSP URL are required.'}}); return; }
-    this.setState({addCam:{...a,busy:true,msg:'Onboarding to VisionAI…'}});
-    fetch(`${this.API}/cameras?token=${this.TOK}`,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:a.name, rtsp:a.rtsp})})
-      .then(r=>r.json()).then(d=>{
-        if(d && d.ok){ this.setState({addCam:{name:'',rtsp:'',busy:false,msg:'✓ Camera onboarded (device '+(d.data||'created')+')'+this.bridgeNote(d)+'. It will appear once VisionAI activates it.'}}); if(d.bridge) this.loadLive(true, true); }
-        else { this.setState(s=>({addCam:{...s.addCam,busy:false,msg:'✗ '+((d&&(d.msg||d.error))||'Failed')}})); }
-      }).catch(()=>this.setState(s=>({addCam:{...s.addCam,busy:false,msg:'✗ Network error'}})));
-  }
-  updAddCam(patch){ this.setState(s=>({addCam:{...s.addCam,...patch}})); }
-
-  // ── Incident tickets ──────────────────────────────────────
-  setIncEl(v){ this.setState({incEl:v, incPage:0}); }
-  setIncCam(v){ this.setState({incCam:v, incPage:0}); }
   fmtDur(ms){ if(ms==null||isNaN(ms)||ms<0) return '—'; const m=Math.floor(ms/60000); if(m<1) return '<1m';
     if(m<60) return m+'m'; const h=Math.floor(m/60); if(h<24) return h+'h '+String(m%60).padStart(2,'0')+'m';
     return Math.floor(h/24)+'d '+(h%24)+'h'; }
-  openTicket(e){ this.setState({modal:{type:'ticket', data:e}, tktTab:'comm', tktLog:null, tktFiles:null, tktNear:null,
-    tktNote:'', tktRemark:'', tktMsg:'', tktCommPage:0, tktHistPage:0}); this.loadTicket(e.id); this.fetchNear(e); this.scheduleComm(); }
-  // Same-camera detections in the minute leading up to this one (context tab).
-  fetchNear(tk){
-    const stream=String(tk.camera||'').toLowerCase();
-    const base=String(tk.received||tk.triggerTime||'').replace(' ','T');
-    const t=Date.parse(base)||tk.ts||Date.now();
-    const p=(n)=>String(n).padStart(2,'0');
-    const fmt=(ms)=>{ const d=new Date(ms);
-      return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); };
-    fetch(`${this.API}/events?token=${this.TOK}&stream=${encodeURIComponent(stream)}&from=${encodeURIComponent(fmt(t-60000))}&to=${encodeURIComponent(fmt(t+1000))}&limit=60`, {cache:'no-store'})
-      .then(r=>r.json()).then(d=>{ this.setState({tktNear:(d&&d.ok&&d.events)||[]}); })
-      .catch(()=>this.setState({tktNear:[]}));
-  }
-  loadTicket(id){
-    fetch(`${this.API}/events/${encodeURIComponent(id)}/log?token=${this.TOK}`, {cache:'no-store'})
-      .then(r=>r.json()).then(d=>{ if(d&&d.ok){ this.setState({tktLog:d.log||[]}); this.scheduleComm(); } }).catch(()=>{});
-    fetch(`${this.API}/events/${encodeURIComponent(id)}/attachments?token=${this.TOK}`, {cache:'no-store'})
-      .then(r=>r.json()).then(d=>{ if(d&&d.ok) this.setState({tktFiles:d.files||[]}); }).catch(()=>{});
-  }
-  // Communication tab: rich-text toolbar + imperatively rendered, paginated
-  // comment list (comments are a sanitized HTML subset from the editor).
-  scheduleComm(){ if(this._cmT) clearTimeout(this._cmT); this._cmT=setTimeout(()=>{ this.bindComm(); this.renderComments(); }, 90); }
-  bindComm(){
-    const tb=document.getElementById('tkt-toolbar'), ed=document.getElementById('tkt-editor');
-    if(tb && !tb._tmns){ tb._tmns=1;
-      tb.querySelectorAll('button[data-cmd]').forEach(b=>{
-        b.addEventListener('mousedown', e=>{ e.preventDefault();
-          const c=b.getAttribute('data-cmd');
-          if(c==='createLink'){ const u=window.prompt('Link URL (https://…)'); if(u) document.execCommand('createLink', false, u); }
-          else document.execCommand(c, false, null);
-          if(ed) ed.focus();
-        });
-      });
-    }
-  }
-  renderComments(){
-    if(this.state.tktTab!=='comm') return;
-    const box=document.getElementById('tkt-comm-list'); if(!box) return;
-    const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    const kindCol={comment:'var(--low)', notify:'var(--brand)', tmforce:'var(--crit)', remark:'var(--ok)', escalation:'var(--high)'};
-    const isHtml=(s)=>/<([a-z]+)(\s|\/?>)/i.test(s||'');
-    const all=(this.state.tktLog||[]).filter(l=>['comment','notify','tmforce','remark','escalation'].indexOf(l.kind)>=0);
-    const PS=8, pages=Math.max(1, Math.ceil(all.length/PS));
-    const p=Math.min(this.state.tktCommPage||0, pages-1);
-    const slice=all.slice(p*PS, p*PS+PS);
-    let h='';
-    if(!all.length) h='<div class="tkt-c-empty">No communications yet — add the first note below.</div>';
-    slice.forEach(l=>{ const col=kindCol[l.kind]||'var(--low)';
-      const body=isHtml(l.note)? l.note : esc(l.note||'').replace(/\n/g,'<br>');
-      const initial=esc(String(l.actor||'—').charAt(0).toUpperCase());
-      h+='<div class="tkt-c-row">'
-        +'<span class="tkt-c-dot" style="background:'+col+';box-shadow:0 0 9px '+col+'"></span>'
-        +'<div class="tkt-c-card">'
-        +'<div class="tkt-c-head">'
-        +'<span class="tkt-c-avatar">'+initial+'</span>'
-        +'<b class="tkt-c-actor">'+esc(l.actor||'—')+'</b>'
-        +'<span class="tkt-c-time">'+esc(l.created_at||'')+'</span>'
-        +'<span class="tkt-c-kind" style="color:'+col+'">'+esc(l.kind)+'</span></div>'
-        +'<div class="tkt-note tkt-c-body">'+body+'</div></div></div>';
-    });
-    if(pages>1){
-      h+='<div class="tkt-c-pager">'
-        +'<button id="tkt-cprev" class="tkt-c-btn"'+(p===0?' disabled':'')+'>‹ Prev</button>'
-        +'<span class="tkt-c-time">Page '+(p+1)+' / '+pages+'</span>'
-        +'<button id="tkt-cnext" class="tkt-c-btn"'+(p>=pages-1?' disabled':'')+'>Next ›</button></div>';
-    }
-    box.innerHTML=h;
-    const pv=document.getElementById('tkt-cprev'), nx=document.getElementById('tkt-cnext');
-    if(pv) pv.addEventListener('click', ()=>{ this.setState({tktCommPage:Math.max(0, p-1)}); this.scheduleComm(); });
-    if(nx) nx.addEventListener('click', ()=>{ this.setState({tktCommPage:Math.min(pages-1, p+1)}); this.scheduleComm(); });
-  }
-  tktPost(id, path, payload, msg){
-    this.setState({tktMsg:'Working…'});
-    fetch(`${this.API}/events/${encodeURIComponent(id)}/${path}?token=${this.TOK}`,
-      {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload||{})})
-      .then(r=>r.json()).then(d=>{
-        this.setState({tktMsg:(d&&d.ok)?(msg||'Done ✓'):'Failed'});
-        this.loadTicket(id); this.fetchFeed();
-        if(this._tkT) clearTimeout(this._tkT); this._tkT=setTimeout(()=>this.setState({tktMsg:''}), 2500);
-      }).catch(()=>this.setState({tktMsg:'Failed'}));
-  }
-  makeTicket(id, ev){ if(ev&&ev.stopPropagation) ev.stopPropagation(); this.tktPost(id, 'ticket', {actor:this.UNAME}, 'Ticket created'); }
-  // Drag-and-drop multi-file upload for the ticket Attachments tab.
-  // Native listeners bind once per DOM node (dc-runtime keeps nodes across
-  // re-renders, same as the Highcharts containers).
-  bindDrop(){
-    const dz=document.getElementById('tkt-drop'), inp=document.getElementById('tkt-file');
-    if(!dz||!inp) return;
-    const idOf=()=> (this.state.modal&&this.state.modal.data)?this.state.modal.data.id:null;
-    if(!inp._tmns){ inp._tmns=1;
-      inp.addEventListener('change', ()=>{ if(inp.files&&inp.files.length) this.tktUploadFiles(idOf(), inp.files); });
-    }
-    if(!dz._tmns){ dz._tmns=1;
-      ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation();
-        dz.style.borderColor='var(--brand)'; dz.style.background='var(--bg4)'; }));
-      ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation();
-        dz.style.borderColor=''; dz.style.background=''; }));
-      dz.addEventListener('drop', e=>{ const fs=e.dataTransfer&&e.dataTransfer.files; if(fs&&fs.length) this.tktUploadFiles(idOf(), fs); });
-    }
-  }
-  tktUploadFiles(id, fileList){
-    if(!id||!fileList||!fileList.length) return;
-    const files=[...fileList]; const total=files.length;
-    let done=0, fail=0;
-    const next=()=>{
-      if(!files.length){
-        this.setState({tktMsg: fail? (done+' uploaded · '+fail+' failed') : (done+' file'+(done===1?'':'s')+' uploaded ✓')});
-        const inp=document.getElementById('tkt-file'); if(inp) inp.value='';
-        this.loadTicket(id);
-        if(this._tkT) clearTimeout(this._tkT); this._tkT=setTimeout(()=>this.setState({tktMsg:''}), 3000);
-        return;
-      }
-      const f=files.shift();
-      if(f.size>10*1024*1024){ fail++; next(); return; }
-      this.setState({tktMsg:'Uploading '+f.name+' ('+(done+fail+1)+'/'+total+')…'});
-      const fd=new FormData(); fd.append('file', f); fd.append('actor', this.UNAME);
-      fetch(`${this.API}/events/${encodeURIComponent(id)}/attach?token=${this.TOK}`, {method:'POST', body:fd})
-        .then(r=>r.json()).then(d=>{ (d&&d.ok)?done++:fail++; next(); })
-        .catch(()=>{ fail++; next(); });
-    };
-    next();
-  }
-  repIncidents(period){
-    this.setState({tktMsg:'Sending '+period+' report…'});
-    fetch(`${this.API}/report/incidents?token=${this.TOK}&period=${period}`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ this.setState({tktMsg:(d&&d.ok)?(period+' incident report sent ✓'):'Report failed — check SMTP'});
-        if(this._tkT) clearTimeout(this._tkT); this._tkT=setTimeout(()=>this.setState({tktMsg:''}), 3000); })
-      .catch(()=>this.setState({tktMsg:'Report failed'}));
-  }
-
-  // ── User & role management (session-gated /api/users, /api/roles) ──
-  loadUsers(){ fetch(`${this.API}/users`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ if(d&&d.ok) this.setState({umUsers:d.users||[]}); }).catch(()=>{}); }
-  loadRoles(){ fetch(`${this.API}/roles`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ if(d&&d.ok) this.setState({umRoles:d.roles||[], umPerms:d.permLabels||{}}); }).catch(()=>{}); }
-  umPost(path, body, okMsg){
-    this.setState({umMsg:'Working…'});
-    fetch(`${this.API}/${path}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})})
-      .then(r=>r.json()).then(d=>{
-        if(d&&d.ok){
-          this.setState({umMsg:okMsg||'Saved ✓'});
-          if(d.users) this.setState({umUsers:d.users});
-          if(d.roles) this.setState({umRoles:d.roles});
-          if(!d.users) this.loadUsers();
-          if(!d.roles) this.loadRoles();
-        } else this.setState({umMsg:'✗ '+((d&&d.error)||'Failed')});
-        if(this._umT) clearTimeout(this._umT); this._umT=setTimeout(()=>this.setState({umMsg:''}), 3500);
-      }).catch(()=>this.setState({umMsg:'✗ Network error'}));
-  }
-  umSet(k,v){ this.setState(s=>({umDraft:{...s.umDraft, [k]:v}})); }
-  umAddUser(){
-    const d=this.state.umDraft||{};
-    if(!d.username||!d.password||String(d.password).length<8){ this.setState({umMsg:'✗ Username + password (8+ chars) required'}); return; }
-    this.umPost('users', {username:d.username, display_name:d.display_name||'', email:d.email||'',
-      role:d.role||'operator', password:d.password}, 'User created ✓');
-    this.setState({umDraft:{}});
-  }
-  umResetPw(u){
-    const p=window.prompt('New password for '+u.username+' (min 8 characters):');
-    if(p===null) return;
-    if(String(p).length<8){ this.setState({umMsg:'✗ Password too short'}); return; }
-    this.umPost('users/'+u.id, {password:p}, 'Password reset ✓');
-  }
-  umDelUser(u){
-    if(window.confirm('Delete user "'+u.username+'" permanently?')) this.umPost('users/'+u.id, {action:'delete'}, 'User deleted ✓');
-  }
-  umDelRole(name){
-    if(window.confirm('Delete role "'+name+'"?')) this.umPost('roles', {action:'delete', name}, 'Role deleted ✓');
-  }
-
-  // ── Alert Rules (live settings via /api/alerts) ───────────
-  loadAlerts(){ fetch(`${this.API}/alerts?token=${this.TOK}`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ if(d&&d.ok) this.setState({alertCfg:d.settings}); }).catch(()=>{}); }
-  saveAlerts(patch, opts){
-    const cfg={...(this.state.alertCfg||{}), ...patch};
-    this.setState({alertCfg:cfg, alertMsg:'Saving…'});
-    const body={...patch}; if(opts&&opts.test) body.send_test=true;
-    fetch(`${this.API}/alerts?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-      .then(r=>r.json()).then(d=>{
-        const ok=d&&d.ok;
-        // Resync with the server-sanitized values (arrays normalized there).
-        if(ok && d.settings) this.setState(s=>({alertCfg:{...(s.alertCfg||{}), ...d.settings}}));
-        this.setState({alertMsg: ok?((opts&&opts.test)?(d.test_sent?'Saved ✓ · test email sent':'Saved ✓ · test email FAILED'):'Saved ✓'):'Save failed'});
-        if(this._amT) clearTimeout(this._amT); this._amT=setTimeout(()=>this.setState({alertMsg:''}), 3000);
-      }).catch(()=>this.setState({alertMsg:'Save failed'})); }
-
-  // ── Workstream A: Telegram · escalation workflow · condition rules (/api/notify/settings) ──
-  escChip(e){
-    const lv=(e&&e.escLevel)|0;
-    if(!lv) return {escOn:false, escLabel:'', escCol:'var(--text3)', escTitle:''};
-    const lvl=((((this.state.ntCfg||{}).settings||{}).escalation||{}).levels||[])[lv-1]||{};
-    const mins=e.escMin!=null?e.escMin:((e.escTs&&e.ts)?Math.max(0, Math.round((e.escTs-e.ts)/60000)):null);
-    const col=lv>=3?'var(--crit)':(lv===2?'var(--high)':'var(--gold)');
-    return {escOn:true, escCol:col, escLabel:'L'+lv+' · auto-escalated'+(mins!=null?(' '+mins+'m'):''),
-      escTitle:'Unattended alert auto-escalated to L'+lv+(lvl.name?(' — '+lvl.name):'')+(mins!=null?(' after '+mins+' min'):'')};
-  }
-  ntFetch(path, body){
-    const opt=body ? {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}
-                   : {cache:'no-store', credentials:'same-origin'};
-    return fetch(`${this.API}/${path}?token=${this.TOK}`, opt).then(r=>r.json().catch(()=>({ok:false, error:'HTTP '+r.status})));
-  }
-  ntFlash(msg){ this.setState({ntMsg:msg}); if(this._ntT) clearTimeout(this._ntT); this._ntT=setTimeout(()=>this.setState({ntMsg:''}), 6000); }
-  ntSetDraft(k, v){ this.setState(s=>({ntDraft:{...(s.ntDraft||{}), [k]:v}})); }
-  loadNotify(){ this.ntFetch('notify/settings').then(d=>{ if(d&&d.ok) this.setState({ntCfg:d}); }).catch(()=>{}); }
-  saveNotify(patch, okMsg, clearKeys){
-    this.setState({ntMsg:'Saving…'});
-    this.ntFetch('notify/settings', patch).then(d=>{
-      if(d&&d.ok){
-        this.setState(s=>{ const dr={...(s.ntDraft||{})}; (clearKeys||[]).forEach(k=>{ delete dr[k]; }); return {ntCfg:d, ntDraft:dr}; });
-        this.ntFlash(okMsg||'Saved ✓');
-      } else this.ntFlash('Save failed — '+((d&&d.error)||'unknown error'));
-    }).catch(()=>this.ntFlash('Save failed'));
-  }
-  testTelegram(){
-    this.setState({ntMsg:'Sending Telegram test…'});
-    this.ntFetch('alerts/telegram-test', {}).then(d=>{
-      this.ntFlash(d&&d.ok
-        ? ('Telegram test sent ✓ via @'+(d.bot||'bot')+' to '+d.sent+' chat'+(d.sent===1?'':'s')+(d.failed?(' · '+d.failed+' failed'):''))
-        : ('Telegram test failed — '+((d&&(d.error||(d.errors||[]).join('; ')))||'unknown error')));
-      this.loadNotify();
-    }).catch(()=>this.ntFlash('Telegram test failed'));
-  }
-  testEmailChannel(){
-    this.setState({ntMsg:'Sending test email…'});
-    this.ntFetch('alerts/email-test', {}).then(d=>{
-      this.ntFlash(d&&d.ok ? ('Test email sent ✓ to '+(d.to||[]).join(', ')) : ('Test email failed — '+((d&&d.error)||'unknown error')));
-      this.loadNotify();
-    }).catch(()=>this.ntFlash('Test email failed'));
-  }
-  runEscalation(dry){
-    this.setState({escBusy:true, ntMsg:dry?'Checking open alerts…':'Running escalation…'});
-    this.ntFetch('escalation/run', {dry_run:!!dry}).then(d=>{
-      this.setState({escBusy:false, escRes:(d&&d.ok)?d:null});
-      if(d&&d.ok){
-        const n=(d.escalated||[]).length;
-        this.ntFlash(dry ? (n+' escalation'+(n===1?'':'s')+' due now · '+(d.pending||[]).length+' upcoming')
-                         : (n+' escalation'+(n===1?'':'s')+' performed ✓'));
-        if(!dry){ this.loadNotify(); this.fetchFeed(); }
-      } else this.ntFlash('Escalation check failed — '+((d&&d.error)||'unknown error'));
-    }).catch(()=>{ this.setState({escBusy:false}); this.ntFlash('Escalation check failed'); });
-  }
-  saveConditions(list, msg){ this.saveNotify({conditions:list}, msg||'Condition rules saved ✓'); }
-
-  /** Bindings for the Notifications tab (Telegram / escalation) and the Alert Rules condition rules. */
-  wsAVals(st){
-    const nc=st.ntCfg||null, S=(nc&&nc.settings)||{}, tg=S.telegram||{}, es=S.escalation||{}, ch=(nc&&nc.channels)||{};
-    const stats=(nc&&nc.stats)||{}, dr=st.ntDraft||{};
-    const dv=(k, f)=> dr[k]!=null ? dr[k] : f;
-    const tog=(on)=>({bg:on?'var(--ok)':'var(--line2)', knob:on?'18px':'2px'});
-    const inp=(k)=>(e)=>this.ntSetDraft(k, e&&e.target?e.target.value:'');
-    const chips=(opts, cur, cb)=>opts.map(([v,label])=>({label, cls:String(cur)===String(v)?'chip on':'chip', onClick:()=>cb(v)}));
-    const em=ch.email||{}, tc=ch.telegram||{}, se=stats.email||{}, stg=stats.telegram||{};
-    const chanRow=(label, c, s, okLine, offLine)=>{
-      const ready=!!c.ready;
-      return {label, ready, mark:ready?'✓':'✗', col:ready?'var(--ok)':(c.configured?'var(--gold)':'var(--text3)'),
-        line: ready?okLine:offLine,
-        stat:(s.sent24h||0)+' sent 24h · '+(s.escalations||0)+' escalations'+(s.failed?(' · '+s.failed+' failed'):''),
-        err:s.last_error?('Last error: '+s.last_error):''};
-    };
-    const chEmail=chanRow('Email', em, se, 'Ready · '+(em.recipients||0)+' base recipient'+(em.recipients===1?'':'s'),
-      !em.configured?'Not configured — set MAIL_HOST / MAIL_USERNAME in .env':(!em.enabled?'Switched off on the Alert Rules page':'No recipients'));
-    const chTg=chanRow('Telegram', tc, stg, 'Ready · '+(tc.chats||0)+' default chat'+(tc.chats===1?'':'s'),
-      !tc.configured?'No bot token yet':(!tc.enabled?'Switched off':'No chat ID'));
-    const tgOn=dv('tg_enabled', !!tg.enabled), tgPhoto=tg.send_photo!==false;
-    const escOn=!!es.enabled;
-    const unit=es.unattended_min||5;
-    const lvlCol=['var(--gold)','var(--high)','var(--crit)'];
-    const levels=(es.levels||[{},{},{}]).map((l,i)=>{
-      const k='esc_l'+i+'_';
-      return {tag:'L'+(i+1), col:lvlCol[i], after:'after '+(unit*(i+1))+' min unattended',
-        name:dv(k+'name', l.name||''), onName:inp(k+'name'),
-        emails:dv(k+'emails', (l.emails||[]).join(', ')), onEmails:inp(k+'emails'),
-        chats:dv(k+'chats', (l.chats||[]).join(', ')), onChats:inp(k+'chats'),
-        warn:(!(l.emails||[]).length && !(l.chats||[]).length)?'No recipients — this level is logged only':''};
-    });
-    const levelKeys=[0,1,2].reduce((a,i)=>a.concat(['esc_l'+i+'_name','esc_l'+i+'_emails','esc_l'+i+'_chats']), []);
-    const er=st.escRes, sevCol=this.SEV||{};
-    const stateTxt=(v)=> v==null?'—':v;
-    const escResRows=er?(er.escalated||[]).slice(0,40).map(x=>({
-      lv:'L'+x.level, col:lvlCol[(x.level||1)-1], title:x.title, camera:x.camera, sev:x.sev, sevCol:sevCol[x.sev]||'var(--text2)',
-      sub:x.level_name+' · unattended '+x.unattended_min+' min (age '+x.age_min+' min)'+(x.simulated?' · simulated':''),
-      chan:'Email '+stateTxt(x.email)+' · Telegram '+stateTxt(x.telegram)})):[];
-    const escPendRows=er?(er.pending||[]).slice(0,15).map(x=>({
-      lv:x.level?('L'+x.level):'—', title:x.title, camera:x.camera,
-      sub:'→ L'+x.next+' '+x.next_name+' in '+Math.ceil((x.due_in_s||0)/60)+' min'+(x.simulated?' · simulated':'')})):[];
-    const last=(nc&&nc.escalation&&nc.escalation.last)||null, obl=(nc&&nc.escalation&&nc.escalation.open_by_level)||{};
-    const recent=((nc&&nc.recent)||[]).slice(0,10).map(r=>({at:r.at, ch:r.channel==='telegram'?'Telegram':'Email',
-      kind:r.kind, ok:r.ok?'✓':'✗', col:r.ok?'var(--ok)':'var(--crit)', note:(r.note||'')+(r.sim?' · simulated':'')}));
-
-    // ── condition rules (Alert Rules page) ──
-    const conds=Array.isArray(S.conditions)?S.conditions:[];
-    const modName={any:'Any module', fire:'Fire & Smoke', ppe:'PPE', intr:'Intrusion', face:'Face & Body', forklift:'Forklift', behaviour:'Behaviour'};
-    const condRows=conds.map((c,i)=>{ const t=tog(c.enabled!==false);
-      return {name:c.name, desc:(modName[c.mod]||c.mod)+' · '+(c.camera?c.camera.toUpperCase():'any camera')+' · severity ≥ '+c.min_sev
-          +' · '+(c.window==='always'?'24 h':c.window)+(c.keyword?(' · matches "'+c.keyword+'"'):''),
-        chans:[c.channels&&c.channels.email?'Email':'', c.channels&&c.channels.telegram?'Telegram':''].filter(Boolean).join(' + ')||'No channel',
-        toggleBg:t.bg, knobX:t.knob,
-        onToggle:()=>this.saveConditions(conds.map((x,j)=>j===i?{...x, enabled:!(x.enabled!==false)}:x)),
-        onDelete:()=>{ if(window.confirm('Delete condition rule "'+c.name+'"?')) this.saveConditions(conds.filter((x,j)=>j!==i), 'Condition rule deleted'); }}; });
-    const cf=st.condForm||{};
-    const cfSet=(k)=>(e)=>{ const v=e&&e.target?e.target.value:''; this.setState(s=>({condForm:{...(s.condForm||{}), [k]:v}})); };
-    const sel=(opts, cur, k)=>({value:String(cur), onChange:cfSet(k), options:opts.map(([v,label])=>({v:String(v), label}))});
-    const camOpts=[['','Any camera']].concat(((nc&&nc.cameras)||[]).concat((st.fleet||[]).map(f=>f.stream))
-      .filter((v,i,a)=>v&&a.indexOf(v)===i).slice(0,80).map(c=>[c, String(c).toUpperCase()]));
-    const cfEmail=cf.email!==false, cfTg=cf.telegram!==false;
-    return {
-      ntMsg:st.ntMsg||'', loaded:!!nc,
-      chEmail, chTg, chanLine:'Channels: Email '+chEmail.mark+' · Telegram '+chTg.mark,
-      tgToggleBg:tog(tgOn).bg, tgKnob:tog(tgOn).knob,
-      onTgToggle:()=>{ this.ntSetDraft('tg_enabled', !tgOn); this.saveNotify({telegram:{enabled:!tgOn}}, !tgOn?'Telegram on ✓':'Telegram off', ['tg_enabled']); },
-      tgPhotoBg:tog(tgPhoto).bg, tgPhotoKnob:tog(tgPhoto).knob,
-      onTgPhoto:()=>this.saveNotify({telegram:{send_photo:!tgPhoto}}, 'Saved ✓'),
-      tgToken:dv('tg_token', tg.bot_token||''), onTgToken:inp('tg_token'),
-      tgTokenState:tg.has_token?'TOKEN SET':'NO TOKEN', tgTokenCol:tg.has_token?'var(--ok)':'var(--text3)',
-      tgChats:dv('tg_chats', (tg.chat_ids||[]).join(', ')), onTgChats:inp('tg_chats'),
-      saveTg:()=>{ const t={chat_ids:dv('tg_chats', (tg.chat_ids||[]).join(', '))};
-        const tok=dr.tg_token; if(tok && tok.indexOf('•')<0) t.bot_token=tok.trim();
-        this.saveNotify({telegram:t}, 'Telegram settings saved ✓', ['tg_token','tg_chats']); },
-      testTg:()=>this.testTelegram(), testEmail:()=>this.testEmailChannel(),
-      escToggleBg:tog(escOn).bg, escKnob:tog(escOn).knob,
-      onEscToggle:()=>this.saveNotify({escalation:{enabled:!escOn}}, !escOn?'Escalation workflow on ✓':'Escalation workflow off'),
-      escMinChips:chips([[1,'1 min'],[5,'5 min'],[10,'10 min'],[15,'15 min']], unit, v=>this.saveNotify({escalation:{unattended_min:v}}, 'Unattended threshold '+v+' min ✓')),
-      escSevChips:chips([['medium','Medium +'],['high','High +'],['critical','Critical only']], es.min_severity||'high', v=>this.saveNotify({escalation:{min_severity:v}}, 'Saved ✓')),
-      escLevels:levels,
-      saveLevels:()=>this.saveNotify({escalation:{levels:levels.map(l=>({name:l.name, emails:l.emails, chats:l.chats}))}}, 'Escalation levels saved ✓', levelKeys),
-      escFlow:'Open alert (severity ≥ '+(es.min_severity||'high')+') → not acknowledged for '+unit+' min → L1 '+((levels[0]||{}).name||'')
-        +' → '+(unit*2)+' min → L2 '+((levels[1]||{}).name||'')+' → '+(unit*3)+' min → L3 '+((levels[2]||{}).name||'')
-        +'. Acknowledging or resolving the alert stops the chain.',
-      escOpenLine:'Open & escalated now: L1 '+(obl[1]||0)+' · L2 '+(obl[2]||0)+' · L3 '+(obl[3]||0),
-      escLastLine:last?('Last automatic run '+last.ran_at+' · checked '+last.checked+' open alerts · '+last.escalated+' escalated'):'No automatic run yet — runs from the dashboard poll (at most once a minute) and /api/report/cron',
-      escBusy:!!st.escBusy, runDry:()=>this.runEscalation(true), runNow:()=>this.runEscalation(false),
-      escResHas:!!er, escResTitle:er?((er.dry_run?'Preview (dry run) · ':'Run · ')+er.ran_at+' · '+er.checked+' open alerts checked'+(er.enabled?'':' · workflow is OFF')):'',
-      escResRows, escResHasRows:escResRows.length>0, escResNone:!!er && escResRows.length===0,
-      escPendRows, escPendHas:escPendRows.length>0,
-      recent, recentHas:recent.length>0, recentNone:recent.length===0,
-      // condition rules
-      condRows, condHas:condRows.length>0, condNone:condRows.length===0,
-      cfName:cf.name||'', onCfName:cfSet('name'), cfKeyword:cf.keyword||'', onCfKeyword:cfSet('keyword'),
-      cfMod:sel(Object.entries(modName), cf.mod||'any', 'mod'),
-      cfCam:sel(camOpts, cf.camera||'', 'camera'),
-      cfSev:sel([['low','Any severity'],['medium','Medium +'],['high','High +'],['critical','Critical']], cf.min_sev||'low', 'min_sev'),
-      cfWin:sel([['always','24 h'],['22:00-06:00','After hours 22:00–06:00'],['06:00-22:00','Working hours 06:00–22:00'],['19:00-07:00','Night shift 19:00–07:00'],['07:00-19:00','Day shift 07:00–19:00']], cf.window||'always', 'window'),
-      cfEmailCls:cfEmail?'chip on':'chip', cfTgCls:cfTg?'chip on':'chip',
-      cfToggleEmail:()=>this.setState(s=>({condForm:{...(s.condForm||{}), email:!cfEmail}})),
-      cfToggleTg:()=>this.setState(s=>({condForm:{...(s.condForm||{}), telegram:!cfTg}})),
-      addCond:()=>{ const name=String(cf.name||'').trim();
-        if(!name){ this.ntFlash('Give the condition rule a name'); return; }
-        this.saveConditions(conds.concat([{name, mod:cf.mod||'any', camera:cf.camera||'', min_sev:cf.min_sev||'low', window:cf.window||'always',
-          keyword:String(cf.keyword||'').trim(), enabled:true, channels:{email:cfEmail, telegram:cfTg}}]), 'Condition rule added ✓');
-        this.setState({condForm:{}}); },
-    };
-  }
-
-  // ── Danger zone: wipe every stored detection ──────────────
-  // Two-step: the first click arms the button, the second one purges.
-  purgeEvents(){
-    if(!this.state.purgeArmed){
-      this.setState({purgeArmed:true, purgeMsg:'Click again to permanently delete all event data.'});
-      if(this._pgT) clearTimeout(this._pgT);
-      this._pgT=setTimeout(()=>this.setState({purgeArmed:false, purgeMsg:''}), 8000);
-      return;
-    }
-    if(this._pgT) clearTimeout(this._pgT);
-    this.setState({purgeArmed:false, purgeBusy:true, purgeMsg:'Purging…'});
-    fetch(`${this.API}/events/purge?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({confirm:'PURGE'})})
-      .then(r=>r.json()).then(d=>{
-        if(d&&d.ok){
-          this._over={};                              // local triage overrides are moot now
-          this.setState({purgeBusy:false, purgeMsg:(d.purged||0)+' event(s) deleted ✓',
-            events:[], trend:[], byType:{}, byCam:{}, ai:null, ppe:null, policies:[]});
-          this.camPool=[];
-          this.fetchFeed();
-        } else this.setState({purgeBusy:false, purgeMsg:(d&&d.error)||'Purge failed'});
-      })
-      .catch(()=>this.setState({purgeBusy:false, purgeMsg:'Purge failed'}));
-  }
-  purgeCancel(ev){ if(ev&&ev.stopPropagation) ev.stopPropagation();
-    if(this._pgT) clearTimeout(this._pgT);
-    this.setState({purgeArmed:false, purgeMsg:''}); }
-
-  // ── Attendance & movement (POC Use Case 1 · /api/attendance) ──
-  loadAttendance(force){
-    if(this.state.attBusy && !force) return;
-    this.setState({attBusy:true, attErr:''});
-    fetch(`${this.API}/attendance?token=${this.TOK}&days=${this.state.attDays||1}`, {cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad');
-        this.setState({att:d, attBusy:false}); })
-      .catch(()=>this.setState({attBusy:false, attErr:'Could not load attendance records'}));
-  }
-  setAttDays(n){ this.setState({attDays:n, attBusy:false}); setTimeout(()=>this.loadAttendance(true), 0); }
-  // Chronological movement journey of one person across the predefined camera
-  // points (Plant 1 / Plant 2 Guard Posts, Lobby, 8 Color, Conventional …).
-  openJourney(p){
-    if(!p || !p.personId) return;
-    this.setState({modal:{type:'journey', data:null},
-      jn:{personId:p.personId, name:p.name||'', staffId:p.staffId||'', photo:p.photo||p.lastImage||'', loading:true, data:null}});
-    fetch(`${this.API}/attendance/person?token=${this.TOK}&person_id=${encodeURIComponent(p.personId)}&days=${this.state.attDays||1}`, {cache:'no-store'})
-      .then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad');
-        this.setState(st=>(st.jn && st.jn.personId===p.personId)
-          ? {jn:{...st.jn, loading:false, data:d.journey||{steps:[],visits:[]},
-              name:st.jn.name||((d.profile&&d.profile.name)||''), staffId:st.jn.staffId||((d.profile&&d.profile.staffId)||''),
-              photo:st.jn.photo||((d.profile&&d.profile.photo)||'')}} : {}); })
-      .catch(()=>this.setState(st=>st.jn?{jn:{...st.jn, loading:false, failed:true}}:{}));
-  }
 
   // ── Official attendance register (/api/attendance/daily) ──
   // Shift rules decide Present / Late / Absent; the Live sightings view above
   // stays the raw detection log.
   todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-  loadRegister(){
-    const r=this.state.reg;
-    const qs=new URLSearchParams({token:this.TOK, date:r.date||this.todayStr(), plant:r.plant||'', department:r.dept||'', q:r.q||'', status:r.status||''});
-    this.setState(st=>({reg:{...st.reg, busy:true, err:''}}));
-    fetch(`${this.API}/attendance/daily?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({reg:{...st.reg, busy:false, data:d}})); })
-      .catch(()=>this.setState(st=>({reg:{...st.reg, busy:false, err:'Could not load the attendance register'}})));
-  }
-  setReg(patch){
-    this.setState(st=>({reg:{...st.reg, ...patch}}));
-    if(this._regT) clearTimeout(this._regT);
-    this._regT=setTimeout(()=>this.loadRegister(), patch.q!=null?350:0);
-  }
-  setAttView(v){
-    this.setState({attView:v});
-    if(v==='register') this.loadRegister();
-    if(v==='live') this.loadAttendance(true);
-    if(v==='employees'||v==='reports'){ this.loadPeople(); if(!this.state.reg.data) this.loadRegister(); }
-  }
-  // CSV download: daily register, a date range, or the movement report.
-  exportAtt(report){
-    const r=this.state.reg, rp=this.state.rep, day=r.date||this.todayStr();
-    const from=report==='daily'?day:(rp.from||day), to=report==='daily'?day:(rp.to||from);
-    const qs=new URLSearchParams({token:this.TOK, report, date:day, from, to,
-      plant:r.plant||'', department:r.dept||'', person_id:report==='movement'?(rp.person||''):''});
-    if(report==='daily'){ qs.set('q', r.q||''); qs.set('status', r.status||''); }
-    window.open(`${this.API}/attendance/export?${qs}`, '_blank');
-  }
-  // Register a new employee (no tracked face yet — keyed on the staff ID).
-  newEmployee(){
-    if(!this.state.reg.data) this.loadRegister();
-    this.setState({modal:{type:'profile', data:null}, pf:{personId:'', isNew:true, name:'', staff:'', age:'', gender:'', about:'',
-      department:'', plant:this.state.reg.plant||'', shift:'', active:true, photo:'', shots:[], isEdit:false, msg:'', saving:false}});
-  }
-  // Push employees to the SenseStudio person library (one group per plant).
-  syncEmployee(pid, quiet){
-    if(!this.PERMS.settings){ if(!quiet) this.setState({empMsg:'Syncing needs the settings permission'}); return; }
-    this.setState({empMsg:pid?'Syncing to SenseStudio…':'Syncing all employees to SenseStudio…', empBusy:true});
-    fetch(`${this.API}/employees/sync`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify(pid?{person_id:pid}:{all:true})})
-      .then(x=>x.json())
-      .then(d=>{
-        const msg=!(d&&d.ok) ? ('✗ '+((d&&(d.error||d.msg))||'Sync failed'))
-          : (pid ? (d.error?('✗ '+d.error):(d.warning?('⚠ '+d.warning):'Synced to SenseStudio ✓'))
-                 : ('Synced '+(d.synced||0)+' · failed '+(d.failed||0)+((d.errors&&d.errors.length)?(' — '+d.errors.slice(0,3).join(' | ')):'')));
-        this.setState(st=>({empBusy:false, empMsg:msg,
-          people:{...st.people, profiles:(d&&d.profiles)||st.people.profiles}}));
-      })
-      .catch(()=>this.setState({empBusy:false, empMsg:'✗ Sync failed — network error'}));
-  }
-
-  // ── Cleaning activity monitoring (/api/cleaning/*) ─────────
-  loadCl(){
-    const f=this.state.clF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', location:f.location||'', item:f.item||''});
-    this.setState(st=>({clF:{...st.clF, busy:true, err:''}}));
-    fetch(`${this.API}/cleaning/summary?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({clD:d, clF:{...st.clF, busy:false}})); })
-      .catch(()=>this.setState(st=>({clF:{...st.clF, busy:false, err:'Could not load cleaning data'}})));
-  }
-  setClF(patch){ this.setState(st=>({clF:{...st.clF, ...patch}})); if(this._clT) clearTimeout(this._clT); this._clT=setTimeout(()=>this.loadCl(), 0); }
-  exportCl(report){
-    const f=this.state.clF, d=this.state.clD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', location:f.location||'', item:f.item||''});
-    window.open(`${this.API}/cleaning/export?${qs}`, '_blank');
-  }
-  // Supervisor confirmation that a scheduled session was actually performed.
-  confirmCl(sess, status){
-    const note=window.prompt((status==='done'?'Confirm cleaning was done':'Record cleaning NOT performed')+' — '+sess.name+' · '+sess.date+'\n\nOptional note:', '');
-    if(note===null) return;
-    this.setState({clMsg:'Saving…'});
-    fetch(`${this.API}/cleaning/confirm`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify({schedule_id:sess.scheduleId, date:sess.date, status, note})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Save failed');
-        this.setState({clMsg:status==='done'?'Session confirmed as cleaned ✓':'Recorded as not performed ✓'}); this.loadCl(); })
-      .catch(e=>this.setState({clMsg:'✗ '+(e&&e.message||'Save failed')}));
-  }
-  // Schedule editor: a local draft of the whole list, saved through /api/settings.
-  clSched(){ return this.state.clDraft || ((this.state.clD&&this.state.clD.schedules)||[]).map(s=>({...s, dates:(s.dates||[]).join(', ')})); }
-  clSet(i, patch){ const l=this.clSched().map(x=>({...x})); l[i]={...l[i], ...patch}; this.setState({clDraft:l, clMsg:''}); }
-  clAdd(){ const l=this.clSched().map(x=>({...x}));
-    l.push({id:'clean'+Date.now().toString(36), name:'Cleaning', location:'', start:'14:00', end:'15:00', days:[1,2,3,4,5], dates:'', items:['gloves'], enabled:true});
-    this.setState({clDraft:l, clMsg:''}); }
-  clRemove(i){ const l=this.clSched().filter((_,j)=>j!==i); this.setState({clDraft:l, clMsg:''}); }
-  clSave(){
-    const l=this.clSched();
-    const bad=l.find(s=>!s.location||!/^\d{2}:\d{2}$/.test(s.start||'')||!/^\d{2}:\d{2}$/.test(s.end||'')||(!(s.days||[]).length&&!String(s.dates||'').trim()));
-    if(bad){ this.setState({clMsg:'✗ "'+(bad.name||'Cleaning')+'" needs an area, start / end time and days or dates'}); return; }
-    const out=l.map(s=>({...s, dates:String(s.dates||'').split(',').map(x=>x.trim()).filter(Boolean)}));
-    this.setState({clMsg:'Saving schedules…'});
-    fetch(`${this.API}/settings?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cleaning_schedules:out})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState({clDraft:null, clMsg:'Schedules saved ✓'}); this.loadCl(); })
-      .catch(()=>this.setState({clMsg:'✗ Save failed'}));
-  }
-
-  // ── Restricted area monitoring (/api/restricted/*) ─────────
-  loadRa(){
-    const f=this.state.raF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
-    this.setState(st=>({raF:{...st.raF, busy:true, err:''}}));
-    fetch(`${this.API}/restricted/summary?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({raD:d, raF:{...st.raF, busy:false}})); })
-      .catch(()=>this.setState(st=>({raF:{...st.raF, busy:false, err:'Could not load restricted-area data'}})));
-  }
-  setRaF(patch){ this.setState(st=>({raF:{...st.raF, ...patch}})); if(this._raT) clearTimeout(this._raT); this._raT=setTimeout(()=>this.loadRa(), 0); }
-  exportRa(report){
-    const f=this.state.raF, d=this.state.raD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||''});
-    window.open(`${this.API}/restricted/export?${qs}`, '_blank');
-  }
-  // Reviewer decision on an entry: confirm the violation or clear it as authorized.
-  reviewRa(item, verdict){
-    const note=window.prompt((verdict==='violation'?'Confirm unauthorized entry':'Clear as authorized')+' — '+(item.zone||'zone')+'\n\nOptional note (who it was, why):', '');
-    if(note===null) return;
-    this.setState({raMsg:'Saving review…'});
-    fetch(`${this.API}/restricted/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify({id:item.id, verdict, note})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
-        this.setState({raMsg:verdict==='violation'?'Confirmed as unauthorized entry ✓':'Cleared as authorized ✓'});
-        this.loadRa(); this.fetchFeed(); })
-      .catch(e=>this.setState({raMsg:'✗ '+(e&&e.message||'Review failed')}));
-  }
-  // Settings → Restricted Zones: save one camera's zone (merged over the stored set).
-  saveRaZone(key, patch){
-    const all={...(((this.state.appCfg||{}).ra_zones)||{})};
-    const cur=all[key]||{enabled:false, name:'', hours:'always', staff:[], depts:[]};
-    all[key]={...cur, ...patch};
-    this.saveApp({ra_zones:all}, 'Restricted zone saved ✓');
-    this.setState(st=>{ const d={...st.raDraft}; delete d[key]; return {raDraft:d}; });
-  }
-  raDraftSet(key, k, v){ this.setState(st=>({raDraft:{...st.raDraft, [key]:{...(st.raDraft[key]||{}), [k]:v}}})); }
-
-  // ── Forklift monitoring (/api/forklift/*) ─────────────────
-  loadFk(){
-    const f=this.state.fkF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||'', kind:f.kind||''});
-    this.setState(st=>({fkF:{...st.fkF, busy:true, err:''}}));
-    fetch(`${this.API}/forklift/summary?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({fkD:d, fkF:{...st.fkF, busy:false}})); })
-      .catch(()=>this.setState(st=>({fkF:{...st.fkF, busy:false, err:'Could not load forklift data'}})));
-  }
-  setFkF(patch){ this.setState(st=>({fkF:{...st.fkF, ...patch}})); if(this._fkT) clearTimeout(this._fkT); this._fkT=setTimeout(()=>this.loadFk(), 0); }
-  exportFk(report){
-    const f=this.state.fkF, d=this.state.fkD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', camera:f.camera||'', verdict:f.verdict||'', status:f.status||'', kind:f.kind||''});
-    window.open(`${this.API}/forklift/export?${qs}`, '_blank');
-  }
-  // Reviewer decision on a forklift event: confirm it as a zone violation or clear it as a false alarm.
-  reviewFk(item, verdict){
-    const note=window.prompt((verdict==='violation'?'Confirm forklift zone violation':'Clear as false alarm')+' — '+(item.zone||item.camera||'zone')+'\n\nOptional note:', '');
-    if(note===null) return;
-    this.setState({fkMsg:'Saving review…'});
-    fetch(`${this.API}/forklift/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify({id:item.id, verdict, note})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
-        this.setState({fkMsg:verdict==='violation'?'Confirmed as zone violation ✓':'Cleared as false alarm ✓'});
-        this.loadFk(); this.fetchFeed(); })
-      .catch(e=>this.setState({fkMsg:'✗ '+(e&&e.message||'Review failed')}));
-  }
-  // Settings → Forklift Zones: save one camera's zone (merged over the stored set).
-  saveFkZone(key, patch){
-    const all={...(((this.state.appCfg||{}).fk_zones)||{})};
-    const cur=all[key]||{enabled:false, name:'', rule:'prohibited', hours:'always', note:''};
-    all[key]={...cur, ...patch};
-    this.saveApp({fk_zones:all}, 'Forklift zone saved ✓');
-    this.setState(st=>{ const d={...st.fkDraft}; delete d[key]; return {fkDraft:d}; });
-  }
-  fkDraftSet(key, k, v){ this.setState(st=>({fkDraft:{...st.fkDraft, [key]:{...(st.fkDraft[key]||{}), [k]:v}}})); }
-
-  // ── Workstream C: Behaviour analytics (/api/behaviour/*) ────
-  loadBeh(){
-    const f=this.state.behF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', day:f.day||'', camera:f.camera||'', kind:f.kind||'', verdict:f.verdict||''});
-    this.setState(st=>({behF:{...st.behF, busy:true, err:''}}));
-    fetch(`${this.API}/behaviour/summary?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({behD:d, behF:{...st.behF, busy:false}})); })
-      .catch(()=>this.setState(st=>({behF:{...st.behF, busy:false, err:'Could not load behaviour analytics'}})));
-  }
-  setBehF(patch){ this.setState(st=>({behF:{...st.behF, ...patch}})); if(this._behT) clearTimeout(this._behT); this._behT=setTimeout(()=>this.loadBeh(), 0); }
-  // Trend range shortcut: last N days ending today.
-  setBehRange(days){ const d=new Date(), p=(n)=>String(n).padStart(2,'0'), iso=(x)=>x.getFullYear()+'-'+p(x.getMonth()+1)+'-'+p(x.getDate());
-    const from=new Date(d.getTime()-(days-1)*86400000); this.setBehF({from:iso(from), to:iso(d), day:''}); }
-  exportBeh(report){
-    const f=this.state.behF, d=this.state.behD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', camera:f.camera||'', kind:f.kind||'', verdict:f.verdict||''});
-    window.open(`${this.API}/behaviour/export?${qs}`, '_blank');
-  }
-  reviewBeh(item, verdict){
-    const note=window.prompt((verdict==='confirmed'?'Confirm behaviour event':'Clear as false alarm')+' — '+(item.reason||item.camera||'')+'\n\nOptional note:', '');
-    if(note===null) return;
-    this.setState({behMsg:'Saving review…'});
-    fetch(`${this.API}/behaviour/review`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-      body:JSON.stringify({id:item.id, verdict, note})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Review failed');
-        this.setState({behMsg:verdict==='confirmed'?'Confirmed ✓':'Cleared as false alarm ✓'}); this.loadBeh(); this.fetchFeed(); })
-      .catch(e=>this.setState({behMsg:'✗ '+(e&&e.message||'Review failed')}));
-  }
-  rescanBeh(){
-    this.setState({behMsg:'Re-scanning the last 7 days with the current thresholds…', appMsg:'Re-scanning…'});
-    fetch(`${this.API}/behaviour/rescan`, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({days:7})})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'Re-scan failed');
-        const m='Re-scan done — '+(d.created||0)+' derived event(s) ✓'; this.setState({behMsg:m, appMsg:m}); if(this.state.page==='behaviour') this.loadBeh(); })
-      .catch(e=>this.setState({behMsg:'✗ '+(e&&e.message||'Re-scan failed'), appMsg:'✗ '+(e&&e.message||'Re-scan failed')}));
-  }
-  // Settings → Behaviour Rules: local draft over the stored settings, saved through /api/settings.
-  behCfg(){ const s=((this.state.appCfg||{}).behaviour)||{}; return {enabled:true, cameras:[], locations:['Line 5'], group_min:2, dwell_min:3, idle_min:10, gap_sec:120, clean_items:['gloves','goggles'], ...s, ...(this.state.behDraft||{})}; }
-  behSet(patch){ this.setState(st=>({behDraft:{...(st.behDraft||{}), ...patch}})); }
-  behSave(){ const c=this.behCfg();
-    this.saveApp({beh_enabled:!!c.enabled, beh_cameras:c.cameras, beh_locations:c.locations, beh_group_min:c.group_min, beh_dwell_min:c.dwell_min,
-      beh_idle_min:c.idle_min, beh_gap_sec:c.gap_sec, beh_clean_items:c.clean_items}, 'Behaviour rules saved ✓');
-    this.setState({behDraft:null}); }
-  // Analytics → incident heatmap (/api/behaviour/heatmap)
-  loadHm(pick){
-    const f=this.state.hmF, seq=(this._hmSeq=(this._hmSeq||0)+1);
-    const qs=new URLSearchParams({token:this.TOK, days:String(f.days||7), module:f.module||'', sev:f.sev||''});
-    if(pick){ qs.set('pick', pick.type); qs.set('row', pick.row); qs.set('hour', String(pick.hour)); }
-    this.setState(st=>({hmF:{...st.hmF, busy:true, err:''}}));
-    fetch(`${this.API}/behaviour/heatmap?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(seq!==this._hmSeq) return; if(!(d&&d.ok)) throw new Error('bad');
-        this.setState(st=>({hmD:d, hmItems:pick?(d.items||[]):null, hmPick:pick||null, hmF:{...st.hmF, busy:false}})); })
-      .catch(()=>{ if(seq===this._hmSeq) this.setState(st=>({hmF:{...st.hmF, busy:false, err:'Could not load the heatmap'}})); });
-  }
-  setHmF(patch){ this.setState(st=>({hmF:{...st.hmF, ...patch}, hmPick:null, hmItems:null})); setTimeout(()=>this.loadHm(), 0); }
-  pickHm(type, row, hour, label){ const p=this.state.hmPick;
-    if(p && p.type===type && p.row===row && p.hour===hour){ this.setState({hmPick:null, hmItems:null}); return; }
-    this.loadHm({type, row, hour, label}); }
-
-  // ── Overview dashboard (/api/overview) ─────────────────────
-  // Stale responses (an older plant filter) are dropped via a sequence number.
-  loadOverview(){
-    const seq=(this._ovSeq=(this._ovSeq||0)+1);
-    this.setState({ovBusy:true, ovErr:''});
-    const qs=new URLSearchParams({token:this.TOK, plant:this.state.plant||''});
-    fetch(`${this.API}/overview?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(seq!==this._ovSeq) return; if(!(d&&d.ok)) throw new Error('bad'); this.setState({ov:d, ovBusy:false, ovErr:''}); })
-      .catch(()=>{ if(seq===this._ovSeq) this.setState({ovBusy:false, ovErr:'Could not load the overview'}); });
-  }
-  // Global plant filter (topbar select + sidebar PLANTS rows) — mirrored into
-  // every use-case page's own filter, then the current page reloads.
-  setPlant(p){
-    const plant=p||'';
-    this.setState(st=>({plant, reg:{...st.reg, plant}, ppeF:{...st.ppeF, plant}, raF:{...st.raF, plant},
-      clF:{...st.clF, plant}, fkF:{...st.fkF, plant}}));
-    setTimeout(()=>{ const pg=this.state.page;
-      if(pg==='overview') this.loadOverview();
-      if(pg==='attendance'||pg==='employees') this.loadRegister();
-      if(pg==='ppe') this.loadPpe();
-      if(pg==='intr') this.loadRa();
-      if(pg==='cleaning') this.loadCl();
-      if(pg==='forklift') this.loadFk();
-    }, 0);
-  }
-
-  // ── PPE compliance by area (/api/ppe/summary) ─────────────
-  loadPpe(){
-    const f=this.state.ppeF;
-    const qs=new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', plant:f.plant||'', location:f.location||'', camera:f.camera||'', item:f.item||''});
-    this.setState(st=>({ppeF:{...st.ppeF, busy:true, err:''}}));
-    fetch(`${this.API}/ppe/summary?${qs}`, {cache:'no-store'})
-      .then(x=>x.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error('bad'); this.setState(st=>({ppeD:d, ppeF:{...st.ppeF, busy:false}})); })
-      .catch(()=>this.setState(st=>({ppeF:{...st.ppeF, busy:false, err:'Could not load PPE compliance'}})));
-  }
-  setPpeF(patch){ this.setState(st=>({ppeF:{...st.ppeF, ...patch}})); if(this._ppeT) clearTimeout(this._ppeT); this._ppeT=setTimeout(()=>this.loadPpe(), 0); }
-  exportPpe(report){
-    const f=this.state.ppeF, d=this.state.ppeD||{};
-    const qs=new URLSearchParams({token:this.TOK, report, from:f.from||d.from||'', to:f.to||d.to||'', plant:f.plant||'', location:f.location||'', camera:f.camera||'', item:f.item||''});
-    window.open(`${this.API}/ppe/export?${qs}`, '_blank');
-  }
-  // Settings → PPE Area Rules: toggle one item for one location (saves immediately).
-  togglePpeRule(loc, item){
-    const cur={...(((this.state.appCfg||{}).ppe_rules)||{})};
-    const items=(cur[loc]||[]).slice(); const i=items.indexOf(item);
-    if(i>=0) items.splice(i,1); else items.push(item);
-    if(items.length) cur[loc]=items; else delete cur[loc];
-    this.saveApp({ppe_rules:cur}, items.length?('PPE rule saved for '+loc+' ✓'):('PPE rule removed for '+loc));
-  }
-  // Workstream B: HatsType values counted as "hair covered" by the hair-net proxy.
-  togglePpeHairHat(v){
-    const cur=((this.state.appCfg||{}).ppe_hair_hats||['Bonnet']).slice(); const i=cur.indexOf(v);
-    if(i>=0) cur.splice(i,1); else cur.push(v);
-    this.saveApp({ppe_hair_hats:cur.length?cur:['Bonnet']}, 'Hair-net proxy saved ✓');
-  }
-  // Workstream B: forklift operator PPE per zone, and the operator correlation window.
-  toggleFkOpPpe(key, item){
-    const z=(((this.state.appCfg||{}).fk_zones)||{})[key]||{};
-    const cur=(Array.isArray(z.op_ppe)?z.op_ppe:['helmet','vest']).slice(); const i=cur.indexOf(item);
-    if(i>=0) cur.splice(i,1); else cur.push(item);
-    this.saveFkZone(key, {op_ppe:cur});
-  }
-  setFkOpWindow(s){ this.saveApp({fk_operator_window:s}, 'Operator window set to ±'+s+' s ✓'); }
-
-  // ── Settings page (via /api/settings) ─────────────────────
-  loadApp(){ fetch(`${this.API}/settings?token=${this.TOK}`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ if(d&&d.ok) this.setState({appCfg:d.settings, appDraft:{}}); }).catch(()=>{}); }
-  setDraft(k,v){ this.setState(s=>({appDraft:{...s.appDraft, [k]:v}})); }
-  saveApp(patch, okMsg){
-    this.setState({appMsg:'Saving…'});
-    return fetch(`${this.API}/settings?token=${this.TOK}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)})
-      .then(r=>r.json()).then(d=>{
-        if(d&&d.ok){
-          if(d.rotated&&d.rotated.read_token){ this.setState({appMsg:'Read token rotated — reloading…'}); setTimeout(()=>location.reload(), 1200); return; }
-          this.setState({appMsg: okMsg||'Saved ✓'}); this.loadApp();
-        } else this.setState({appMsg:'Save failed'});
-        if(this._apT) clearTimeout(this._apT); this._apT=setTimeout(()=>this.setState({appMsg:''}), 3000);
-      }).catch(()=>this.setState({appMsg:'Save failed'})); }
-  regenToken(kind){
-    const warn = kind==='ingest'
-      ? 'Regenerate the INGEST token?\n\nEvery VisionAI policy Push URL must be updated afterwards or pushes will be rejected.'
-      : 'Regenerate the READ token?\n\nThe dashboard will reload with the new token.';
-    if(!window.confirm(warn)) return;
-    this.saveApp(kind==='ingest'?{regen_ingest:true}:{regen_read:true}, 'Token rotated ✓ — update VisionAI push URLs'); }
-  sendReportNow(){ this.setState({appMsg:'Sending report…'});
-    fetch(`${this.API}/report/run?token=${this.TOK}`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>this.setState({appMsg:(d&&d.ok)?'Report sent ✓ — check inbox':'Report failed — check SMTP / recipients'}))
-      .catch(()=>this.setState({appMsg:'Report failed'})); }
-
-  // ── Forecast page (via /api/forecast) ─────────────────────
-  loadForecast(){
-    if(this.state.fcBusy) return;
-    this.setState({fcBusy:true});
-    fetch(`${this.API}/forecast?token=${this.TOK}&days=${this.state.fcDays||14}`, {cache:'no-store'})
-      .then(r=>r.json()).then(d=>{ this.setState({fcBusy:false, fcData:(d&&d.ok)?d:null}); this.scheduleFcCharts(); })
-      .catch(()=>this.setState({fcBusy:false})); }
-  setFcDays(n){ this.setState({fcDays:n, fcData:null}); setTimeout(()=>this.loadForecast(), 0); }
-  scheduleFcCharts(){ if(this._fcT) clearTimeout(this._fcT); this._fcT=setTimeout(()=>this.drawFcCharts(), 90); }
-  drawFcCharts(){
-    if(this.state.page!=='forecast' || !window.Highcharts) return;
-    const fd=this.state.fcData; if(!fd||!fd.forecast) return;
-    const f=fd.forecast, ag=fd.agg;
-    const dark=this.state.theme==='dark';
-    const BLUE=dark?'#3987e5':'#2a78d6', ORANGE=dark?'#d95926':'#eb6834';
-    const host=document.querySelector('[data-theme]')||document.documentElement;
-    const css=getComputedStyle(host);
-    const cv=(n,fb)=>((css.getPropertyValue(n)||'').trim()||fb);
-    const text=cv('--text','#E9ECF6'), text2=cv('--text2','#9AA1BD'), muted=cv('--text3','#616989'), line=cv('--line','#232847');
-    const base={
-      chart:{backgroundColor:'transparent', style:{fontFamily:"'IBM Plex Sans',system-ui,sans-serif"}, spacing:[8,4,4,4]},
-      title:{text:undefined}, credits:{enabled:false}, exporting:{enabled:false},
-      legend:{itemStyle:{color:text2, fontSize:'10.5px'}, itemHoverStyle:{color:text}},
-      xAxis:{labels:{style:{color:muted, fontSize:'10px'}}, lineColor:line, tickColor:line},
-      yAxis:{title:{text:null}, labels:{style:{color:muted, fontSize:'10px'}}, gridLineColor:line, allowDecimals:false},
-      tooltip:{backgroundColor:dark?'#1A1F3D':'#ffffff', borderColor:line, style:{color:text}, shared:true},
-    };
-    this._hc=this._hc||{};
-    const mk=(id,cfg)=>{ const el=document.getElementById(id); if(!el) return;
-      if(this._hc[id]){ try{ this._hc[id].destroy(); }catch(e){} }
-      this._hc[id]=Highcharts.chart(el, Highcharts.merge({}, base, cfg)); };
-    // Daily history + dashed 7-day prediction (forecast band shaded).
-    const histDays=ag.daily.map(d=>d.day.slice(5));
-    const predDays=f.next7.map(d=>d.day.slice(5));
-    const histData=ag.daily.map(d=>d.total);
-    const n=histData.length;
-    const histSeries=histData.concat(new Array(predDays.length).fill(null));
-    const predSeries=new Array(Math.max(0,n-1)).fill(null).concat([histData[n-1]]).concat(f.next7.map(d=>d.predicted));
-    mk('fcTrend',{chart:{type:'spline', height:250},
-      xAxis:{categories:histDays.concat(predDays), tickInterval:Math.max(1, Math.floor((n+7)/10)),
-        plotBands:[{from:n-0.5, to:n+6.5, color:dark?'rgba(217,89,38,.07)':'rgba(235,104,52,.07)',
-          label:{text:'FORECAST', style:{color:muted, fontSize:'9px', fontWeight:'700'}}}]},
-      plotOptions:{spline:{marker:{enabled:false}, lineWidth:2}},
-      series:[{name:'Detections / day', data:histSeries, color:BLUE},
-              {name:'Predicted', data:predSeries, color:ORANGE, dashStyle:'Dash'}]});
-    // Hour-of-day profile + expected next 24h.
-    const hrs=[...Array(24)].map((_,i)=>String(i).padStart(2,'0'));
-    mk('fcHours',{chart:{height:250}, xAxis:{categories:hrs, tickInterval:3},
-      plotOptions:{column:{borderWidth:0, borderRadius:3}},
-      series:[{type:'column', name:'Observed (window)', data:ag.hours, color:BLUE},
-              {type:'spline', name:'Expected next 24h', data:f.next24, color:ORANGE, dashStyle:'Dash', marker:{enabled:false}, lineWidth:2}]});
-  }
 
   ago(ts){ const d=Math.max(0,Math.floor((this.state.now-ts)/1000)); if(d<60)return d+'s ago'; const m=Math.floor(d/60); if(m<60)return m+'m ago'; return Math.floor(m/60)+'h ago'; }
   // VisionAI sends the face-match score as a 0…1 float (0.9551 = 95.5 %).
@@ -2184,142 +1148,6 @@ class Component extends DCLogic {
       .then(r=>r.json().then(d=>{ if(!r.ok||!(d&&d.ok)) throw new Error((d&&d.error)||('HTTP '+r.status)); return d; }));
   }
   wsdBytes(n){ n=+n||0; const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024&&i<u.length-1){ n/=1024; i++; } return (i?n.toFixed(n<10?2:1):n)+' '+u[i]; }
-  // ── AI Performance page (/api/aiperf/*) ──
-  aipQs(extra){ const f=this.state.aipF;
-    return new URLSearchParams({token:this.TOK, from:f.from||'', to:f.to||'', module:f.module||'', camera:f.camera||'', plant:f.plant||'', ...(extra||{})}); }
-  loadAip(){
-    this.setState(st=>({aipF:{...st.aipF, busy:true, err:''}}));
-    fetch(`${this.API}/aiperf/summary?${this.aipQs()}`, {cache:'no-store'}).then(r=>r.json())
-      .then(d=>{ if(!(d&&d.ok)) throw new Error((d&&d.error)||'bad'); this.setState(st=>({aipD:d, aipF:{...st.aipF, busy:false}})); })
-      .catch(e=>this.setState(st=>({aipF:{...st.aipF, busy:false, err:'Could not load AI performance data'+(e&&e.message&&e.message!=='bad'?' — '+e.message:'')}})));
-  }
-  setAipF(patch){ this.setState(st=>({aipF:{...st.aipF, ...patch}})); if(this._aipT) clearTimeout(this._aipT); this._aipT=setTimeout(()=>this.loadAip(), 0); }
-  exportAip(kind){ window.open(`${this.API}/aiperf/${kind}?${this.aipQs()}`, '_blank'); }
-  aipVerify(item, verdict){
-    this.setState({aipMsg:'Saving…'});
-    this.wsdPost('/aiperf/verify', {uuid:item.uuid, verdict})
-      .then(()=>{ this.setState({aipMsg:verdict==='correct'?'Recorded as correct (TP) ✓':'Recorded as false alarm (FP) ✓'}); this.loadAip(); })
-      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
-  }
-  aipSetMiss(patch){ this.setState(st=>({aipMiss:{...st.aipMiss, ...patch}})); }
-  aipLogMiss(){
-    const m=this.state.aipMiss;
-    if(!m.camera){ this.setState({aipMsg:'✗ Pick the camera where the detection was missed'}); return; }
-    this.setState({aipMsg:'Logging missed detection…'});
-    this.wsdPost('/aiperf/missed', {module:m.module, camera:m.camera, time:m.time||'', note:m.note||''})
-      .then(()=>{ this.setState(st=>({aipMsg:'Missed detection logged (FN) ✓', aipMiss:{...st.aipMiss, note:'', time:''}})); this.loadAip(); })
-      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
-  }
-  aipDelMiss(m){
-    if(!window.confirm('Remove this missed-detection record?\n\n'+(m.label||'')+' · '+(m.cameraName||'')+' · '+(m.time||''))) return;
-    this.wsdPost('/aiperf/missed', {delete:m.id}).then(()=>{ this.setState({aipMsg:'Removed ✓'}); this.loadAip(); })
-      .catch(e=>this.setState({aipMsg:'✗ '+e.message}));
-  }
-  // ── POC Scorecard (/api/poc/*) ──
-  loadPoc(){
-    this.setState({pocBusy:true});
-    this.wsdGet('/poc/scorecard').then(d=>this.setState({pocD:d, pocBusy:false}))
-      .catch(e=>this.setState({pocBusy:false, pocMsg:'✗ Could not load the scorecard — '+e.message}));
-  }
-  pocSet(kind, key, field, val){
-    this.setState(st=>{ const d=st.pocDraft;
-      if(kind==='report') return {pocDraft:{...d, report:{...d.report, [field]:val}}, pocMsg:''};
-      const grp={...(d[kind]||{})}; grp[key]={...(grp[key]||{}), [field]:val};
-      return {pocDraft:{...d, [kind]:grp}, pocMsg:''}; });
-  }
-  pocDirtyCount(){ const d=this.state.pocDraft; return Object.keys(d.criteria).length+Object.keys(d.tests).length+(Object.keys(d.report).length?1:0); }
-  pocSave(){
-    if(!this.pocDirtyCount()){ this.setState({pocMsg:'Nothing to save'}); return; }
-    this.setState({pocMsg:'Saving scorecard…'});
-    this.wsdPost('/poc/scorecard', this.state.pocDraft)
-      .then(()=>{ this.setState({pocDraft:{criteria:{}, tests:{}, report:{}}, pocMsg:'Scorecard saved ✓'}); this.loadPoc(); })
-      .catch(e=>this.setState({pocMsg:'✗ '+e.message}));
-  }
-  pocExport(sheet){ window.open(`${this.API}/poc/export?token=${encodeURIComponent(this.TOK)}&sheet=${sheet}`, '_blank'); }
-  pocPrint(){
-    if(this.pocDirtyCount()) this.setState({pocMsg:'Unsaved changes are included in the printout — save them too'});
-    this.setState({pocTab:'report'});
-    setTimeout(()=>{ try{ document.body.classList.add('ppx-printing'); window.print(); }catch(e){}
-      setTimeout(()=>{ try{ document.body.classList.remove('ppx-printing'); }catch(e){} }, 600); }, 250);
-  }
-  pocOpenDoc(name){
-    if(this.state.pocDoc&&this.state.pocDoc.name===name){ this.setState({pocDoc:null}); return; }
-    this.setState({pocDoc:{name, file:'', md:'Loading…'}});
-    this.wsdGet('/poc/doc?name='+encodeURIComponent(name)).then(d=>this.setState({pocDoc:{name, file:d.file, md:d.markdown}}))
-      .catch(e=>this.setState({pocDoc:{name, file:'', md:'Could not load: '+e.message}}));
-  }
-  // ── Settings: integrations, retention, model thresholds, network test ──
-  wsdLoadSettings(){ this.loadInt(); this.loadRet(); this.loadTh(); }
-  loadInt(){ this.wsdGet('/integration/config').then(d=>this.setState({intD:d, intHooks:null})).catch(e=>this.setState({intMsg:'✗ '+e.message})); }
-  intRegen(){
-    const has=!!(this.state.intD&&this.state.intD.settings&&this.state.intD.settings.has_key);
-    if(has && !window.confirm('Rotate the integration API key?\n\nHRMS / MES systems using the current key stop working until they are given the new one.')) return;
-    this.setState({intMsg:'Generating key…'});
-    this.wsdPost('/integration/config', {regen_key:true})
-      .then(d=>this.setState(st=>({intNewKey:d.new_key||'', intD:{...(st.intD||{}), settings:d.settings}, intMsg:'New key generated — copy it now, it is shown only once ✓'})))
-      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
-  }
-  intRevoke(){
-    if(!window.confirm('Revoke the integration API key? The integration API is disabled until a new key is generated.')) return;
-    this.wsdPost('/integration/config', {revoke_key:true})
-      .then(d=>this.setState(st=>({intNewKey:'', intD:{...(st.intD||{}), settings:d.settings}, intMsg:'Key revoked ✓'})))
-      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
-  }
-  intHookList(){ const st=this.state; if(st.intHooks) return st.intHooks;
-    return ((st.intD&&st.intD.settings&&st.intD.settings.webhooks)||[]).map(h=>({...h, events:[...(h.events||[])]})); }
-  intHookSet(i, patch){ const l=this.intHookList().map(h=>({...h})); l[i]={...l[i], ...patch}; this.setState({intHooks:l, intMsg:''}); }
-  intHookAdd(){ const l=this.intHookList(); if(l.length>=10) return;
-    this.setState({intHooks:[...l, {id:'', url:'', secret:'', events:['incident','attendance'], enabled:true}], intMsg:''}); }
-  intHookRemove(i){ this.setState({intHooks:this.intHookList().filter((_,j)=>j!==i), intMsg:'Removed — save to apply'}); }
-  intHookEvent(i, ev){ const h=this.intHookList()[i]; const e=h.events.indexOf(ev)>=0?h.events.filter(x=>x!==ev):[...h.events, ev]; this.intHookSet(i, {events:e}); }
-  intSaveHooks(){
-    const l=this.intHookList(), bad=l.find(h=>!/^https?:\/\/\S+$/i.test(String(h.url||'').trim()));
-    if(bad){ this.setState({intMsg:'✗ Every webhook needs an http(s) URL'}); return; }
-    this.setState({intMsg:'Saving webhooks…'});
-    this.wsdPost('/integration/config', {webhooks:l})
-      .then(d=>this.setState(st=>({intD:{...(st.intD||{}), settings:d.settings}, intHooks:null, intMsg:'Webhooks saved ✓'})))
-      .catch(e=>this.setState({intMsg:'✗ '+e.message}));
-  }
-  intTest(h){
-    if(!h.id){ this.setState({intMsg:'✗ Save the webhook first, then send a test'}); return; }
-    this.setState({intMsg:'Sending test webhook…'});
-    this.wsdPost('/integration/test', {id:h.id})
-      .then(d=>{ this.setState({intMsg:'Test delivered ✓ HTTP '+d.code+' in '+d.ms+' ms'}); this.loadInt(); })
-      .catch(e=>{ this.setState({intMsg:'✗ Test failed — '+e.message}); this.loadInt(); });
-  }
-  loadRet(){ this.wsdGet('/retention').then(d=>this.setState({retD:d})).catch(e=>this.setState({retMsg:'✗ '+e.message})); }
-  retSave(days){
-    this.setState({retMsg:'Saving…', retDays:days});
-    this.wsdPost('/retention', {retention_days:days})
-      .then(d=>this.setState(st=>({retD:{...(st.retD||{}), storage:d.storage}, retDays:null, retMsg:'Retention set to '+(days?days+' days':'keep forever')+' ✓'})))
-      .catch(e=>this.setState({retDays:null, retMsg:'✗ '+e.message}));
-  }
-  retPurge(){
-    const due=this.state.retD&&this.state.retD.due;
-    if(!window.confirm('Purge now?\n\n'+((due&&due.events)||0)+' events older than the retention window (and their PPE / zone rows, incident log and ticket attachments) are deleted permanently.')) return;
-    this.setState({retMsg:'Purging…'});
-    this.wsdPost('/retention', {purge_now:true})
-      .then(d=>{ this.setState({retMsg:'Purged '+((d.purge&&d.purge.events)||0)+' events ✓'}); this.loadRet(); })
-      .catch(e=>this.setState({retMsg:'✗ '+e.message}));
-  }
-  runNetTest(stream){
-    this.setState({netBusy:true, netMsg:stream?('Testing '+stream+'…'):'Running network test — up to ~50 s…'});
-    this.wsdPost('/live/nettest', stream?{stream}:{})
-      .then(d=>{ if(stream && this.state.netD){
-          const rows=(this.state.netD.rows||[]).map(r=>r.name===stream?(d.rows[0]||r):r);
-          this.setState(st=>({netD:{...st.netD, rows}, netBusy:false, netMsg:'Re-tested '+stream+' ✓'})); }
-        else this.setState({netD:d, netBusy:false, netMsg:'Network test finished ✓'}); })
-      .catch(e=>this.setState({netBusy:false, netMsg:'✗ '+e.message}));
-  }
-  loadTh(){ this.wsdGet('/aiperf/thresholds').then(d=>this.setState({aiTh:{face:String(d.face_min_similarity), ppe:String(d.ppe_min_conf)}})).catch(()=>{}); }
-  aiThSave(){
-    const t=this.state.aiTh||{}, f=parseFloat(t.face), p=parseFloat(t.ppe);
-    if(!(f>=0&&f<=100) || !(p>=0&&p<=100)){ this.setState({aiThMsg:'✗ Thresholds are percentages 0–100 (0 = off)'}); return; }
-    this.setState({aiThMsg:'Saving…'});
-    this.wsdPost('/aiperf/thresholds', {face_min_similarity:f, ppe_min_conf:p})
-      .then(d=>this.setState({aiTh:{face:String(d.face_min_similarity), ppe:String(d.ppe_min_conf)}, aiThMsg:'Thresholds saved — applied to new detections ✓'}))
-      .catch(e=>this.setState({aiThMsg:'✗ '+e.message}));
-  }
 
   // Bindings for the Workstream D pages / settings tabs (spread into renderVals).
   wsdVals(){
@@ -2518,38 +1346,9 @@ class Component extends DCLogic {
     };
   }
 
-  mvVals(){
-    const st=this.state, d=st.mv||{}, k=d.kpi||{};
-    const fmtT=(t)=>String(t||'').slice(11,16), fmtD=(t)=>{ const x=new Date(String(t||'').replace(' ','T'));
-      return isNaN(x)?String(t||'').slice(0,10):x.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); };
-    const gap=(m)=>m==null?'—':(m<1?'< 1 min':(m<60?m+' min':(Math.floor(m/60)+' h '+(m%60)+' min')));
-    const routes=Array.isArray(d.routes)?d.routes:[], rMax=Math.max(1, ...routes.map(r=>r.n||0));
-    const rows=(Array.isArray(d.moves)?d.moves:[]).map(m=>({time:fmtT(m.arrivedAt), date:fmtD(m.arrivedAt),
-      name:m.name||('#'+m.personId), staff:[m.staffId, m.department].filter(Boolean).join(' · ')||'—',
-      from:m.from, fromSub:(m.fromCamera&&m.fromCamera!==m.from)?m.fromCamera:'left '+fmtT(m.leftAt),
-      to:m.to, toSub:(m.toCamera&&m.toCamera!==m.to)?m.toCamera:'arrived '+fmtT(m.arrivedAt), gap:gap(m.gapMin)}));
-    const top=routes[0];
-    return {
-      isMovement:st.page==='movement', mvFrom:st.mvFrom||'', mvTo:st.mvTo||'', mvQ:st.mvQ||'',
-      onMvFrom:(e)=>this.loadMv({from:e.target.value}), onMvTo:(e)=>this.loadMv({to:e.target.value}),
-      onMvQ:(e)=>{ const v=e.target.value; this.setState({mvQ:v}); clearTimeout(this._mvT); this._mvT=setTimeout(()=>this.loadMv({q:v}), 400); },
-      mvUnknownCls:st.mvUnknown?'chip on':'chip', toggleMvUnknown:()=>this.loadMv({unknown:!st.mvUnknown}), reloadMv:()=>this.loadMv(),
-      mvStatus:st.mvBusy?'Loading…':(st.mvErr||(d.truncated?'Showing the latest 500 moves':'')),
-      mvKpis:[
-        {label:'Camera-to-camera moves', value:String(k.moves||0), col:'var(--brand)', sub:(d.from&&d.to)?(d.from+' → '+d.to):'Selected range'},
-        {label:'People moving', value:String(k.people||0), col:'var(--text)', sub:'with at least one move'},
-        {label:'Cameras involved', value:String(k.cameras||0), col:'var(--text)', sub:(k.visits||0)+' camera visits'},
-        {label:'Most common route', value:top?String(top.n):'—', col:'var(--ok)', sub:top?(top.from+' → '+top.to):'No moves yet'},
-      ],
-      mvHasRoutes:routes.length>0, mvRoutes:routes.map(r=>({label:r.from+' → '+r.to, n:r.n, w:Math.max(4, Math.round(100*r.n/rMax))+'%'})),
-      mvRows:rows, mvEmpty:!st.mvBusy && rows.length===0,
-      mvEmptyText:'No camera-to-camera movement in this range. Moves appear when the same person is recognised at two different cameras.',
-    };
-  }
   renderVals(){
     if(['sense','live','api','ai'].indexOf(this.state.spTab)<0) this.state.spTab='sense';   // only these Settings tabs exist
     const st=this.state;
-    const showBoxes = this.props.showOverlays !== false;
     const d=new Date(st.now);
     const pad=n=>String(n).padStart(2,'0');
     const clock=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -2557,17 +1356,6 @@ class Component extends DCLogic {
     const dateLong=d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 
     const openCount = st.events.filter(e=>e.status==='open').length;
-
-    // KPIs
-    const camsTotalN = st.live.camsTotal!=null ? st.live.camsTotal : this.camPool.length;
-    const camsN = st.live.camsOnline!=null ? st.live.camsOnline : camsTotalN;
-    const openHr = st.live.openHour!=null ? st.live.openHour : 0;
-    const kpis=[
-      {label:'Active Incidents', value:String(openCount), unit:'open', tone:'var(--crit)', valTone:'var(--text)', delta:openHr+' in last hour', deltaTone:'var(--crit)', onClick:()=>this.openModal('incidents'), hint:'View incident log'},
-      {label:'Cameras Online', value:String(camsN), unit:'live', tone:'var(--ok)', valTone:'var(--text)', delta:camsTotalN+' VisionAI streams', deltaTone:'var(--text3)', onClick:()=>this.openModal('cameras'), hint:'View & add cameras'},
-      {label:'Inference Load', value:String(st.infLoad), unit:'%', tone:'var(--gold)', valTone:'var(--gold)', delta:'GPU · click for graph', deltaTone:'var(--text3)', onClick:()=>this.openModal('gpu'), hint:'GPU utilization graph'},
-      {label:'Avg Time to Ack', value:(st.live.avgAck||'—'), unit:'min', tone:'var(--low)', valTone:'var(--text)', delta:'recorded response time', deltaTone:'var(--ok)', onClick:()=>this.openModal('incidents'), hint:'Incident log'},
-    ];
 
     // Filters
     const fdefs=[['all','All'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift'],['behaviour','Behaviour']];
@@ -2579,104 +1367,10 @@ class Component extends DCLogic {
         border: active?'var(--brand)':'var(--line)'};
     });
 
-    // Cameras — the registered fleet, scaled with grid density
-    const cols=st.gridCols;
     const livePool=this.livePool();
-    const shownCount=Math.min(cols*cols, livePool.length);
-    const compact=cols>=3;
-    // Live video straight in the tile when the go2rtc bridge is configured.
-    const _liveTok = st.liveToken ? ('&token='+encodeURIComponent(st.liveToken)) : '';
-    // Cameras that resolve to the same RTSP URL are one physical feed: the
-    // first tile pulls it, the rest mirror that tile's decoded frames, so the
-    // browser holds one connection and decodes one video instead of N.
-    const _primary = {};
-    const cameras=livePool.slice(0, cols*cols).map(c=>{
-      const m=this.MODS[c.mod]||this.MODS.intr;
-      const on=c.online!==false;
-      const vsrc = (c.stream && on) ? this.videoSrc(c.stream) : '';   // direct HLS or bridge MP4
-      const rkey=String(c.rtsp||'').trim().toLowerCase();
-      let mirrorOf='';
-      if(rkey && vsrc){
-        if(_primary[rkey] && _primary[rkey]!==c.stream) mirrorOf=_primary[rkey];
-        else _primary[rkey]=c.stream;
-      }
-      const match=true;   // module filter removed: every camera at full brightness
-      const dim = match?(on?1:0.62):0.34;
-      const vch=this.vChip(c.stream || String(c.id).toLowerCase(), !!vsrc);   // CONNECTING… / BUFFERING / STREAM ERROR
-      return {
-        id:c.id, name:c.name, zone:c.zone, res:c.res, fps:c.fps, scene:c.scene, dim,
-        liveLabel: on?'LIVE':'OFFLINE', liveCol: on?'var(--crit)':'var(--text3)',
-        liveAnim: on?'blink 1.6s infinite':'none',
-        hasVideo: !!vsrc, videoUrl: vsrc,
-        camKey: c.stream || String(c.id).toLowerCase(), mirrorOf,
-        hasLbChip: vch.has, lbChip: vch.text, lbChipCol: vch.col,
-        showPlaceholder: !c.img,
-        placeholder: !on ? 'CAMERA OFFLINE' : (this.notOnBridge(c.stream) ? 'NOT ON LIVE BRIDGE' : (vsrc?'CONNECTING TO STREAM…':(this.hasStill(c.stream)?'LOADING CAMERA SNAPSHOT…':'NO STREAM BRIDGE CONFIGURED'))),
-        tag:m.tag, tagBg:m.tagBg, canExpand: !!c.img,
-        onOpen: ()=>this.openCamera(c.stream||String(c.id).toLowerCase()),
-        showMeta: !compact, showBoxLabel: cols<=3, nameSize: compact?'11px':'12px',
-        // Expire boxes a few seconds after their event so they don't sit at a
-        // stale position over the live video once the target has moved on.
-        boxes: (showBoxes && Array.isArray(c.boxes)) ? c.boxes
-          .filter(b=>!b.ts || (st.now+(this._skew||0))-b.ts<=3000)
-          .map(b=>({top:b.top,left:b.left,w:b.w,h:b.h,label:b.label,col:this.SEV[b.sev],glow:this.SEV[b.sev]})) : [],
-      };
-    });
-    const gridOpts=[[2,'2×2','4-up view'],[3,'3×3','9-up view'],[4,'4×4','16-up wall']].map(([n,label,title])=>{
-      const active=cols===n;
-      return {label, title, onClick:()=>this.setGrid(n),
-        bg: active?'var(--brand)':'transparent', color: active?'#fff':'var(--text2)'};
-    });
 
-    // Events
-    // Live Events rail — event-type filter (dropdown in the rail header).
-    const evType=st.evType||'all';
-    const evTypeSel={value:evType, onChange:(ev)=>this.setState({evType:(ev&&ev.target)?ev.target.value:'all'}),
-      options:[['all','All types'],['fire','Fire'],['ppe','PPE'],['intr','Intrusion'],['face','Face'],['forklift','Forklift'],['behaviour','Behaviour']].map(([v,label])=>({v,label}))};
-    const events=st.events.filter(e=>evType==='all'||e.mod===evType).map(e=>{
-      const m=this.MODS[e.mod];
-      const sel=st.selectedId===e.id;
-      // Enrolled face → show who it is, how sure the engine was, and the photo
-      // on file next to the capture so the operator can eyeball the match.
-      const evProf=((st.people&&st.people.profiles)||{})[e.personId||''];
-      const refImg=(evProf&&evProf.photo)||e.imageMatch||'';
-      const mp=this.matchPct(e.similarity);
-      return {
-        tag:m.tag, tagBg:m.tagBg, sev:e.sev, sevColor:this.SEV[e.sev],
-        title:((evProf&&evProf.name)? ('Face match — '+evProf.name) : e.title),
-        camera:e.camera, zone:e.zone, ago:this.ago(e.ts), assignee:e.assignee,
-        hasMatch: !!(refImg||mp!=null) && (e.mod==='face'||e.feed==='face'),
-        matchName:(evProf&&evProf.name)||e.person||('Person #'+(e.personId||'—')),
-        matchPct: mp==null?'—':(mp+'%'), matchCol:this.matchCol(e.similarity),
-        hasRef: !!refImg, refBg: refImg?("url('"+refImg+"') center/cover no-repeat"):'',
-        onExpandRef:(ev)=>{ if(ev&&ev.stopPropagation)ev.stopPropagation(); if(refImg) this.openLightbox(refImg,
-          ((evProf&&evProf.name)||'Person #'+(e.personId||''))+' · profile photo on file'); },
-        isOpen:e.status==='open', isAck:e.status==='ack', isResolved:e.status==='resolved',
-        op: e.status==='resolved'?0.55:1,
-        cardBg: sel?'var(--bg4)':'var(--bg3)',
-        cardBorder: sel?'var(--line2)':'var(--line)',
-        hasImg: !!e.image, thumbBg: e.image?("url('"+e.image+"') center/cover no-repeat"):'',
-        remark: e.remark||'', hasRemark: !!e.remark,
-        onExpand:(ev)=>{ if(ev&&ev.stopPropagation)ev.stopPropagation(); if(e.image) this.openLightbox(e.image, e.title); },
-        onSelect:()=>this.select(e.id),
-        onOpen:()=>this.openModal('event', e),
-        onAck:(ev)=>this.ack(e.id,ev),
-        onResolve:(ev)=>this.resolve(e.id,ev),
-        onAssign:(ev)=>this.assign(e.id,ev),
-      };
-    });
-
-    // Chart bars — 24 stacked, from the live hourly trend (fire/ppe/intr/face)
+    // Analytics 7 / 30 day range (legacy analytics bindings below)
     const _ar = (st.aRange!=='24h' && st.aRangeD) ? st.aRangeD : null;   // Analytics 7 / 30 day range
-    const trend = _ar ? _ar.hourly : (st.trend && st.trend.length===24) ? st.trend
-                : Array.from({length:24},()=>({fire:0,ppe:0,intr:0,face:0}));
-    const totals = trend.map(b=>(b.fire||0)+(b.ppe||0)+(b.intr||0)+(b.face||0));
-    const maxT = Math.max(1, ...totals);
-    const trendTotal = totals.reduce((a,b)=>a+b,0);
-    const bars = trend.map(b=>{
-      const s = 100/maxT;
-      return { h1:((b.fire||0)*s)+'%', h2:((b.ppe||0)*s)+'%', h3:((b.intr||0)*s)+'%', h4:((b.face||0)*s)+'%' };
-    });
 
     // ===== NAV =====
     // Sidebar items highlight by group: Cameras = live/cameras/camera, Reports =
@@ -2739,8 +1433,9 @@ class Component extends DCLogic {
     const isDet=!!modMeta[st.page];
     const dm = isDet ? modMeta[st.page] : null;
     const _camName = st.page==='camera' ? ((((st.fleet||[]).find(f=>f.stream===st.camSel)||{}).name) || st.camSel || 'Camera') : '';
-    const pageTitle = st.page==='camera' ? _camName : (titles[st.page] ? titles[st.page][0] : (isDet ? dm.name : '—'));
-    const pageSub = st.page==='camera' ? 'Live stream · VisionAI device configuration' : (titles[st.page] ? titles[st.page][1] : (isDet ? dm.desc : ''));
+    const _kjT = (String(st.page).indexOf('kj:')===0 && st.kjTitle) ? st.kjTitle : null;   // module-rendered page (KJPages host)
+    const pageTitle = st.page==='camera' ? _camName : (titles[st.page] ? titles[st.page][0] : (isDet ? dm.name : (_kjT ? _kjT[0] : '—')));
+    const pageSub = st.page==='camera' ? 'Live stream · VisionAI device configuration' : (titles[st.page] ? titles[st.page][1] : (isDet ? dm.desc : (_kjT ? _kjT[1] : '')));
 
     // ===== INCIDENTS =====
     const statusMeta={open:{label:'Open',col:'var(--crit)'},ack:{label:'Acknowledged',col:'var(--low)'},resolved:{label:'Resolved',col:'var(--ok)'}};
@@ -3724,7 +2419,7 @@ class Component extends DCLogic {
     // SenseStudio-decoded ones (gender, age band, mask).
     const attrTxt=(a)=>{ if(!a) return ''; const age=a.age==null?'':(typeof a.age==='number'?('~'+a.age+' yrs'):String(a.age));
       return [a.gender, age, a.expression, a.mask].filter(Boolean).join(' · '); };
-    const attRows=attKnown.map(r=>({
+    const attRows=attKnown.map(r=>({ kjm:r.personId?('person:'+encodeURIComponent(r.personId)):'',
       photoBg: r.photo?`url('${r.photo}') center/cover no-repeat`:(r.lastImage?`url('${r.lastImage}') center/cover no-repeat`:grad),
       name:r.name||'—',
       staff:r.staffId?('Staff ID '+r.staffId):('#'+r.personId),
@@ -3820,6 +2515,7 @@ class Component extends DCLogic {
       return {
         photoBg:r.photo?`url('${r.photo}') center/cover no-repeat`:grad,
         name:r.name||'—', staff:r.staffId?('Staff ID '+r.staffId):'',
+        kjm:r.personId?('attendance-day:'+(regD.date||this.todayStr())+'@'+encodeURIComponent(r.personId)):'',
         org:[r.department].filter(Boolean).join(' · ')||'—',
         shift:r.shift+' '+r.shiftStart+'–'+r.shiftEnd,
         clockIn:hm(r.clockIn), inLoc:r.clockIn?((r.clockInLoc||'')+(r.clockInSrc==='kiosk'?' · kiosk':'')):'',
@@ -3830,7 +2526,7 @@ class Component extends DCLogic {
         route:(r.plants||[]).join(' → '),
         onJourney:()=>this.openJourney({personId:r.personId, name:r.name, staffId:r.staffId, photo:r.photo}),
       }; });
-    const regRecent=(regD.recent||[]).slice(0,14).map(e=>({
+    const regRecent=(regD.recent||[]).slice(0,14).map(e=>({ kjm:e.personId?('person:'+encodeURIComponent(e.personId)):'',
       time:hm(e.time), who:e.known?(e.name+(e.staffId?(' · '+e.staffId):'')):('Unknown #'+e.personId),
       whoCol:e.known?'var(--text)':'var(--high)',
       where:[e.location].filter(Boolean).join(' · ')+' · '+(e.source==='kiosk'?'kiosk':'CCTV'),
@@ -3844,29 +2540,7 @@ class Component extends DCLogic {
     const regEmpty=!!regD.date && !reg.busy && regRows.length===0;
     const regSummary=regD.date?((regD.enrolled||0)+' employee profiles · '+((regD.kpi&&regD.kpi.unknown)||0)+' unknown faces seen today'):'';
 
-    // Employees directory (person_profiles = employee records)
-    const profs=Object.values((st.people&&st.people.profiles)||{});
-    const eq=(st.empQ||'').trim().toLowerCase();
-    const SYNC={synced:['SYNCED','var(--ok)'], partial:['PARTIAL','var(--gold)'], failed:['FAILED','var(--crit)'], inactive:['DEACTIVATED','var(--text3)']};
-    const shiftName=(id)=>{ const s=(regD.shifts||[]).find(x=>x.id===id)||(regD.shifts||[])[0]; return s?(s.name+' '+s.start+'–'+s.end):'Default'; };
-    const empRows=profs
-      .filter(p=>(!reg.plant||p.plant===reg.plant) && (!reg.dept||p.department===reg.dept)
-        && (!eq || (p.name+' '+(p.staffId||'')).toLowerCase().indexOf(eq)>=0))
-      .sort((a,b)=>String(a.name).localeCompare(String(b.name)))
-      .map(p=>{ const s=SYNC[p.ssSync]||['NOT SYNCED','var(--text3)'];
-        return {
-          photoBg:p.photo?`url('${p.photo}') center/cover no-repeat`:grad,
-          name:p.name, staff:p.staffId||'— no staff ID',
-          dept:p.department||'—', plant:p.plant||'—', shift:shiftName(p.shift),
-          active:p.active!==false?'Active':'Inactive', activeCol:p.active!==false?'var(--ok)':'var(--text3)',
-          sync:s[0], syncCol:s[1], syncTip:p.ssError||(p.ssUid?('SenseStudio uid '+p.ssUid+(p.ssSynced?(' · '+p.ssSynced):'')):'Not in the SenseStudio library yet'),
-          onEdit:()=>this.openProfile({personId:p.personId, image:p.photo}),
-          onSync:()=>this.syncEmployee(p.personId),
-          onJourney:()=>this.openJourney({personId:p.personId, name:p.name, staffId:p.staffId, photo:p.photo}),
-          onDelete:()=>this.removeProfile(p),
-        }; });
-    const empCount=profs.length+' employee'+(profs.length===1?'':'s');
-
+    const profs=Object.values((st.people&&st.people.profiles)||{});   // employee records (person_profiles)
     // Reports
     const rp=st.rep, today=this.todayStr();
     const repPersonSel={value:rp.person, onChange:(e)=>this.setState(s=>({rep:{...s.rep, person:(e&&e.target)?e.target.value:''}})),
@@ -4222,12 +2896,12 @@ class Component extends DCLogic {
     const fkD2=cntDelta(ofk.violationsToday, ofk.violationsYesterday!=null?ofk.violationsYesterday:ofk.yesterday, 'vs. yesterday');
     const ovLoading=st.ovBusy && !st.ov;
     const ovKpi={
-      emp:{value:fmtN(eTot), delta:ovLoading?'Loading…':('+'+N(oe.newThisMonth)+' this month'), col:ovLoading?'var(--text3)':'var(--ok)', onClick:()=>this.setPage('employees')},
-      pres:{value:fmtN(eIn), delta:presentPct+'% attendance', col:'var(--text2)', onClick:()=>this.setPage('attendance')},
-      ppe:{value:fmtN(opp.today), delta:ppeD.delta, col:ppeD.col, onClick:()=>this.setPage('ppe')},
-      ra:{value:fmtN(ora.today), delta:raD2.delta, col:raD2.col, onClick:()=>this.setPage('intr')},
-      cl:{value:clPct==null?'—':(clPct+'%'), delta:clDone+' of '+clSess+' done today', col:clPct==null?'var(--text3)':(clPct>=90?'var(--ok)':(clPct>=60?'var(--gold)':'var(--crit)')), onClick:()=>this.setPage('cleaning')},
-      fk:{value:fmtN(ofk.violationsToday), delta:fkD2.delta, col:fkD2.col, onClick:()=>this.setPage('forklift')},
+      emp:{value:fmtN(eTot), delta:ovLoading?'Loading…':('+'+N(oe.newThisMonth)+' this month'), col:ovLoading?'var(--text3)':'var(--ok)', onClick:()=>this.kjOpen('stat','emp')},
+      pres:{value:fmtN(eIn), delta:presentPct+'% attendance', col:'var(--text2)', onClick:()=>this.kjOpen('attendance-day',this.todayStr())},
+      ppe:{value:fmtN(opp.today), delta:ppeD.delta, col:ppeD.col, onClick:()=>this.kjOpen('stat','ppe')},
+      ra:{value:fmtN(ora.today), delta:raD2.delta, col:raD2.col, onClick:()=>this.kjOpen('stat','ra')},
+      cl:{value:clPct==null?'—':(clPct+'%'), delta:clDone+' of '+clSess+' done today', col:clPct==null?'var(--text3)':(clPct>=90?'var(--ok)':(clPct>=60?'var(--gold)':'var(--crit)')), onClick:()=>this.kjOpen('stat','cl')},
+      fk:{value:fmtN(ofk.violationsToday), delta:fkD2.delta, col:fkD2.col, onClick:()=>this.kjOpen('stat','fk')},
     };
     // Week bars (present excludes late on the server side)
     const PEND_COL='#C9D1E0';
@@ -4239,7 +2913,7 @@ class Component extends DCLogic {
     const yMax=ySteps*4;
     const ovYAxis=[1,0.75,0.5,0.25,0].map(f=>({label:fmtN(Math.round(yMax*f))}));
     const hPct=(v)=>(Math.round(1000*N(v)/yMax)/10)+'%';
-    const ovWeek=week.map(w=>({label:w.label||'', day:w.day||String(w.date||'').slice(5),
+    const ovWeek=week.map(w=>({label:w.label||'', day:w.day||String(w.date||'').slice(5), kjm:w.date?('attendance-day:'+w.date):'',
       pH:hPct(w.present), lH:hPct(w.late), aH:hPct(w.absent), nH:hPct(w.pending),
       title:(w.day||w.date||'')+' · present '+N(w.present)+' · late '+N(w.late)+' · absent '+N(w.absent)+' · not clocked in '+N(w.pending)}));
     // Donut — status today
@@ -4248,7 +2922,7 @@ class Component extends DCLogic {
     let acc=0;
     const ovDonut=dSum?('conic-gradient('+dParts.map(p=>{ const a=acc; acc+=100*p[1]/dSum; return p[2]+' '+a.toFixed(2)+'% '+acc.toFixed(2)+'%'; }).join(', ')+')')
       :'conic-gradient(var(--line2) 0 100%)';
-    const ovDonutLegend=dParts.map(([label,n,dot])=>({label, dot, val:fmtN(n), pct:'('+(dSum?(Math.round(1000*n/dSum)/10):0)+'%)'}));
+    const ovDonutLegend=dParts.map(([label,n,dot])=>({label, dot, val:fmtN(n), kjm:'attendance-day:'+this.todayStr(), pct:'('+(dSum?(Math.round(1000*n/dSum)/10):0)+'%)'}));
     // Multi-plant cards
     const PLANT_IMG=['linear-gradient(135deg,#2F6BFF,#8B5CF6)','linear-gradient(135deg,#22C55E,#0EA5E9)','linear-gradient(135deg,#F97316,#F59E0B)','linear-gradient(135deg,#EF4444,#8B5CF6)'];
     const ovPlants=(Array.isArray(ov.plants)?ov.plants:[]).map((p,i)=>({
@@ -4304,8 +2978,13 @@ class Component extends DCLogic {
     const _bars=(rows, col)=>{ const mx=Math.max(1, ...rows.map(r=>N(r.n)));
       return rows.map(r=>({label:r.label, val:r.val!=null?r.val:fmtN(r.n), w:Math.max(3, Math.round(100*N(r.n)/mx))+'%', col:r.col||col})); };
     let _trends=null;
-    const _card=(o)=>Object.assign({bigCol:'var(--text)', deltaCol:'var(--text3)', stats:[], bars:[], note:''}, o, (_trends||{})[o.key]||{},
+    const _card=(o)=>{ const c=Object.assign({bigCol:'var(--text)', deltaCol:'var(--text3)', stats:[], bars:[], note:'', deltaKjm:''}, o, (_trends||{})[o.key]||{},
       {hasBars:!!(o.bars&&o.bars.length), hasNote:!(o.bars&&o.bars.length) && !!o.note});
+      // KJModal drill-downs: hero/bars → widget detail, column → that day.
+      c.kjm='stat:'+o.key;
+      c.cols=(c.cols||[]).map(col=>Object.assign({}, col, {kjm:col.date?(o.key==='att'?('attendance-day:'+col.date):('stat:'+o.key+'@'+col.date)):''}));
+      c.bars=(c.bars||[]).map(b=>Object.assign({}, b, {kjm:'stat:'+o.key}));
+      return c; };
     const _last=(Array.isArray(ov.recognized)?ov.recognized:[])[0]||null;
     const PPE_LBL={helmet:'Helmet', vest:'Safety vest', goggles:'Goggles', gloves:'Gloves', boots:'Safety boots', hairnet:'Hair net', ear:'Ear protection'};
     const _ppeRows=Object.keys(PPE_LBL).map(k=>({label:PPE_LBL[k], n:N(pb[k])})).filter(r=>r.n>0).sort((a,b)=>b.n-a.n).slice(0,4);
@@ -4330,7 +3009,7 @@ class Component extends DCLogic {
       const total=vals.reduce((a,v)=>a+v.reduce((x,y)=>x+y,0),0);
       return {chartEmpty:total===0,
         legend:segs.map(g=>({label:g[0], col:g[1]})),
-        cols:_days.map((d,i)=>{ const v=vals[i]; const c={lbl:d.lbl,
+        cols:_days.map((d,i)=>{ const v=vals[i]; const c={lbl:d.lbl, date:d.key,
             tip:d.lbl+' · '+segs.map((g,j)=>g[0]+' '+v[j]).join(' · ')};
           [0,1,2].forEach(j=>{ c['h'+j]=v[j]!=null?(Math.round(1000*v[j]/mx)/10)+'%':'0%'; c['c'+j]=segs[j]?segs[j][1]:'transparent'; });
           return c; })}; };
@@ -4348,7 +3027,7 @@ class Component extends DCLogic {
       ev:_trend(d=>_ed[_days.indexOf(d)], [['Low','var(--brand)',r=>r.low],['Medium','var(--gold)',r=>r.med],['High / critical','var(--crit)',r=>r.crit]]),
     };
     const ovSum={
-      att:_card({key:'att', big:fmtN(eIn), bigLbl:'employees recognised today', bigCol:'var(--brand)',
+      att:_card({key:'att', big:fmtN(eIn), bigLbl:'employees recognised today', bigCol:'var(--brand)', deltaKjm:_last&&_last.personId?('person:'+encodeURIComponent(_last.personId)):'',
         delta:_last?('Last: '+(_last.name||('#'+_last.personId))+' · '+hms(_last.time)+(_last.location?(' · '+_last.location):'')):'No recognitions yet today',
         stats:[{k:'On time', v:fmtN(eOnTime), col:'var(--ok)'}, {k:'Late', v:fmtN(eLate), col:'var(--gold)'}, {k:'Unknown faces', v:fmtN(oe.unknownToday), col:N(oe.unknownToday)?'var(--crit)':'var(--text)'}],
         note:fmtN(oe.sightingsToday)+' face sightings today at mapped camera points', go:()=>this.setPage('attendance'), more:'Open Attendance'}),
@@ -4391,7 +3070,7 @@ class Component extends DCLogic {
         return {hasLbTag:tg.has, lbTag:tg.text, lbTagCol:tg.col, name:c.name||c.stream||c.id, hasVideo:!!vsrc, videoUrl:vsrc, camKey:'ov-'+(c.stream||String(c.id).toLowerCase()),
           bg:c.img?`url('${c.img}') center/cover no-repeat, ${c.scene||'#0c0f1d'}`:(c.scene||'linear-gradient(160deg,#141830,#0c0f1d)'),
           liveLabel:on?'Live':'Offline', liveBg:on?'var(--crit)':'var(--text3)',
-          onOpen:()=>this.openCamera(c.stream||String(c.id).toLowerCase())}; });
+          onOpen:()=>this.kjOpen('camera', c.stream||String(c.id).toLowerCase(), {name:c.name||''})}; });
     // Recent events table
     const EVT={face:['var(--brand)',tint.low], ppe:['#B45309',tint.gold], intr:['var(--crit)',tint.crit], forklift:['var(--high)',tint.high],
       fire:['var(--crit)',tint.crit], cleaning:['var(--ok)',tint.ok], behaviour:['var(--purple)','var(--tint-purple)']};
@@ -4661,6 +3340,11 @@ class Component extends DCLogic {
           note:String(dr.note!=null?dr.note:(z.note||'')).trim()}),
       }; });
 
+    // dead: candidate for removal — wave-3 cleanup deleted the dc template sections for Live Feeds,
+    // Employees, Analytics, Forecast, Users & Roles, AI Performance and the old Settings page (all now
+    // module-mounted). Their Live/Employees bindings are gone; the analytics (aKpis, hm*, byType…),
+    // forecast (fc*), settings (sp*, lb*, sim*, purge*…), users (um*) and aiperf (aip*) bindings below
+    // no longer reach any template but are left in place pending a careful prune.
     // Workstream D bindings (AI Performance, POC Scorecard, Integrations, Data Retention, Network test, Model thresholds)
     const {isAiperf, aipKpis, aipModRows, aipPerRows, aipCamRows, aipCamEmpty, aipSimBars, aipFaceLine, aipQueue, aipQueueEmpty, aipRecent, aipRecentEmpty, aipMissed, aipMissedEmpty, aipStatus, aipMsg, aipFrom, aipTo, onAipFrom, onAipTo, aipModSel, aipCamSel, aipPlantSel, reloadAip, exportAipMetrics, exportAipTraining, aipMethodOpen, toggleAipMethod, aipMethodLabel, aipMissModSel, aipMissCamSel, aipMissTime, onAipMissTime, aipMissNote, onAipMissNote, aipLogMiss, aipThLine, goAipModels, isPoc, pocKpis, pocGroups, pocCats, pocCrit, pocTests, pocRepInputs, pocRepAreas, pocRepScores, pocRepTests, pocRepCrit, pocRepNoGaps, pocDocs, pocDocOpen, pocDocTitle, pocDocText, pocTabs, pocTabCriteria, pocTabTests, pocTabReport, pocTabDocs, pocMsg, pocSaveLabel, pocCanEdit, pocReadOnly, pocSave, pocExportCrit, pocExportTests, pocExportAll, pocPrint, reloadPoc, pocUpdated, pocBandLine, pocBandCol, pocPrintDate, spTabInt, intKeyLine, intHasKey, intNewKey, intHasNewKey, intRegen, intRevoke, intRegenLabel, intHooks, intHooksEmpty, intAddHook, intSaveHooks, intMsg, intLog, intLogEmpty, intCat, spTabRet, retChips, retKpis, retMsg, retDueLine, retLastLine, retPurge, reloadRet, netRows, netHas, netBusy, netMsg, netRun, netRunLabel, netSummary, thFace, onThFace, thPpe, onThPpe, thSave, thMsg, thExportFp, thExportAll, goAiperf}=this.wsdVals();
     return {
@@ -4680,7 +3364,7 @@ class Component extends DCLogic {
       goCleaning:()=>this.setPage('cleaning'), goForklift:()=>this.setPage('forklift'), goLive:()=>this.setPage('live'),
       goIncidents:()=>this.setPage('incidents'), goEmployees:()=>this.setPage('employees'),
       // employees + face registration pages
-      isEmployees:st.page==='employees', isFaces:st.page==='faces',
+      isFaces:st.page==='faces',
       // forklift monitoring
       // Workstream C: behaviour analytics page
       isBehaviour:st.page==='behaviour', behKpis, behRangeTabs, behTrend, behTimeline, behExc,
@@ -4719,24 +3403,15 @@ class Component extends DCLogic {
       ppeFeas, ppeHairChips,
       camsOnline:(st.live.camsOnline!=null?st.live.camsOnline:this.camPool.length),
       camsTotal:(st.live.camsTotal!=null?st.live.camsTotal:this.camPool.length),
-      ppePct:(st.live.ppePct!=null?st.live.ppePct:100),
-      openCount, kpis, filters, cameras, events, bars, trendTotal:trendTotal.toLocaleString(), gridOpts,
-      gridCols:cols, shownCount, gridGap: compact?'9px':'13px',
-      // Live Feeds counter reflects the tiles actually in the grid (hidden
-      // cameras excluded), not the whole registry.
-      feedTotal: livePool.length, feedOnline: livePool.filter(c=>c.online!==false).length,
+      openCount, filters,
       isDarkTheme: st.theme==='dark', isLightTheme: st.theme!=='dark',
-      pauseLabel: st.paused?'Resume':'Pause', pauseIcon: st.paused?'▶':'❚❚', evTypeSel,
       newBuild: !!st.newBuild, doReload: ()=>{ try{ location.reload(); }catch(e){} },
       toggleTheme:()=>this.toggleTheme(),
-      togglePaused:()=>this.togglePaused(),
       avgAck:(st.live.avgAck||'—'),
       // clickable KPIs → modals
       openIncidents:()=>this.openModal('incidents'), openGpu:()=>this.openModal('gpu'),
-      openPpe:()=>this.openModal('ppe'), openCameras:()=>this.openModal('cameras'),
+      openCameras:()=>this.openModal('cameras'),
       openAddCam:()=>this.openModal('addcam'),
-      // AI (weststar-ai LLM analytics)
-      aiHas: !!(st.ai && st.ai.summary), aiSummary: (st.ai && st.ai.summary) || '',
       // lightbox
       hasLightbox: !!st.lightbox,
       lightboxBg: st.lightbox?`url('${st.lightbox.url}') center/contain no-repeat`:'none',
@@ -4791,7 +3466,8 @@ class Component extends DCLogic {
       asEmpty: st.asMsgs.length===0, asHasMsgs: st.asMsgs.length>0,
       asMsgs: st.asMsgs.map((m,i)=>({
         isUser: m.role==='user', isBot: m.role!=='user', text: m.text,
-        cls: m.role==='user' ? 'as-msg as-me' : 'as-msg as-bot',
+        // Bot answers render as Markdown + entity links via asEnhance() (as-mi-N = message index).
+        cls: m.role==='user' ? 'as-msg as-me' : 'as-msg as-bot as-rich as-mi-'+i,
         // A dropped photo shows as a thumbnail on the operator's own bubble.
         hasImg: !!m.img, imgBg: m.img?`url('${m.img}') center/cover no-repeat`:'',
         // Face-search results render as openable person cards.
@@ -4847,9 +3523,9 @@ class Component extends DCLogic {
       isCamDash:st.page==='camdash', cxKpi, cxPlantRows, cxPlantsEmpty:cxPlantRows.length===0, cxByCam, cxByCamEmpty:cxByCam.length===0,
       cxDonut, cxDonutLegend, cxDonutTotal:fmtN(cxModSum), cxWall, cxWallEmpty:cxWall.length===0, cxAttention, cxAttentionEmpty:cxAttention.length===0,
       cxRows, cxRowsEmpty:cxRows.length===0, cxEvents, cxEventsEmpty:cxEvents.length===0, goCamFleet:()=>this.setPage('cameras'),
-      isLive:st.page==='live', isIncidents:st.page==='incidents', isCameras:st.page==='cameras', isAnalytics:st.page==='analytics',
-      isDet, det, isRules:st.page==='rules', isSettings:st.page==='settings', isForecast:st.page==='forecast',
-      isUsers:st.page==='users', isCamera:st.page==='camera', camDetail,
+      isIncidents:st.page==='incidents', isCameras:st.page==='cameras',
+      isDet, det, isRules:st.page==='rules',
+      isCamera:st.page==='camera', camDetail,
       // attendance & movement (POC Use Case 1)
       isAttendance:st.page==='attendance',
       attKpis, attRows, attHasRows:attRows.length>0, attDaysTabs, attStatus, attMappedLine, attNeedsMap, attEmpty,
@@ -4869,10 +3545,8 @@ class Component extends DCLogic {
       regStatusLine, regNoRoles, regEmpty, regSummary,
       reloadReg:()=>this.loadRegister(), exportDaily:()=>this.exportAtt('daily'),
       goSettingsAtt:()=>{ this.setState({spTab:'att'}); this.setPage('settings'); },
-      empRows, empEmpty:empRows.length===0, empCount, empMsg:st.empMsg, empQ:st.empQ,
-      onEmpQ:(e)=>this.setState({empQ:(e&&e.target)?e.target.value:''}),
       newEmployee:()=>this.newEmployee(), syncAll:()=>this.syncEmployee(null),
-      canSync:!!this.PERMS.settings, syncAllLabel:st.empBusy?'Syncing…':'⇅ Sync all to SenseStudio',
+      syncAllLabel:st.empBusy?'Syncing…':'⇅ Sync all to SenseStudio',
       repFrom:rp.from||reg.date||today, repTo:rp.to||rp.from||reg.date||today,
       onRepFrom:(e)=>this.setState(s=>({rep:{...s.rep, from:(e&&e.target)?e.target.value:''}})),
       onRepTo:(e)=>this.setState(s=>({rep:{...s.rep, to:(e&&e.target)?e.target.value:''}})),
@@ -5108,3 +3782,9 @@ class Component extends DCLogic {
     };
   }
 }
+
+// Page modules (assets/js/pages/*.js) contribute their legacy methods to this class.
+// Statements after the class are fine: the dc-runtime evaluates this file and then
+// returns `Component`.
+if(window.KJPages) window.KJPages.install(Component);
+else console.error('[app] assets/js/kj-pages.js did not load — page modules unavailable');
