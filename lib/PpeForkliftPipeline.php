@@ -173,10 +173,10 @@ final class PpeForkliftPipeline
             }
 
             // 3) Environment image (background frame; trigger crop as fallback).
-            $img = ImageTool::fetch((string) ($r['bk_image_url'] ?: $r['trigger_img_url']), $this->appRoot);
+            $img = ImageTool::fetch($this->imageUrl((string) ($r['bk_image_url'] ?: $r['trigger_img_url'])), $this->appRoot);
             $imgIsScene = $img !== null && (string) $r['bk_image_url'] !== '';
             if ($img === null && $r['bk_image_url'] && $r['trigger_img_url']) {
-                $img = ImageTool::fetch((string) $r['trigger_img_url'], $this->appRoot);
+                $img = ImageTool::fetch($this->imageUrl((string) $r['trigger_img_url']), $this->appRoot);
                 $imgIsScene = false;
             }
             if ($img === null) {
@@ -239,6 +239,21 @@ final class PpeForkliftPipeline
         }
         $stats['cursor'] = $lastDone;
         return $stats;
+    }
+
+    /**
+     * SenseStudio stores image paths relative ("/images/cognitivesvc/…"); resolve them
+     * against the configured image host the same way EventStore does for the UI.
+     * Absolute URLs and this site's own uploads/ paths pass through unchanged.
+     */
+    private function imageUrl(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '' || preg_match('#^https?://#i', $path) || preg_match('#^/?(uploads|storage)/#i', $path)) {
+            return $path;
+        }
+        $base = rtrim((string) ($this->config['images']['base'] ?? ''), '/');
+        return $base === '' ? $path : $base . '/' . ltrim($path, '/');
     }
 
     // ── review ───────────────────────────────────────────────
