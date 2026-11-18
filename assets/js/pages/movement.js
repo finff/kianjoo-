@@ -6,6 +6,9 @@
  *                        pins, person search, date + time-range, numbered trail (SVG),
  *                        timeline scrubber with WebP thumbs + play, occupancy heat,
  *                        admin plan/pin editor, drill-down log below the canvas.
+ *   #movement/strangers  Unregistered faces (stranger ids): list, journey drawer, actions —
+ *                        assets/js/pages/movement-strangers.js (window.KJStrangers), mounted below;
+ *                        "Show on floor plan" comes back here through showOnPlan().
  *   #movement/log        Legacy movement-log table (dc template section, unchanged).
  *   #movement/poc        Legacy POC scorecard (unchanged).
  *
@@ -1415,6 +1418,15 @@
     else setTimeout(registerModals, 0);
   }
 
+  /** Open the floor-plan playback for a person (optionally on a given day). Used by showPerson and the Strangers tab. */
+  function showOnPlan(p, day) {
+    if (!p) return;
+    window.KJPages.go('movement/playback');
+    if (!S || !S.viewer) return;
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) { S.date = day; S.from = 0; S.to = 1439; stopPlay(); S.active = -1; S.cursor = null; }
+    pickPerson(typeof p === 'object' ? p : { person_id: String(p), name: '#' + p });
+  }
+
   /* ── mount / unmount ───────────────────────────────────────────────────── */
   var LISTEN = [['click', onClick], ['input', onInput], ['change', onChange], ['focusin', onFocusIn], ['keydown', onKey],
     ['pointerdown', onPointerDown], ['dragstart', onDragStart], ['dragover', onDragOver], ['drop', onDrop], ['dragend', onDragEnd]];
@@ -1445,6 +1457,7 @@
     defaultSub: 'playback',
     subs: {
       playback: { label: 'Floor plan', icon: 'map' },                     // M14 — host-mounted
+      strangers: { label: 'Strangers', icon: 'user-search' },             // unregistered faces — movement-strangers.js
       log:      { label: 'Movement log',  legacy: 'movement' },           // legacy table (also the drill-down target)
       poc:      { label: 'POC scorecard', legacy: 'poc' }
     },
@@ -1453,9 +1466,16 @@
       if (page === 'movement') { app.loadMv(); }
       if (page === 'poc') app.loadPoc();                             // Workstream D: POC scorecard
     },
-    mount: function (el, route, app) { if (route.sub === 'playback') mountPlayback(el, app); },
-    unmount: function () { unmountPlayback(); },
-    onFeed: function () {
+    mount: function (el, route, app) {
+      if (route.sub === 'playback') mountPlayback(el, app);
+      if (route.sub === 'strangers') {
+        if (window.KJStrangers) window.KJStrangers.mount(el, app, { showOnPlan: showOnPlan });
+        else el.innerHTML = '<div class="kj-page">' + window.KJPages.h.emptyState({ icon: 'user-search', title: 'Strangers could not load', text: 'Reload the page to try again.' }) + '</div>';
+      }
+    },
+    unmount: function () { unmountPlayback(); if (window.KJStrangers) window.KJStrangers.unmount(); },
+    onFeed: function (data, app, route) {
+      if (route && route.sub === 'strangers') { if (window.KJStrangers) window.KJStrangers.onFeed(); return; }
       // today's trail refreshes quietly once a minute while nothing is being replayed
       if (!S || S.playing || S.edit || S.pathBusy || S.date !== todayStr() || (S.viewer && !S.person)) return;
       if (Date.now() - S.lastAuto < 60000) return;
@@ -1463,11 +1483,7 @@
       loadPath(true);
     },
     /** Open the playback for a person from elsewhere: KJPages.get('movement').showPerson({person_id,name}). */
-    showPerson: function (p) {
-      if (!p) return;
-      window.KJPages.go('movement');
-      if (S && S.viewer) pickPerson(typeof p === 'object' ? p : { person_id: String(p), name: '#' + p });
-    },
+    showPerson: function (p, o) { showOnPlan(p, o && o.date); },
 
     // ── Legacy Component methods (verbatim from app.js; `this` is the dc app) ──
     methods: class {

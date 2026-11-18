@@ -113,6 +113,9 @@ final class Database
         // Per-user widget dashboard layout (M3) — see lib/DashboardSchema.php.
         require_once __DIR__ . '/DashboardSchema.php';
         DashboardSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Stranger labels / status / merges (Movement › Strangers) — see lib/StrangerSchema.php.
+        require_once __DIR__ . '/StrangerSchema.php';
+        StrangerSchema::migrate($pdo, self::$driver, self::$storageDir);
     }
 
     /**

@@ -491,6 +491,9 @@ try {
     // route table + RBAC in lib/FloorplanRoutes.php (/movement/log falls through).
     require APP_ROOT . '/lib/FloorplanRoutes.php';
 
+    // ── Stranger movement (Movement › Strangers): /strangers/* — route table in lib/StrangerRoutes.php ──
+    require APP_ROOT . '/lib/StrangerRoutes.php';
+
     // ── Widget dashboard layout (M3): GET|POST /dashboard/layout ──
     require APP_ROOT . '/lib/DashboardRoutes.php';
 
@@ -1717,6 +1720,9 @@ try {
             }
             // Workstream C: Settings → Behaviour Rules (beh_* keys).
             $out = array_merge($out, Behaviour::sanitize($in));
+            // Stranger movement alerts (stranger_* keys) — lib/Strangers.php.
+            require_once APP_ROOT . '/lib/Strangers.php';
+            $out = array_merge($out, Strangers::sanitize($in));
 
             $merged = array_merge($cur, $out);
             if (!is_dir(dirname($file))) {
@@ -1777,6 +1783,7 @@ try {
             'ppe_hair_hats'      => $config['ppe']['hair_hats'] ?? ['Bonnet'],
             'cleaning_schedules' => $config['cleaning']['schedules'] ?? [],
             'behaviour'          => $config['behaviour'] ?? Behaviour::DEFAULTS,   // Workstream C
+            'strangers'          => $config['strangers'] ?? ['alert_enabled' => false],   // Movement › Strangers (stranger_* keys)
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken
