@@ -9,6 +9,7 @@
  *   GET  /attendance/daily?date=&q=          today's status (own row by person_id)
  *   GET  /attendance/month?month=YYYY-MM                 month log (JSON, own linked employee)
  *   GET  /attendance/export?report=range&from=&to=&q=   fallback month log (CSV, own rows by staff id)
+ *   GET  /overtime/mine?month=YYYY-MM                    own overtime for the month + approval status + rule
  *   GET  /leaves[?year=&status=&from=&to=]   own requests + balances | POST /leaves | GET /leaves/types
  *   GET  /leaves/{id} | POST /leaves/{id}/cancel|approve|reject | POST /leaves/{id}/attachments
  *   GET  /notifications[?all=1] | GET /notifications/count | POST /notifications/read
@@ -561,6 +562,7 @@
       '</section>' +
       '<section class="kj-sa-stats" data-sa-slot="stats">' + ['present', 'late', 'absent', 'leave'].map(function () { return '<span class="kj-skel kj-sa-skel-stat"></span>'; }).join('') + '</section>' +
       '<section class="kj-card kj-sa-card kj-sa-calcard" data-sa-slot="cal">' + calendarHtml(S.month, null) + '</section>' +
+      '<section class="kj-sa-sec"><div class="kj-sa-sec-head"><h2 class="kj-sa-h2">My overtime</h2></div><div data-sa-slot="ot">' + skelCard(2) + '</div></section>' +
       '<section class="kj-sa-sec"><div class="kj-sa-sec-head"><h2 class="kj-sa-h2">Daily log</h2><span data-sa-slot="logtoggle"></span></div>' +
         '<div data-sa-slot="log">' + skelCard(4) + '</div></section>';
   }
@@ -586,8 +588,44 @@
         return '<span class="kj-sa-legend-i is-' + k + '"><i></i>' + STATUS[k][0] + '</span>';
       }).join('') + '</div>';
   }
+  /* My overtime (GET /overtime/mine): month totals + each record with its approval status and how it was derived. */
+  var OT_ST = { pending: ['Pending approval', 'warn'], approved: ['Approved', 'success'], rejected: ['Rejected', 'danger'] };
+  function fmtMins(m) { m = Math.max(0, Math.round(+m || 0)); var h = Math.floor(m / 60), r = m % 60; return h ? (r ? h + 'h ' + pad(r) + 'm' : h + 'h') : r + 'm'; }
+  function getOt(ym, force) {
+    var c = S.ot && S.ot[ym];
+    if (!force && c && Date.now() - c.at < 60000) return c.p;
+    S.ot = S.ot || {};
+    var p = req('GET', '/overtime/mine', { month: ym });
+    S.ot[ym] = { at: Date.now(), p: p };
+    p.catch(function () { delete S.ot[ym]; });
+    return p;
+  }
+  function paintOtData(seq) {
+    var ym = S.month;
+    getOt(ym).then(guard(seq, function (d) {
+      if (ym !== S.month) return;
+      if (!d.linked) { slot('ot', ''); return; }
+      var t = d.totals || {}, ap = (t.approved || {}).min || 0, pe = (t.pending || {}).min || 0, recs = d.records || [];
+      var sum = '<div class="kj-sa-ot-sum"><span class="kj-sa-ot-tot is-success"><small>Approved</small><b>' + esc(fmtMins(ap)) + '</b></span>' +
+        '<span class="kj-sa-ot-tot is-warn"><small>Pending</small><b>' + esc(fmtMins(pe)) + '</b></span>' +
+        '<span class="kj-sa-ot-tot"><small>Days</small><b>' + recs.filter(function (r) { return r.status !== 'rejected'; }).length + '</b></span></div>';
+      var list = recs.length ? '<div class="kj-sa-ot-list">' + recs.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).map(function (r) {
+        var st = OT_ST[r.status] || OT_ST.pending;
+        return '<div class="kj-sa-ot-row"><div class="kj-sa-ot-top"><span class="kj-sa-log-day">' + esc(fmtDay(r.date)) + '</span>' +
+          '<b class="kj-sa-ot-min">' + esc(fmtMins(r.status === 'rejected' ? r.calcMinutes : r.minutes)) + '</b>' + chip(st[0], st[1]) + '</div>' +
+          '<div class="kj-sa-ot-why">' + esc(r.explain || '') + '</div>' +
+          (r.note ? '<div class="kj-sa-ot-why">' + ico('message-square') + esc((r.decidedBy ? r.decidedBy + ': ' : '') + r.note) + '</div>' : '') + '</div>';
+      }).join('') + '</div>'
+        : '<p class="kj-sa-ot-none">' + ico('timer-off') + '<span>No overtime captured this month.</span></p>';
+      slot('ot', '<div class="kj-card kj-sa-card kj-sa-ot">' + sum + list +
+        '<p class="kj-sa-ot-rule">' + ico('info') + '<span>' + esc((d.rule || '') + ' Overtime is estimated from the last time a camera saw you and is paid only once your supervisor approves it.') + '</span></p></div>');
+    })).catch(guard(seq, function (e) {
+      slot('ot', e && e.status === 404 ? '' : '<div class="kj-card kj-sa-card"><p class="kj-sa-ot-none">' + ico('cloud-off') + '<span>Overtime is unavailable right now.</span></p></div>');
+    }));
+  }
   function paintAttendanceData(seq) {
     var ym = S.month;
+    paintOtData(seq);
     getMonth(ym).then(guard(seq, function (data) {
       if (ym !== S.month) return;
       var cnt = { present: 0, late: 0, absent: 0, leave: 0 };

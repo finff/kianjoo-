@@ -294,6 +294,8 @@ $attList = static function ($v, array $def, int $max = 40): array {
         static fn ($s) => substr(trim((string) $s), 0, 80), $v))));
     return $v ? array_slice($v, 0, $max) : $def;
 };
+// Overtime capture rules (lib/Overtime.php): global defaults (ot_* keys) + per-shift overrides.
+require_once APP_ROOT . '/lib/Overtime.php';
 $attShifts = [];
 foreach ((is_array($app['att_shifts'] ?? null) ? $app['att_shifts'] : []) as $s) {
     $id = strtolower(preg_replace('/[^a-z0-9_-]+/i', '', (string) ($s['id'] ?? '')));
@@ -312,6 +314,7 @@ foreach ((is_array($app['att_shifts'] ?? null) ? $app['att_shifts'] : []) as $s)
         'grace'        => max(0, min(240, (int) ($s['grace'] ?? 10))),
         'absent_after' => max(15, min(720, (int) ($s['absent_after'] ?? 120))),
         'days'         => $days ?: [1, 2, 3, 4, 5],
+        'ot'           => Overtime::shiftOt($s['ot'] ?? null),   // per-shift OT overrides (blank = default)
     ];
 }
 $roles = [];
@@ -334,8 +337,9 @@ $config['attendance'] = [
     'departments'  => $attList($app['att_departments'] ?? null, ['Production', 'Warehouse', 'Quality', 'Maintenance', 'Admin']),
     'shifts'       => $attShifts ?: [[
         'id' => 'day', 'name' => 'Day shift', 'start' => '08:00', 'end' => '17:00',
-        'grace' => 10, 'absent_after' => 120, 'days' => [1, 2, 3, 4, 5],
+        'grace' => 10, 'absent_after' => 120, 'days' => [1, 2, 3, 4, 5], 'ot' => [],
     ]],
+    'ot'           => Overtime::configFrom($app),   // OT defaults: min 30 · round 15 · cap 6 h · rest day full · early off
     'cam_roles'    => $roles,          // stream key → clock_in | clock_out | both | movement
     'loc_plants'   => $locPlants,      // location name → plant
     'kiosk_clock'  => ($app['att_kiosk_clock'] ?? true) !== false,

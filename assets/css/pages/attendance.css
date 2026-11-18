@@ -43,7 +43,7 @@
 .att-chip[data-kj-modal]:hover { filter: brightness(.95); text-decoration: underline; }
 
 /* ── Stat chips ──────────────────────────────────────────── */
-.att-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--kj-s-3); }
+.att-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--kj-s-3); }
 .att-stats .kj-skel-tile { height: 72px; }
 .att-stat { width: 100%; border-radius: var(--kj-r-lg); padding: var(--kj-s-4); }
 .att-stat:hover { transform: translateY(-1px); }
@@ -216,7 +216,44 @@
 .att-remarks-field { margin-top: var(--kj-s-3); }
 .att-remarks-field.is-error .kj-help { color: var(--kj-danger); }
 
+/* ── Overtime (register column, side card, Overtime tab) ──── */
+.att-ot { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+.att-ot b { font-weight: var(--kj-fw-bold); color: var(--kj-text); }
+.att-ot-chip { height: 20px; padding: 0 7px; font-size: var(--kj-fs-2xs); }
+.att-ot-none { display: inline-flex; align-items: center; gap: 4px; font-size: var(--kj-fs-2xs); color: var(--kj-warn); cursor: help; }
+.att-ot-none .kj-ico { width: 13px; height: 13px; }
+.att-ot-list .kj-list-item { width: 100%; text-align: left; }
+.att-ot-sum { margin-left: auto; color: var(--kj-orange); font-weight: var(--kj-fw-bold); white-space: nowrap; }
+.att-ot-empty { display: flex; align-items: center; gap: 6px; }
+.att-ot-page { display: flex; flex-direction: column; gap: var(--kj-s-4); }
+.att-ot-rule { padding: var(--kj-s-4); border-left: 4px solid var(--kj-orange); }
+.att-ot-rule-head { display: flex; align-items: flex-start; gap: var(--kj-s-3); }
+.att-ot-rule-head > .kj-ico { width: 22px; height: 22px; color: var(--kj-orange); flex-shrink: 0; margin-top: 2px; }
+.att-ot-rule-head > div { flex: 1; min-width: 0; }
+.att-ot-rule-txt { margin: 4px 0; color: var(--kj-text); font-size: var(--kj-fs-sm); }
+.att-ot-shifts { margin: 6px 0; padding-left: 18px; font-size: var(--kj-fs-sm); color: var(--kj-text); display: grid; gap: 4px; }
+.att-ot-rule .kj-help { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 0; }
+.att-ot-rule .kj-help .kj-ico { width: 14px; height: 14px; flex-shrink: 0; margin-top: 2px; }
+.att-ot-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.att-stat.is-on { border-color: var(--kj-primary); box-shadow: var(--kj-shadow-focus); }
+.att-ot-toolbar { margin-bottom: var(--kj-s-3); }
+.att-ot-date { display: inline-flex; align-items: center; gap: 6px; font-size: var(--kj-fs-xs); color: var(--kj-text-3); }
+.att-ot-date .kj-input { width: auto; min-width: 140px; }
+.att-ot-cam { display: block; font-size: var(--kj-fs-2xs); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-ot-fig { min-width: 220px; }
+.att-ot-fig b { font-size: var(--kj-fs-md); color: var(--kj-text); }
+.att-ot-explain { display: block; font-size: var(--kj-fs-2xs); color: var(--kj-text-2); max-width: 320px; white-space: normal; line-height: 1.35; margin-top: 2px; }
+.att-ot-notes { gap: 4px; margin-top: 4px; }
+.att-ot-notes .kj-chip { height: 20px; padding: 0 7px; font-size: var(--kj-fs-2xs); }
+.att-ot-notes .kj-ico { width: 12px; height: 12px; }
+.att-ot-acts { display: inline-flex; gap: var(--kj-s-2); }
+.att-ot-modal-rule { margin: var(--kj-s-2) 0 0; }
+
 /* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1400px) {
+  .att-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .att-ot-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 @media (max-width: 1180px) {
   .att-grid { grid-template-columns: minmax(0, 1fr); }
   .att-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
@@ -233,6 +270,9 @@
   .att-emp { flex-basis: 200px; }
   .att-records { padding: var(--kj-s-3); }
   .att-toolbar .kj-select { flex: 1 1 45%; min-width: 0; }
+  .att-ot-date { flex: 1 1 45%; min-width: 0; }
+  .att-ot-date .kj-input { min-width: 0; flex: 1; }
+  .att-ot-rule-head { flex-wrap: wrap; }
   .att-cal-wd span { padding: 6px 4px; text-align: center; }
   .att-cal-cell { min-height: 56px; }
   .att-cal-big { font-size: var(--kj-fs-sm); }

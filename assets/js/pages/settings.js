@@ -48,6 +48,8 @@
       title: 'AI Engine', sub: 'The AI engine powers the assistant, reports, forecasts and the PPE-forklift review pipeline.' },
     { key: 'tickets', label: 'Tickets & SLA', icon: 'ticket',
       title: 'Tickets & SLA', sub: 'Set response targets and automate ticket handling.' },
+    { key: 'attendance', label: 'Attendance & OT', icon: 'calendar-clock',
+      title: 'Attendance & overtime', sub: 'Shift rules and how overtime is captured from face sightings after shift end.' },
     { key: 'rules', label: 'Alert rules', icon: 'bell-ring', aliases: ['rules'],
       title: 'Alert rules', sub: 'Which detections e-mail or Telegram whom, how often, and when.' },
     { key: 'roles', label: 'Roles & Permissions', icon: 'shield-check', perm: 'users',
@@ -63,7 +65,7 @@
   var NEEDS = {
     general: ['settings', 'retention', 'users?'], cameras: ['settings', 'live'], floorplans: ['plans'],
     ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts'], rules: ['alerts', 'notify'], roles: ['roles'],
-    users: ['users', 'links', 'roles', 'types'], integrations: ['int', 'notify', 'mail']
+    users: ['users', 'links', 'roles', 'types'], integrations: ['int', 'notify', 'mail'], attendance: ['settings']
   };
   var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
 
@@ -1392,6 +1394,159 @@
     'u-leave': function (el) { openModal('kjs-leave', el.getAttribute('data-arg')); }
   };
 
+  /* ── Attendance & overtime (shift editor + OT rules) ───────────────────
+   * Saves through POST /settings {att_shifts:[…, ot:{overrides}], ot_enabled, ot_min_minutes,
+   * ot_round_minutes, ot_max_hours, ot_early_start, ot_rest_day} — validated again in
+   * lib/Overtime.php + config/config.php. Local draft S.att until saved (no shared save bar). */
+  var OT_DEF = { enabled: true, min: 30, round: 15, max_h: 6, early: false, rest: true };
+  var OT_ROUNDS = [1, 5, 10, 15, 30, 60];
+  var WEEK = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']];
+  function attDraft() {
+    if (S.att) return S.att;
+    var st = S.data.settings || {};
+    var shifts = (st.att_shifts || []).map(function (s) {
+      var o = s.ot && !Array.isArray(s.ot) ? s.ot : {};
+      return { id: s.id, name: s.name, start: s.start, end: s.end, grace: s.grace, absent_after: s.absent_after, days: (s.days || []).slice(), ot: Object.assign({}, o) };
+    });
+    S.att = { shifts: shifts.length ? shifts : [{ id: 'day', name: 'Day shift', start: '08:00', end: '17:00', grace: 10, absent_after: 120, days: [1, 2, 3, 4, 5], ot: {} }],
+      ot: Object.assign({}, OT_DEF, st.att_ot || {}), dirty: false };
+    return S.att;
+  }
+  function fmtM(m) { m = Math.max(0, Math.round(+m || 0)); var h = Math.floor(m / 60), r = m % 60; return h ? (r ? h + 'h ' + r + 'm' : h + 'h') : r + 'm'; }
+  function otEff(shift) { var d = attDraft().ot, o = (shift && shift.ot) || {}, r = {}; Object.keys(OT_DEF).forEach(function (k) { r[k] = o[k] != null && o[k] !== '' ? o[k] : d[k]; }); return r; }
+  /** Same wording as Overtime::ruleText (lib/Overtime.php). */
+  function otText(r) {
+    if (!r.enabled || r.enabled === 'false') return 'Overtime capture is off for this shift.';
+    var s = 'Time after shift end until check-out' + (r.early === true || r.early === 'true' ? ' (plus time before shift start)' : '') +
+      ' counts from ' + (+r.min) + ' min, rounded down to ' + (+r.round) + ' min, capped at ' + fmtM(Math.round(+r.max_h * 60)) + '.';
+    return s + (r.rest === false || r.rest === 'false' ? ' Rest-day work is not counted.' : ' Rest day: first to last sighting counts in full (no cap).');
+  }
+  function triSel(path, cur, defOn) {
+    var v = cur === true ? '1' : (cur === false ? '0' : '');
+    return '<select class="kj-select" data-kjs-att="' + path + '" aria-label="' + esc(path) + '"><option value=""' + (v === '' ? ' selected' : '') + '>Default (' + (defOn ? 'on' : 'off') + ')</option>' +
+      '<option value="1"' + (v === '1' ? ' selected' : '') + '>On</option><option value="0"' + (v === '0' ? ' selected' : '') + '>Off</option></select>';
+  }
+  RENDER.attendance = function (m) {
+    var st = S.data.settings;
+    if (!st) return sec(m, '', S.err.settings ? errBox('settings', 'attendance settings') : '<div class="kjs-card">' + skel(6) + '</div>');
+    var d = attDraft(), o = d.ot;
+    var num = function (path, val, attrs) { return '<input class="kj-input" type="number" data-kjs-att="' + path + '" value="' + esc(val == null ? '' : val) + '"' + (attrs || '') + '>'; };
+    var defaults = card({ icon: 'timer', tone: 'orange', title: 'Overtime capture — defaults', sub: 'Applies to every shift unless the shift overrides it below. The customer has not fixed OT rules yet, so these are editable starting values.',
+      actions: sw('att-ot-sw', !!o.enabled, 'enabled', 'Capture overtime'),
+      body: '<div class="kjs-form">' +
+        field('Minimum before OT counts (minutes)', num('ot|min', o.min, ' min="0" max="240" step="5"'), 'Shorter stays after shift end are ignored.') +
+        group('Round down to', '<select class="kj-select" data-kjs-att="ot|round" aria-label="Round down to">' + OT_ROUNDS.map(function (r) { return '<option value="' + r + '"' + (+o.round === r ? ' selected' : '') + '>' + r + ' min</option>'; }).join('') + '</select>') +
+        field('Cap per day (hours)', num('ot|max_h', o.max_h, ' min="0.5" max="16" step="0.5"'), 'After-shift OT never exceeds this.') +
+        '</div><div class="kjs-rows">' +
+        row('sunrise', 'Count early start', 'Also count time between check-in and shift start (same minimum).', sw('att-ot-sw', !!o.early, 'early', 'Count early start')) +
+        row('calendar-off', 'Rest-day work counts in full', 'On a day the shift does not work, first to last sighting is OT (rounded, no cap).', sw('att-ot-sw', o.rest !== false, 'rest', 'Rest-day work counts in full')) +
+        '</div><p class="kjs-muted" data-kjs-att-preview="def">' + ico('scale') + ' ' + esc(otText(o)) + '</p>' +
+        '<p class="kjs-muted">' + ico('info') + ' OT is an estimate: check-out is the last time a clock camera saw the person. Records wait for supervisor approval under Attendance › Overtime, and an approved figure is never changed by a later recompute.</p>' });
+    var shifts = d.shifts.map(function (s, i) {
+      var eff = otEff(s), so = s.ot || {};
+      var days = '<div class="kjs-opts" role="group" aria-label="Working days">' + WEEK.map(function (w) {
+        var on = (s.days || []).indexOf(w[0]) >= 0;
+        return '<button type="button" class="kjs-opt' + (on ? ' is-on' : '') + '" aria-pressed="' + on + '" data-kjs-act="att-day" data-arg="' + i + ':' + w[0] + '">' + w[1] + '</button>';
+      }).join('') + '</div>';
+      return '<div class="kjs-att-shift">' +
+        '<div class="kjs-att-shift-head"><b>' + esc(s.name || 'Shift ' + (i + 1)) + '</b><span class="kjs-muted kjs-mono">' + esc((s.start || '') + '–' + (s.end || '')) + '</span>' +
+          (d.shifts.length > 1 ? btn('att-remove', 'Remove', 'trash-2', 'kj-btn-ghost kj-btn-sm', String(i)) : '') + '</div>' +
+        '<div class="kjs-form">' +
+          field('Name', '<input class="kj-input" data-kjs-att="s|' + i + '|name" maxlength="40" value="' + esc(s.name || '') + '">') +
+          field('Start', '<input class="kj-input" type="time" data-kjs-att="s|' + i + '|start" value="' + esc(s.start || '') + '">') +
+          field('End', '<input class="kj-input" type="time" data-kjs-att="s|' + i + '|end" value="' + esc(s.end || '') + '">', 'An end before the start is an overnight shift.') +
+          field('Late after (grace, min)', num('s|' + i + '|grace', s.grace, ' min="0" max="240"')) +
+          field('Absent after (min)', num('s|' + i + '|absent_after', s.absent_after, ' min="15" max="720"')) +
+          group('Working days', days, 'Other days are rest days.') +
+        '</div>' +
+        '<div class="kjs-att-ot"><div class="kj-label">' + ico('timer') + ' Overtime for this shift <span class="kjs-muted">(blank = default)</span></div><div class="kjs-form kjs-att-ot-grid">' +
+          group('Capture OT', triSel('o|' + i + '|enabled', so.enabled, !!d.ot.enabled)) +
+          field('Minimum (min)', num('o|' + i + '|min', so.min, ' min="0" max="240" step="5" placeholder="' + esc(d.ot.min) + '"')) +
+          group('Round down to', '<select class="kj-select" data-kjs-att="o|' + i + '|round" aria-label="Round down to"><option value="">Default (' + esc(d.ot.round) + ' min)</option>' +
+            OT_ROUNDS.map(function (r) { return '<option value="' + r + '"' + (+so.round === r ? ' selected' : '') + '>' + r + ' min</option>'; }).join('') + '</select>') +
+          field('Cap (hours)', num('o|' + i + '|max_h', so.max_h, ' min="0.5" max="16" step="0.5" placeholder="' + esc(d.ot.max_h) + '"')) +
+          group('Early start', triSel('o|' + i + '|early', so.early, !!d.ot.early)) +
+          group('Rest day in full', triSel('o|' + i + '|rest', so.rest, d.ot.rest !== false)) +
+        '</div><p class="kjs-muted" data-kjs-att-preview="' + i + '">' + ico('scale') + ' ' + esc(otText(eff)) + '</p></div></div>';
+    }).join('');
+    var shiftCard = card({ icon: 'calendar-clock', tone: 'primary', title: 'Shifts', sub: 'Employees are assigned a shift in People. Attendance and overtime are calculated against it.',
+      actions: btn('att-add', 'Add shift', 'plus', 'kj-btn-secondary kj-btn-sm', null, d.shifts.length >= 12 ? ' disabled' : ''),
+      body: '<div class="kjs-att-shifts">' + shifts + '</div>' });
+    var bar = '<div class="kjs-savebar' + (d.dirty ? ' is-dirty' : '') + '"><span class="kjs-savebar-info">' + ico('info') +
+      '<span class="kjs-when-dirty">Unsaved shift / overtime changes</span><span class="kjs-when-clean">All changes saved</span></span>' +
+      '<button type="button" class="kj-btn kj-btn-secondary kjs-when-dirty" data-kjs-act="att-reset">Cancel</button>' +
+      '<button type="button" class="kj-btn kj-btn-primary" data-kjs-act="att-save"' + (d.dirty ? '' : ' disabled') + '>' + ico('check') + '<span>Save changes</span></button></div>';
+    return sec(m, '', defaults + shiftCard + msgLine('att') + bar);
+  };
+  function attDirty() {
+    var d = attDraft(); d.dirty = true;
+    var b = S.el && S.el.querySelector('[data-kjs-act="att-save"]'); if (b) b.disabled = false;
+    var bar = b && b.closest('.kjs-savebar'); if (bar) bar.classList.add('is-dirty');
+  }
+  function attPreview() {
+    if (!S.el) return;
+    var d = attDraft();
+    var p = S.el.querySelector('[data-kjs-att-preview="def"]'); if (p) p.innerHTML = ico('scale') + ' ' + esc(otText(d.ot));
+    d.shifts.forEach(function (s, i) { var q = S.el.querySelector('[data-kjs-att-preview="' + i + '"]'); if (q) q.innerHTML = ico('scale') + ' ' + esc(otText(otEff(s))); });
+  }
+  function attInput(t) {
+    var d = attDraft(), parts = String(t.getAttribute('data-kjs-att')).split('|'), v = t.value;
+    if (parts[0] === 'ot') { d.ot[parts[1]] = parts[1] === 'max_h' ? parseFloat(v) : parseInt(v, 10); }
+    else if (parts[0] === 's') {
+      var s = d.shifts[+parts[1]]; if (!s) return;
+      s[parts[2]] = (parts[2] === 'grace' || parts[2] === 'absent_after') ? (parseInt(v, 10) || 0) : v;
+    } else if (parts[0] === 'o') {
+      var sh = d.shifts[+parts[1]]; if (!sh) return;
+      var k = parts[2]; sh.ot = sh.ot || {};
+      if (v === '') delete sh.ot[k];
+      else if (k === 'enabled' || k === 'early' || k === 'rest') sh.ot[k] = v === '1';
+      else sh.ot[k] = k === 'max_h' ? parseFloat(v) : parseInt(v, 10);
+    }
+    attDirty(); attPreview();
+  }
+  ACT['att-ot-sw'] = function (el) {
+    var d = attDraft(), k = el.getAttribute('data-arg'), cur = k === 'rest' ? d.ot.rest !== false : !!d.ot[k];
+    d.ot[k] = !cur; el.classList.toggle('is-on', !cur); el.setAttribute('aria-checked', String(!cur));
+    attDirty(); paintSection();
+  };
+  ACT['att-day'] = function (el) {
+    var a = String(el.getAttribute('data-arg')).split(':'), s = attDraft().shifts[+a[0]], day = +a[1]; if (!s) return;
+    s.days = (s.days || []).indexOf(day) >= 0 ? s.days.filter(function (x) { return x !== day; }) : (s.days || []).concat([day]).sort();
+    attDirty(); paintSection();
+  };
+  ACT['att-add'] = function () {
+    var d = attDraft(); if (d.shifts.length >= 12) return;
+    d.shifts.push({ id: 'shift' + (d.shifts.length + 1), name: 'Night shift', start: '20:00', end: '05:00', grace: 10, absent_after: 120, days: [1, 2, 3, 4, 5], ot: {} });
+    attDirty(); paintSection();
+  };
+  ACT['att-remove'] = function (el) {
+    var d = attDraft(), i = +el.getAttribute('data-arg'), s = d.shifts[i]; if (!s || d.shifts.length < 2) return;
+    confirmDo({ title: 'Remove shift "' + (s.name || s.id) + '"?', text: 'Employees assigned to it fall back to the first shift once you save.', confirm: 'Remove shift', icon: 'trash-2' }, function () {
+      d.shifts.splice(i, 1); attDirty(); paintSection();
+    });
+  };
+  ACT['att-reset'] = function () { S.att = null; paintSection(); toast('Changes discarded', 'warn'); };
+  ACT['att-save'] = function (el) {
+    var d = attDraft(), ids = {}, bad = [];
+    var shifts = d.shifts.map(function (s, i) {
+      var id = String(s.id || s.name || ('shift' + (i + 1))).toLowerCase().replace(/[^a-z0-9_-]+/g, '') || ('shift' + (i + 1));
+      while (ids[id]) id += 'x';
+      ids[id] = 1;
+      if (!/^\d{2}:\d{2}$/.test(s.start || '') || !/^\d{2}:\d{2}$/.test(s.end || '')) bad.push((s.name || id) + ': start and end times');
+      if (!(s.days || []).length) bad.push((s.name || id) + ': at least one working day');
+      return { id: id, name: s.name, start: s.start, end: s.end, grace: s.grace, absent_after: s.absent_after, days: s.days, ot: s.ot || {} };
+    });
+    if (!(+d.ot.max_h >= 0.5 && +d.ot.max_h <= 16)) bad.push('OT cap must be 0.5–16 hours');
+    if (!(+d.ot.min >= 0 && +d.ot.min <= 240)) bad.push('OT minimum must be 0–240 minutes');
+    if (bad.length) { setMsg('att', 'Check: ' + bad.join('; '), 'err'); return; }
+    el.disabled = true; setMsg('att', 'Saving…');
+    post('/settings', { att_shifts: shifts, ot_enabled: !!d.ot.enabled, ot_min_minutes: +d.ot.min, ot_round_minutes: +d.ot.round,
+      ot_max_hours: +d.ot.max_h, ot_early_start: !!d.ot.early, ot_rest_day: d.ot.rest !== false })
+      .then(function () { S.att = null; setMsg('att', ''); toast('Shift and overtime rules saved — they apply from the next recompute'); return load('settings'); })
+      .then(function () { if (S.sec === 'attendance') paintSection(); var a = A(); if (a && a.loadApp) try { a.loadApp(); } catch (e) { /* optional */ } })
+      .catch(function (e) { el.disabled = false; setMsg('att', (e && e.message) || 'Save failed', 'err'); });
+  };
+
   function onClick(ev) {
     var t = ev.target && ev.target.closest ? ev.target.closest('[data-kjs-act]') : null;
     if (!t || !S.el || !S.el.contains(t) || t.tagName === 'SELECT' || t.disabled) return;
@@ -1406,12 +1561,14 @@
       return;
     }
     if (t.hasAttribute('data-kjs-hook')) { var i = +t.getAttribute('data-kjs-hook'), f = t.getAttribute('data-kjs-hf'), v = t.value; hookEdit(function (l) { if (l[i]) l[i][f] = v; }); return; }
+    if (t.hasAttribute('data-kjs-att')) { attInput(t, ev); return; }
     if (t.getAttribute('data-kjs-local') === 'u-q') { S.uQuery = t.value; applyUserFilter(); }
     if (t.getAttribute('data-kjs-local') === 'ar-mail') S.arMail = t.value;
   }
   function onChange(ev) {
     var t = ev.target; if (!t || !t.getAttribute) return;
     if (t.tagName === 'SELECT' && t.hasAttribute('data-kjs-ns')) { onInput(ev); return; }
+    if (t.hasAttribute('data-kjs-att')) { attInput(t, ev); return; }
     if (t.getAttribute('data-kjs-act') === 'u-role') {
       var u = userById(t.getAttribute('data-arg')), v = t.value; if (!u || u.role === v) return;
       umPost('/users/' + u.id, { role: v }, 'Role updated — ' + u.username + ' is now ' + v).catch(function () { paintSection(); });
