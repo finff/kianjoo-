@@ -508,6 +508,9 @@ try {
     // Device presses use the ingest token; table in lib/CleaningButtonRoutes.php.
     require APP_ROOT . '/lib/CleaningButtonRoutes.php';
 
+    // ── Violation playback from the NVR (RTSP playback via the relay): /playback/{info,clip,test} ──
+    require APP_ROOT . '/lib/PlaybackRoutes.php';
+
     // ── Assistant / agent read API (/api/ai/*) ───────────────
     // Read-only, pre-summarised (lib/AiContext.php). Authorised in
     // lib/AiRoutes.php: admin session (view) or the provision token — the
@@ -1722,6 +1725,13 @@ try {
                 $out['read_token'] = bin2hex(random_bytes(24));
                 $rotated['read_token'] = $out['read_token'];
             }
+            // Violation playback (NVR RTSP playback) — validated in lib/Playback.php.
+            if (isset($in['playback']) && is_array($in['playback'])) {
+                [$out['playback'], $pbErr] = Playback::sanitize($in['playback'], is_array($cur['playback'] ?? null) ? $cur['playback'] : []);
+                if ($pbErr !== null) {
+                    Response::error($pbErr, 422);
+                }
+            }
             // Workstream C: Settings → Behaviour Rules (beh_* keys).
             $out = array_merge($out, Behaviour::sanitize($in));
 
@@ -1784,6 +1794,7 @@ try {
             'ppe_hair_hats'      => $config['ppe']['hair_hats'] ?? ['Bonnet'],
             'cleaning_schedules' => $config['cleaning']['schedules'] ?? [],
             'behaviour'          => $config['behaviour'] ?? Behaviour::DEFAULTS,   // Workstream C
+            'playback'           => Playback::publicSettings($config['playback'] ?? []),
             'endpoints' => [
                 // One push URL per SenseStudio feed. No {stream} placeholder —
                 // SenseStudio posts the URL verbatim, so the camera is taken

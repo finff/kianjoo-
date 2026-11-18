@@ -1226,6 +1226,7 @@
         if (canTri && e.status !== 'resolved' && e.status !== 'closed') foot += h.btn('resolve', 'Resolve', 'check-check');
         if (canTri && e.status !== 'resolved' && (!e.raw.assignee || e.raw.assignee === 'Unassigned')) foot += h.btn('assign', 'Assign to me', 'user-check');
         if (camId) foot += h.btn('cam', 'Camera', 'cctv');
+        if (e.uuid) foot += '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm" data-kj-playback="' + esc(e.uuid) + '">' + ico('film') + 'Playback</button>';   // agent B: assets/js/kj-playback.js
         if (e.inApp) foot += h.btn('full', 'Incident workspace', 'external-link');
         if (tkNo) foot += h.btn('ticket', 'Open ticket', 'ticket', 'kj-btn-primary');
         else if (e.inApp && can('tickets') && appRef() && typeof appRef().makeTicket === 'function') foot += h.btn('raise', 'Raise ticket', 'ticket', 'kj-btn-primary');

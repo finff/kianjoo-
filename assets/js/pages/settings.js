@@ -65,7 +65,7 @@
     ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts'], rules: ['alerts', 'notify'], roles: ['roles'],
     users: ['users', 'links', 'roles', 'types'], integrations: ['int', 'notify', 'mail']
   };
-  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
+  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live', 'pb'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
 
   var CRON_LINE = '* * * * * curl -s "https://kianjoo.weststar-dev.com/api/pipeline/run?token=PROVISION_TOKEN" > /dev/null 2>&1';
   var CRON_PHP = '* * * * * php ~/public_html/kianjoo.weststar-dev.com/bin/ai_worker.php > /dev/null 2>&1';
@@ -255,6 +255,9 @@
         var a = A(); if (a) { a.loadLive(true, true); a.loadApp(); a.fetchFeed(); }
         return r;
       });
+    },
+    pb: function (d) {
+      return post('/settings', { playback: pbDraft(d) });
     },
     reports: function (d) {
       var o = {};
@@ -504,8 +507,72 @@
     var net = card({ icon: 'network', title: 'Network test', sub: nd && nd.at ? String(nd.at).replace('T', ' ').slice(0, 19) + ' · ' + (ns.pass || 0) + ' pass · ' + (ns.warn || 0) + ' warn · ' + (ns.fail || 0) + ' fail' : 'TCP latency, loss, RTSP handshake, TTFB and throughput from the server to every source (up to ~50 s).',
       actions: btn('net-run', S.netBusy ? 'Testing…' : 'Run network test', 'gauge', 'kj-btn-secondary kj-btn-sm', '', S.netBusy ? ' disabled' : ''),
       body: (netRows.length ? '<div class="kj-table-wrap"><table class="kj-table"><thead><tr><th>Target</th><th class="kj-num">TCP</th><th class="kj-num">Loss</th><th class="kj-num">TTFB</th><th class="kj-num">Throughput</th><th>Result</th><th></th></tr></thead><tbody>' + netRows.join('') + '</tbody></table></div>' : '') + msgLine('net') });
-    return sec(m, chip(bs.text.split(' · ')[0], bs.tone, true), kpis + '<div class="kjs-grid-2">' + sense + live + '</div>' + sources + net);
+    return sec(m, chip(bs.text.split(' · ')[0], bs.tone, true), kpis + '<div class="kjs-grid-2">' + sense + live + '</div>' + sources + playbackCard(st, src) + net);
   };
+
+  /* ── Violation playback (agent B): NVR / camera RTSP playback, lib/Playback.php ── */
+  /* Changed fields only, in the shape POST /settings {playback} expects (server re-validates). */
+  function pbDraft(d) {
+    var pb = (S.data.settings && S.data.settings.playback) || {}, o = {}, cams = null;
+    Object.keys(d).forEach(function (k) {
+      var v = d[k];
+      if (k.indexOf('cam:') === 0) {
+        var p = k.split(':'); // cam:<stream>:<field>
+        if (!cams) cams = JSON.parse(JSON.stringify(pb.cameras || {}));
+        var c = cams[p[1]] || (cams[p[1]] = {});
+        c[p[2]] = String(v).trim();
+      } else if (k === 'enabled') o.enabled = v === '1';
+      else if (k === 'pre_sec' || k === 'post_sec' || k === 'skew_sec') o[k] = parseInt(v, 10) || 0;
+      else if (k === 'pass') { if (v && v.indexOf('•') < 0) o.pass = v; }
+      else o[k] = String(v).trim();
+    });
+    if (cams) o.cameras = cams;
+    return o;
+  }
+  function playbackCard(st, src) {
+    var pb = st.playback;
+    if (!pb) return '';
+    var presets = pb.presets || {}, preset = dv('pb', 'preset', pb.preset || 'hikvision');
+    var on = dv('pb', 'enabled', pb.enabled ? '1' : '0') === '1';
+    var tzList = [['local', 'Site time (MYT)'], ['UTC', 'UTC']];
+    if (pb.tz && pb.tz !== 'local' && pb.tz !== 'UTC') tzList.push([pb.tz, pb.tz]);
+    var tpl = preset === 'custom'
+      ? field('Playback URL template', inp('pb', 'template', pb.template, { mono: true, ph: 'rtsp://{host}/…?starttime={start:Ymd\\THis\\Z}&endtime={end:Ymd\\THis\\Z}' }),
+          'Placeholders: {host} {user} {pass} {channel} {stream} {start:FORMAT} {end:FORMAT} — FORMAT is a PHP date() format, e.g. Ymd\\THis\\Z or Y_m_d_H_i_s or U.', 'is-wide')
+      : copyLine('URL template (' + (preset === 'dahua' ? 'Dahua' : 'Hikvision') + ' preset)', presets[preset] || '');
+    var names = (src || []).filter(function (r) { return r && r.name && r.state !== 'direct' && !/\.m3u8/i.test(String(r.source || '')); }).map(function (r) { return String(r.name); });
+    var camsSaved = pb.cameras || {};
+    Object.keys(camsSaved).forEach(function (k) { if (names.indexOf(k) < 0) names.push(k); });
+    var camRows = names.map(function (n) {
+      var c = camsSaved[n] || {};
+      return '<tr><td><span class="kjs-cell-name">' + esc(n) + '</span></td>' +
+        '<td>' + inp('pb', 'cam:' + n + ':channel', c.channel || '', { ph: 'auto', mono: true }) + '</td>' +
+        '<td>' + inp('pb', 'cam:' + n + ':host', c.host || '', { ph: 'default', mono: true }) + '</td></tr>';
+    });
+    var camTable = camRows.length
+      ? '<div class="kj-table-wrap"><table class="kj-table kjs-table"><thead><tr><th>Camera stream</th><th>Recorder channel</th><th>Recorder host:port</th></tr></thead><tbody>' + camRows.join('') + '</tbody></table></div>'
+      : '<p class="kjs-muted">No RTSP cameras yet — add sources above; each camera then gets a channel row here.</p>';
+    var testSel = '<select class="kj-select" data-kjs-local="pb-cam" aria-label="Camera to test">' + names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === S.pbCam ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>';
+    return card({ icon: 'film', tone: on ? 'success' : '', title: 'Violation playback (recorder)',
+      sub: on ? 'On — a detection plays ' + n0(dv('pb', 'pre_sec', pb.pre_sec)) + ' s before to ' + n0(dv('pb', 'post_sec', pb.post_sec)) + ' s after, from the NVR / camera recording'
+        : 'Off — the Playback button shows the detection snapshots and explains why video is unavailable',
+      body: '<div class="kjs-rows">' + row('play', 'Play violations from the recorder', 'Needs RTSP playback on the customer NVR / camera, reachable from this web server. Nothing is recorded here.', draftSw('pb', 'enabled', !!pb.enabled, 'Violation playback')) + '</div>' +
+        '<div class="kj-stack">' +
+          group('Recorder brand', draftOpts('pb', 'preset', [['hikvision', 'Hikvision'], ['dahua', 'Dahua'], ['custom', 'Custom template']], pb.preset || 'hikvision')) + tpl +
+        '</div>' +
+        '<div class="kjs-form">' +
+          field('Seconds before', inp('pb', 'pre_sec', pb.pre_sec, { type: 'number', min: 0, max: 60, step: 1 })) +
+          field('Seconds after', inp('pb', 'post_sec', pb.post_sec, { type: 'number', min: 0, max: 60, step: 1 }), 'At most ' + (pb.max_span || 90) + ' s in total.') +
+          group('Time zone in the URL', draftOpts('pb', 'tz', tzList, pb.tz || 'local'), 'Most Hikvision / Dahua recorders expect their local time (even with a trailing Z). If clips are 8 h off, pick UTC.') +
+          field('Recorder clock offset (s)', inp('pb', 'skew_sec', pb.skew_sec, { type: 'number', min: -86400, max: 86400, step: 1 }), 'Recorder clock minus true time, if the NVR clock drifts.') +
+          field('Recorder host (optional)', inp('pb', 'host', pb.host, { mono: true, ph: 'blank = each camera’s own RTSP host' }), 'e.g. 203.0.113.10:554 — the NVR address as seen from this web server.') +
+          field('Recorder user (optional)', inp('pb', 'user', pb.user, { ph: 'blank = camera RTSP login' })) +
+          field('Recorder password', inp('pb', 'pass', '', { secret: true, type: 'password', ph: pb.pass || 'not set' }), 'Leave blank to keep the stored password. Never sent to browsers.') +
+        '</div>' +
+        '<div class="kj-section-title">Per-camera recorder channel</div>' + camTable +
+        '<div class="kjs-btns">' + (names.length ? testSel : '') + btn('pb-test', S.pbBusy ? 'Testing…' : 'Test playback', 'play', 'kj-btn-secondary', null, (S.pbBusy || !names.length) ? ' disabled' : '') +
+          '<span class="kjs-muted">Pulls ~2 s of that camera’s recording from 2 minutes ago, using the values on screen (unsaved changes included).</span></div>' + msgLine('pb') });
+  }
 
   /* ── Floor plans (summary only — the editor lives at #cameras/floorplan) ── */
   RENDER.floorplans = function (m) {
@@ -1103,6 +1170,17 @@
 
   var ACT = {
     noop: function () {},
+    'pb-test': function () {
+      var cam = local('pb-cam');
+      if (!cam || S.pbBusy) return;
+      S.pbCam = cam; S.pbBusy = true; setMsg('pb', 'Asking the recorder for ' + cam + ' 2 minutes ago… (up to ~30 s)'); paintSection();
+      post('/playback/test', { stream: cam, ago: 120, playback: pbDraft(S.drafts.pb || {}) }).then(function (d) {
+        S.pbBusy = false;
+        if (d.ok) setMsg('pb', '✓ Playback works — ' + d.frames + ' frames (' + (n0(d.media_ms) / 1000).toFixed(1) + ' s of video) in ' + (n0(d.ms) / 1000).toFixed(1) + ' s from ' + (d.url || 'the recorder') + '. Save to keep these settings.', 'ok');
+        else setMsg('pb', '✗ ' + (d.reason || d.error || 'No video') + (d.url ? ' — tried ' + d.url : ''), 'err');
+        paintSection();
+      }, function (e) { S.pbBusy = false; setMsg('pb', '✗ ' + e.message, 'err'); paintSection(); });
+    },
     reload: function () { refresh(true); },
     save: saveSection,
     discard: discardSection,
