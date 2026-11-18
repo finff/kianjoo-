@@ -516,7 +516,10 @@ final class Floorplans
     /** Every raw id that means this person in `events.person_id`. */
     private function idsFor(string $pid): array
     {
-        return array_values(array_unique(array_merge([$pid], array_map('strval', array_keys(array_filter($this->aliasMap(), static fn ($v) => $v === $pid))))));
+        // + stranger ids merged into this one (Movement › Strangers "merge with…", lib/Strangers.php).
+        require_once __DIR__ . '/Strangers.php';
+        return array_values(array_unique(array_merge([$pid], array_map('strval', array_keys(array_filter($this->aliasMap(), static fn ($v) => $v === $pid))),
+            Strangers::mergedIds($this->pdo, $pid))));
     }
 
     public function person(string $pid): array
@@ -529,9 +532,14 @@ final class Floorplans
             $r = null;
         }
         $store = new EventStore($this->pdo, $this->config);
+        $stranger = '';
+        if ($r === null) {   // unregistered face: show the operator's stranger label when there is one
+            require_once __DIR__ . '/Strangers.php';
+            $stranger = Strangers::labelOf($this->pdo, $pid);
+        }
         return [
             'person_id'  => $pid,
-            'name'       => (string) ($r['name'] ?? ('Unknown #' . $pid)),
+            'name'       => (string) ($r['name'] ?? ($stranger !== '' ? $stranger . ' · #' . $pid : 'Unknown #' . $pid)),
             'staff_id'   => (string) ($r['staff_id'] ?? ''),
             'department' => (string) ($r['department'] ?? ''),
             'photo'      => $r ? $store->fullUrl($r['photo_url'] ?? null) : null,

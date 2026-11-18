@@ -454,6 +454,12 @@ $config['cleaning'] = ['schedules' => $clean];
 require_once dirname(__DIR__) . '/lib/Behaviour.php';
 $config['behaviour'] = Behaviour::configFrom($app);
 
+// Stranger movement (Movement › Strangers, keys stranger_*): optional alert when
+// an unregistered face is seen in a restricted zone or on ≥ N cameras within
+// M minutes (default OFF), one alert per stranger per episode.
+require_once dirname(__DIR__) . '/lib/Strangers.php';
+$config['strangers'] = Strangers::configFrom($app);
+
 // Auto reports: off | daily | weekly | monthly | yearly, sent at `hour` (0-23).
 $config['reports'] = [
     'frequency'  => in_array($app['report_frequency'] ?? '', ['off', 'daily', 'weekly', 'monthly', 'yearly'], true)

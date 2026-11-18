@@ -116,6 +116,9 @@ final class Database
         // Front / left / right face photos per employee — see lib/FaceSchema.php.
         require_once __DIR__ . '/FaceSchema.php';
         FaceSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Stranger labels / status / merges (Movement › Strangers) — see lib/StrangerSchema.php.
+        require_once __DIR__ . '/StrangerSchema.php';
+        StrangerSchema::migrate($pdo, self::$driver, self::$storageDir);
     }
 
     /**

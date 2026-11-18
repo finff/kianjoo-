@@ -62,10 +62,10 @@
   /* data each section needs (loader keys below) and its draft namespaces (save bar) */
   var NEEDS = {
     general: ['settings', 'retention', 'users?'], cameras: ['settings', 'live'], floorplans: ['plans'],
-    ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts'], rules: ['alerts', 'notify'], roles: ['roles'],
+    ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts'], rules: ['alerts', 'notify', 'settings'], roles: ['roles'],
     users: ['users', 'links', 'roles', 'types'], integrations: ['int', 'notify', 'mail']
   };
-  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live', 'pb'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
+  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live', 'pb'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'], rules: ['strg'] };
 
   var CRON_LINE = '* * * * * curl -s "https://kianjoo.weststar-dev.com/api/pipeline/run?token=PROVISION_TOKEN" > /dev/null 2>&1';
   var CRON_PHP = '* * * * * php ~/public_html/kianjoo.weststar-dev.com/bin/ai_worker.php > /dev/null 2>&1';
@@ -318,6 +318,18 @@
       var l = S.hookDraft || [], bad = l.filter(function (h) { return !/^https?:\/\/\S+$/i.test(String(h.url || '').trim()); });
       if (bad.length) return Promise.reject(new Error('Every webhook needs an http(s) URL'));
       return post('/integration/config', { webhooks: l }).then(function (d) { if (S.data.int) S.data.int.settings = d.settings; return d; });
+    },
+    // Movement › Strangers alert (stranger_* keys in app_settings.json, lib/Strangers.php).
+    strg: function (d) {
+      var o = {}, lim = { alert_cams: [0, 20], alert_window_min: [1, 240], episode_gap_min: [5, 720], onsite_min: [5, 120] }, bad = [];
+      ['alert_enabled', 'alert_zone'].forEach(function (k) { if (k in d) o['stranger_' + k] = d[k] === '1'; });
+      Object.keys(lim).forEach(function (k) {
+        if (!(k in d)) return;
+        var v = parseInt(d[k], 10);
+        if (!(v >= lim[k][0] && v <= lim[k][1])) bad.push(lim[k][0] + '–' + lim[k][1]); else o['stranger_' + k] = v;
+      });
+      if (bad.length) return Promise.reject(new Error('Stranger alert numbers must be in range (' + bad.join(', ') + ')'));
+      return post('/settings', o);
     },
     roles: function (d) {
       var roles = (S.data.roles && S.data.roles.roles) || [], changed = {};
@@ -932,8 +944,28 @@
     var condCard = card({ icon: 'filter', title: 'Predefined condition rules', sub: 'Alert in real time when a detection matches · module · camera · severity · time window · keyword.',
       actions: btn('cond-add', 'Add rule', 'plus', 'kj-btn-primary kj-btn-sm', null, nd && conds.length < 50 ? '' : ' disabled'), body: condBody });
     var right = '<div class="kjs-btns">' + chip(emailOn ? 'E-mail on' : 'E-mail off', emailOn ? 'success' : 'warn', true) + chip(active + ' / ' + AR_MODS.length + ' modules', active ? 'primary' : 'warn') + '</div>';
-    return sec(m, right, mods + '<div class="kjs-grid-2">' + mailCard + intrCard + '</div>' + condCard);
+    return sec(m, right, mods + '<div class="kjs-grid-2">' + mailCard + intrCard + '</div>' + condCard + strangerCard());
   };
+  /* Stranger movement alert (Movement › Strangers) — draft namespace 'strg', saved with the section save bar. */
+  function strangerCard() {
+    var st = S.data.settings;
+    if (!st) return card({ icon: 'user-search', title: 'Stranger alerts', body: S.err.settings ? '<div class="kjs-msg is-err">' + esc(S.err.settings) + '</div>' : skel(3) });
+    var c = st.strangers || {}, on = dv('strg', 'alert_enabled', c.alert_enabled ? '1' : '0') === '1';
+    var num = function (key, min, max) { return inp('strg', key, c[key] != null ? c[key] : '', { type: 'number', min: min, max: max, step: 1 }); };
+    return card({ icon: 'user-search', tone: on ? 'danger' : '', title: 'Stranger alerts',
+      sub: 'Notify (Telegram, alert e-mail list and the bell) when a face with no employee profile — and not marked a known visitor — is tracked. One alert per stranger per episode.',
+      actions: draftSw('strg', 'alert_enabled', !!c.alert_enabled, 'Stranger alerts'),
+      body: '<div class="kjs-rows">' +
+          row('shield-alert', 'Seen in a restricted zone', 'At a camera set up as a restricted zone (Restricted zones), inside its restricted hours.', draftSw('strg', 'alert_zone', c.alert_zone !== false, 'Alert in restricted zones')) +
+        '</div>' +
+        '<div class="kjs-grid-2">' +
+          field('Seen on at least … cameras', num('alert_cams', 0, 20), '0 or 1 switches this trigger off.') +
+          field('… within (minutes)', num('alert_window_min', 1, 240)) +
+          field('New episode after (minutes unseen)', num('episode_gap_min', 5, 720), 'A stranger alerts again only after being away this long.') +
+          field('“On site now” window (minutes)', num('onsite_min', 5, 120), 'Used by the Strangers KPI tile.') +
+        '</div>' +
+        '<div class="kjs-btns">' + navBtn('movement/strangers', 'Open Strangers', 'user-search', 'kj-btn-ghost kj-btn-sm') + '</div>' });
+  }
   function alertsPost(patch, ok) {
     var prev = S.data.alerts || {}, opt = {};
     Object.keys(prev).forEach(function (k) { opt[k] = prev[k]; });

@@ -278,6 +278,11 @@ final class EventStore
             // Workstream D: outbound integration webhooks (≤ 2 s budget, never throws).
             require_once __DIR__ . '/Integration.php';
             Integration::dispatch($this->pdo, $this->cfg, $this, $row + ['id' => $eventId], $decoded['map']);
+            // Stranger movement alert (Settings › Alert rules › Stranger alerts, default off; never throws).
+            if (!empty($this->cfg['strangers']['alert_enabled']) && ($row['person_id'] ?? '') !== '') {
+                require_once __DIR__ . '/Strangers.php';
+                Strangers::onIngest($this->pdo, $this->cfg, $this, $row + ['id' => $eventId]);
+            }
         }
 
         $row['id']              = $eventId;
