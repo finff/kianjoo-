@@ -749,6 +749,7 @@
             : chip(loading ? 'Checking\u2026' : 'Not linked', loading ? '' : 'warn', loading ? 'hourglass' : 'circle-alert') + '<div class="kj-sa-muted kj-sa-mt">' + (loading ? '' : 'Ask HR to enrol your face and link it to this login.') + '</div>') +
           '<a class="kj-sa-link kj-sa-mt" href="/kiosk.php">' + (emp ? 'Test face check-in' : 'Open face kiosk') + ' ' + ico('chevron-right') + '</a></div>' +
         '</div>' +
+        (emp ? sideFacesHtml(emp) : '') +
       '</section>' +
       '<section class="kj-card kj-sa-list-card">' +
         '<div class="kj-sa-card-head kj-sa-pad">' + ico('settings', 'kj-sa-pf-ico') + '<span class="kj-sa-card-title">Settings</span></div>' +
@@ -762,6 +763,63 @@
       '<button type="button" class="kj-sa-logout" data-kj-modal="staff-logout:me">' + ico('log-out') + '<span>Log Out</span></button>' +
       '<div class="kj-sa-foot-note">Signed in as ' + esc(u.username ? '@' + u.username : u.name) + (u.role ? ' \u00b7 ' + esc(u.role) : '') + '</div>';
   }
+  /* Side face photos (left / right ~45°) — self-service via /faces/me/{side}. The
+     front photo stays with HR: it is the one SenseStudio matches on. */
+  var SA_SIDES = [
+    ['left', 'Left side', 'photo_left_url', 'Turn your head to the right so the camera sees your left cheek. Keep both eyes visible.'],
+    ['right', 'Right side', 'photo_right_url', 'Turn your head to the left so the camera sees your right cheek. Keep both eyes visible.']
+  ];
+  var SA_FACE_ST = { accepted: ['Accepted by face check', 'success', 'circle-check'], rejected: ['Rejected', 'danger', 'circle-x'],
+                     error: ['Not checked yet', 'warn', 'circle-alert'], enrolled: ['Enrolled', 'success', 'circle-check'] };
+  function sideFacesHtml(emp) {
+    var sides = (emp.faces && emp.faces.sides) || {};
+    var n = (emp.faces && emp.faces.count) || [emp.photo_url, emp.photo_left_url, emp.photo_right_url].filter(Boolean).length;
+    return '<div class="kj-sa-sides">' +
+      '<div class="kj-sa-sides-head"><span class="kj-sa-card-title kj-sa-grow">Side photos</span>' + chip('Faces ' + n + '/3', n === 3 ? 'success' : 'warn', 'scan-face') + '</div>' +
+      '<div class="kj-sa-muted">Help the cameras recognise you from an angle. Use a bright, even light and fill the frame with your face.</div>' +
+      '<div class="kj-sa-sides-grid">' + SA_SIDES.map(function (s) {
+        var url = emp[s[2]] || '', busy = !!(S.faceBusy && S.faceBusy[s[0]]);
+        var chk = url && sides[s[0]] ? sides[s[0]].check : null, st = chk ? SA_FACE_ST[chk.state] : null;
+        return '<div class="kj-sa-side' + (url ? '' : ' is-empty') + (busy ? ' is-busy' : '') + '">' +
+          (url ? '<button type="button" class="kj-sa-side-img" data-kj-modal="image:' + esc(url) + '" aria-label="' + esc('View ' + s[1] + ' photo') + '"><img src="' + esc(url) + '" alt="' + esc(s[1]) + '"></button>'
+               : '<span class="kj-sa-side-img is-empty">' + ico('scan-face') + '</span>') +
+          '<div class="kj-sa-side-lbl">' + esc(s[1]) + '</div>' +
+          (busy ? chip('Uploading…', '', 'hourglass')
+            : (!url ? '<div class="kj-sa-muted kj-sa-side-tip">' + esc(s[3]) + '</div>'
+              : (st ? chip(st[0], st[1], st[2]) : chip('Saved', '', 'check')) +
+                (chk && chk.state !== 'accepted' && chk.msg ? '<div class="kj-sa-side-why">' + esc(chk.msg) + '</div>' : ''))) +
+          '<div class="kj-sa-side-acts">' +
+            '<label class="kj-btn kj-btn-secondary kj-btn-sm' + (busy ? ' is-disabled' : '') + '">' + ico('camera') + '<span>' + (url ? 'Retake' : 'Take photo') + '</span>' +
+              '<input type="file" accept="image/*" capture="user" data-sa-face="' + s[0] + '" class="kj-sr-only"' + (busy ? ' disabled' : '') + '></label>' +
+            '<label class="kj-btn kj-btn-ghost kj-btn-sm kj-btn-icon' + (busy ? ' is-disabled' : '') + '" title="Choose from gallery" aria-label="' + esc('Choose ' + s[1] + ' photo from gallery') + '">' + ico('image') +
+              '<input type="file" accept="image/jpeg,image/png,image/webp" data-sa-face="' + s[0] + '" class="kj-sr-only"' + (busy ? ' disabled' : '') + '></label>' +
+            (url ? '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm kj-btn-icon" data-sa-act="face-rm" data-k="' + s[0] + '" aria-label="' + esc('Remove ' + s[1] + ' photo') + '"' + (busy ? ' disabled' : '') + '>' + ico('trash-2') + '</button>' : '') +
+          '</div></div>';
+      }).join('') + '</div></div>';
+  }
+  function faceSave(side, file) {
+    if (file && !/^image\//.test(file.type || '')) { toast('Pick an image file.', 'warn'); return; }
+    if (file && file.size > 6 * 1024 * 1024) { toast('That photo is larger than 6 MB.', 'danger'); return; }
+    S.faceBusy = S.faceBusy || {}; S.faceBusy[side] = true;
+    if (S.sub === 'profile') slot('pf', profileHtml(false));
+    var body;
+    if (file) { body = new FormData(); body.append('file', file); }
+    req('POST', '/faces/me/' + side + (file ? '' : '/remove'), null, body).then(function (d) {
+      delete S.faceBusy[side];
+      if (d.profile) S.profile = d.profile;
+      var chk = file && d.faces && d.faces.sides && d.faces.sides[side] ? d.faces.sides[side].check : null;
+      if (!file) toast('Photo removed', 'success');
+      else if (chk && chk.state === 'rejected') toast('Saved, but the face check rejected it: ' + chk.msg, 'warn');
+      else if (chk && chk.state === 'accepted') toast('Photo saved and accepted by the face check', 'success');
+      else toast('Photo saved', 'success');
+      if (S.sub === 'profile') slot('pf', profileHtml(false));
+    }).catch(function (e) {
+      delete S.faceBusy[side];
+      toast(e.message || 'Photo upload failed', 'danger');
+      if (S.sub === 'profile') slot('pf', profileHtml(false));
+    });
+  }
+
   function paintProfileData(seq) {
     getProfile().then(guard(seq, function () {
       slot('pf', profileHtml(false));
@@ -817,6 +875,7 @@
     else if (act === 'ltab') { S.leaveTab = t.getAttribute('data-k'); paintLeaveData(++S.seq); }
     else if (act === 'cancel') { if (M()) M().open('leave', t.getAttribute('data-id'), { intent: 'cancel' }); }
     else if (act === 'email') toast('Email is managed by your administrator.', 'warn');
+    else if (act === 'face-rm') { if (window.confirm('Remove this side photo?')) faceSave(t.getAttribute('data-k'), null); }
   }
   function onChange(e) {
     var t = e.target;
@@ -827,6 +886,7 @@
       S.unread = -1; ensureBell(); pollTick();
       toast(t.checked ? 'Notifications on' : 'Notifications muted', t.checked ? 'success' : 'warn');
     } else if (t.matches('[data-sa-photo]')) uploadPhoto(t.files && t.files[0]);
+    else if (t.matches('[data-sa-face]')) { var ff = t.files && t.files[0]; var fs = t.getAttribute('data-sa-face'); t.value = ''; if (ff) faceSave(fs, ff); }
   }
 
   window.KJPages.register('staff-app', {

@@ -230,6 +230,12 @@ final class SenseApi
     // ── Person library (employee registration sync) ──────────
     // Enrolment flow from §1.3.1: upload the face image → create (or update)
     // the person with that image URI → add the person to a person group.
+    //
+    // One face per person: §2.2.1 / §2.2.5 take a single `imageURI` string and
+    // the API has no "add image to person" endpoint, so the dashboard enrols
+    // the FRONT photo and only runs the left/right side photos through
+    // uploadPersonImage() (the enrolment face check) to report a verdict —
+    // see Attendance::sync() and lib/Faces.php.
 
     /** §7.2.1 Upload Image in Base64 — serviceType "person" runs the face quality check. data = image URI. */
     public function uploadPersonImage(string $raw, string $name): array

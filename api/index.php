@@ -486,6 +486,9 @@ try {
     // ── Login ↔ employee link (users.person_id): GET|POST /user-links [admin + users] ──
     require APP_ROOT . '/lib/UserLinkRoutes.php';
 
+    // ── Employee face photos, front / left / right: /faces/* (table in lib/FaceRoutes.php) ──
+    require APP_ROOT . '/lib/FaceRoutes.php';
+
     // ── Floor plans, camera pins, movement playback (M14) ────
     // /floorplans/* and /movement/{path,occupancy,people,thumb,camera};
     // route table + RBAC in lib/FloorplanRoutes.php (/movement/log falls through).

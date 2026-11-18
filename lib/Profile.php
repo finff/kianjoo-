@@ -15,6 +15,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/ImageTool.php';
+require_once __DIR__ . '/Faces.php';
 
 final class Profile
 {
@@ -41,7 +42,12 @@ final class Profile
             if ($r = $s->fetch()) {
                 $emp = ['person_id' => $r['person_id'], 'name' => $r['name'], 'staff_id' => $r['staff_id'] ?? null,
                         'department' => $r['department'] ?? null, 'plant' => $r['plant'] ?? null, 'shift' => $r['shift'] ?? null,
-                        'photo_url' => $r['photo_url'] ?? null];
+                        'photo_url' => $r['photo_url'] ?? null,
+                        // Face photos (front = photo_url) + SenseStudio check per side; left/right are
+                        // self-service via POST /faces/me/{left|right} (lib/FaceRoutes.php).
+                        'photo_left_url' => ($r['photo_left'] ?? null) ?: null,
+                        'photo_right_url' => ($r['photo_right'] ?? null) ?: null,
+                        'faces' => Faces::summary($r)];
             }
         }
         return [
@@ -117,6 +123,32 @@ final class Profile
             @unlink($this->appRoot . '/uploads/profiles/' . $m[1]);
         }
         return ['photo_url' => $url, 'width' => $res['width'], 'height' => $res['height'], 'bytes' => $res['bytes']];
+    }
+
+    /**
+     * Self-service side face photo for the caller's own linked employee.
+     * Only left/right — the FRONT photo is the one SenseStudio matches on, so
+     * it stays with HR (People page). $bytes null = remove.
+     */
+    public function saveFacePhoto(array $p, string $side, ?string $bytes): array
+    {
+        if (!in_array($side, ['left', 'right'], true)) {
+            throw new InvalidArgumentException('You can add your left and right side photos here; the front photo is managed by HR.');
+        }
+        $pid = (string) ($p['person_id'] ?? '');
+        if ($pid === '') {
+            throw new DomainException('No employee profile is linked to your login — ask HR to link it first.');
+        }
+        $faces = new Faces($this->pdo, $this->appRoot);
+        $row   = $faces->row($pid);
+        if ($row === null) {
+            throw new DomainException('Your employee profile was not found — ask HR to check the link.');
+        }
+        $old = (string) ($row[Faces::SIDES[$side]] ?? '');
+        $url = $bytes === null ? null : $faces->storeUpload($pid, $side, $bytes);
+        $faces->setPhoto($pid, $side, $url);
+        $faces->deleteFile($old !== '' ? $old : null, $pid);
+        return $this->get($p);
     }
 
     private function save(int $id, array $set): void

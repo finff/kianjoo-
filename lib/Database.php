@@ -113,6 +113,9 @@ final class Database
         // Per-user widget dashboard layout (M3) — see lib/DashboardSchema.php.
         require_once __DIR__ . '/DashboardSchema.php';
         DashboardSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Front / left / right face photos per employee — see lib/FaceSchema.php.
+        require_once __DIR__ . '/FaceSchema.php';
+        FaceSchema::migrate($pdo, self::$driver, self::$storageDir);
     }
 
     /**
