@@ -521,6 +521,26 @@ button.kj-sa-cal-day:active { transform: scale(.92); }
 .kj-sa-face-img.is-empty { cursor: default; }
 .kj-sa-face-img .kj-ico { width: 36px; height: 36px; }
 .kj-sa-face-img:focus-visible { outline: none; box-shadow: var(--kj-shadow-focus); }
+/* Side face photos (left / right) — self-service */
+.kj-sa-sides { display: flex; flex-direction: column; gap: var(--kj-s-2); margin-top: var(--kj-s-4); padding-top: var(--kj-s-4); border-top: 1px solid var(--kj-border); }
+.kj-sa-sides-head { display: flex; align-items: center; gap: var(--kj-s-2); }
+.kj-sa-sides-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--kj-s-3); margin-top: var(--kj-s-1, 4px); }
+.kj-sa-side { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding: var(--kj-s-3); border: 1px solid var(--kj-border); border-radius: var(--kj-r-md); background: var(--kj-surface); }
+.kj-sa-side.is-empty { border-style: dashed; }
+.kj-sa-side.is-busy { opacity: .7; }
+.kj-sa-side-img { width: 100%; aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: var(--kj-r-sm); overflow: hidden; background: var(--kj-bg-subtle); color: var(--kj-text-3); display: grid; place-items: center; cursor: zoom-in; }
+.kj-sa-side-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kj-sa-side-img.is-empty { cursor: default; }
+.kj-sa-side-img .kj-ico { width: 32px; height: 32px; }
+.kj-sa-side-img:focus-visible { outline: none; box-shadow: var(--kj-shadow-focus); }
+.kj-sa-side-lbl { font-weight: var(--kj-fw-bold); font-size: var(--kj-fs-sm); color: var(--kj-text); }
+.kj-sa-side-tip { font-size: var(--kj-fs-xs); line-height: 1.35; }
+.kj-sa-side-why { font-size: var(--kj-fs-xs); line-height: 1.35; color: var(--kj-danger); overflow-wrap: anywhere; }
+.kj-sa-side .kj-chip { max-width: 100%; overflow: hidden; }
+.kj-sa-side-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+.kj-sa-side-acts label { cursor: pointer; }
+.kj-sa-side-acts .is-disabled { pointer-events: none; opacity: .55; }
+.kj-sa-side-acts label:focus-within { box-shadow: var(--kj-shadow-focus); }
 
 .kj-sa-row-card { display: flex; align-items: center; gap: var(--kj-s-3); padding: var(--kj-s-4); border-radius: var(--kj-r-lg); background: var(--kj-surface); }
 .kj-sa-row-ico { width: 28px; height: 28px; color: var(--kj-primary); }

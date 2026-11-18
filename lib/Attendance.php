@@ -489,19 +489,22 @@ final class Attendance
             return $fail('Add a staff / employee ID before syncing.');
         }
 
+        require_once __DIR__ . '/Faces.php';
         $raw = $this->photoBytes((string) $emp['photo'], $appRoot, $kiosk);
         if ($raw === null) {
             return $fail('No usable profile photo — attach a clear face photo first.');
         }
-        $up = $api->uploadPersonImage($raw, 'emp-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string) $emp['staffId']) . '.jpg');
+        $staffTag = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $emp['staffId']);
+        $up = $api->uploadPersonImage(Faces::forEnrol($raw), 'emp-' . $staffTag . '.jpg');
         if (!$up['ok'] || !is_string($up['data'] ?? null)) {
-            $why = (string) ($up['msg'] ?? $up['error'] ?? 'upload failed');
-            if (preg_match('/未发现人脸|no face/i', $why)) {
-                $why = 'no face found — use a clear, front-facing photo';
-            } elseif (preg_match('/图片质量|quality/i', $why)) {
-                $why = 'photo quality too low — use a sharper, closer face photo';
-            }
-            return $fail('Photo rejected by SenseStudio: ' . $why);
+            $why = Faces::reason((string) ($up['msg'] ?? $up['error'] ?? 'upload failed'), 'front');
+            // Still check the side photos so the operator gets every verdict in one go.
+            $faces = $this->checkSideFaces($emp, $api, $appRoot, $kiosk, $staffTag, [
+                'front' => ['state' => isset($up['code']) ? 'rejected' : 'error', 'msg' => $why,
+                            'src' => (string) $emp['photo'], 'at' => date('Y-m-d H:i:s')],
+            ]);
+            $this->store->setFaceChecks($pid, $faces);
+            return $fail('Photo rejected by SenseStudio: ' . $why) + ['faces' => $faces, 'faces_note' => self::facesNote($faces)];
         }
         $img  = (string) $up['data'];
         $desc = trim(($emp['department'] ?? '') . ' · ' . ($emp['plant'] ?? ''), ' ·');
@@ -544,7 +547,67 @@ final class Attendance
             }
         }
         $this->store->setSyncState($pid, $uid, $warn ? 'partial' : 'synced', $warn);
-        return ['ok' => true, 'uid' => $uid, 'group' => $group, 'warning' => $warn];
+
+        // Side photos never block or undo the front enrolment above: each is
+        // only run through SenseStudio's enrolment face check and the verdict
+        // reported (SenseStudio holds one face image per person — lib/Faces.php).
+        $faces = $this->checkSideFaces($emp, $api, $appRoot, $kiosk, (string) $staffTag, [
+            'front' => ['state' => 'enrolled', 'msg' => 'enrolled for face matching', 'src' => (string) $emp['photo'],
+                        'uri' => $img, 'at' => date('Y-m-d H:i:s')],
+        ]);
+        $this->store->setFaceChecks($pid, $faces);
+        return ['ok' => true, 'uid' => $uid, 'group' => $group, 'warning' => $warn,
+                'faces' => $faces, 'faces_note' => self::facesNote($faces)];
+    }
+
+    /**
+     * Run the employee's left / right photos through SenseStudio's enrolment
+     * face check (uploadImageBase64, serviceType "person" — the same check the
+     * front photo passes). A photo already judged accepted/rejected is not
+     * re-sent; transport errors are retried on the next sync.
+     *
+     * @param array $faces verdicts gathered so far (front)
+     * @return array<string,array{state:string,msg:string,src:string,uri?:string,at:string}>
+     */
+    private function checkSideFaces(array $emp, SenseApi $api, string $appRoot, ?Kiosk $kiosk, string $staffTag, array $faces): array
+    {
+        $prev = (array) ($emp['ssFaces'] ?? []);
+        foreach (['left' => 'photoLeft', 'right' => 'photoRight'] as $side => $key) {
+            $src = (string) ($emp[$key] ?? '');
+            if ($src === '') {
+                continue;
+            }
+            $old = $prev[$side] ?? null;
+            if (is_array($old) && Faces::sameSrc((string) ($old['src'] ?? ''), $src)
+                && in_array($old['state'] ?? '', ['accepted', 'rejected'], true)) {
+                $faces[$side] = $old;
+                continue;
+            }
+            $raw = $this->photoBytes($src, $appRoot, $kiosk);
+            $faces[$side] = $raw === null
+                ? ['state' => 'error', 'msg' => 'photo file is missing on the dashboard — upload it again',
+                   'src' => $src, 'at' => date('Y-m-d H:i:s')]
+                : Faces::checkSide($api, $raw, $staffTag, $side, $src);
+        }
+        return $faces;
+    }
+
+    /** One line per side for the sync toast, e.g. "Left side: rejected — no face found …". */
+    private static function facesNote(array $faces): string
+    {
+        $out = [];
+        foreach (['left' => 'Left side', 'right' => 'Right side'] as $side => $label) {
+            $f = $faces[$side] ?? null;
+            if (!is_array($f)) {
+                continue;
+            }
+            $out[] = $label . ': ' . match ($f['state'] ?? '') {
+                'accepted' => 'accepted by the face check (stored; matching uses the front photo)',
+                'rejected' => 'rejected — ' . ($f['msg'] ?? ''),
+                default    => 'not checked — ' . ($f['msg'] ?? ''),
+            };
+        }
+        return implode(' · ', $out);
     }
 
     /** Find or create a person group by name; ids are cached in storage/sense_groups.json. */

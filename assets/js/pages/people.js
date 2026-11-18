@@ -255,6 +255,124 @@
     return '<button type="button" class="kj-chip kjp-enrol' + (e.tone ? ' is-' + e.tone : '') + (extra ? ' ' + extra : '') + '" data-kj-nav="people/faces" title="' +
       esc('Face enrolment: ' + e.label + (p.ssError ? ' — ' + p.ssError : '') + ' · open Face registration') + '">' + ico('scan-face') + esc(e.label) + '</button>';
   }
+  /* ── face photos: front (p.photo) + left / right side (lib/Faces.php, /api/faces/*) ── */
+  var FACE_SIDES = [
+    ['front', 'Front', 'photo', 'Look straight at the camera, face filling most of the frame.'],
+    ['left', 'Left ~45°', 'photoLeft', 'Head turned to their right so the camera sees the left cheek — both eyes still visible.'],
+    ['right', 'Right ~45°', 'photoRight', 'Head turned to their left so the camera sees the right cheek — both eyes still visible.']
+  ];
+  function faceCount(p) { return FACE_SIDES.filter(function (s) { return !!(p && p[s[2]]); }).length; }
+  function facesChip(p) {
+    var n = faceCount(p);
+    var have = FACE_SIDES.filter(function (s) { return !!p[s[2]]; }).map(function (s) { return s[0]; });
+    return '<span class="kj-chip kjp-faces-chip is-' + (n === 3 ? 'success' : (n ? 'warn' : 'danger')) + '" title="' +
+      esc('Face photos: ' + n + ' of 3' + (have.length ? ' (' + have.join(', ') + ')' : '') + ' — open the profile to add the rest') + '">' + ico('scan-face') + 'Faces ' + n + '/3</span>';
+  }
+  function srcKey(u) { return String(u || '').replace(/^https?:\/\/[^/]+/i, '').replace(/^\/+/, ''); }
+  /** SenseStudio verdict for one side, only when it is about the photo currently stored. */
+  function faceCheck(p, side, url) {
+    var all = p.ssFaces || {}, c = all[side];
+    if (c && c.src && srcKey(c.src) === srcKey(url)) return c;
+    // Profiles enrolled before side photos existed: the front is what SenseStudio holds.
+    if (side === 'front' && url && p.ssUid && (p.ssSync === 'synced' || p.ssSync === 'partial') && !all.front) return { state: 'enrolled', msg: 'enrolled for face matching' };
+    return null;
+  }
+  var FACE_STATE = {
+    enrolled: ['Enrolled · used for matching', 'success', 'circle-check'],
+    accepted: ['Passed face check · stored', 'info', 'circle-check'],
+    rejected: ['Rejected by SenseStudio', 'danger', 'circle-x'],
+    error: ['Not checked', 'warn', 'circle-alert']
+  };
+  /** Small head glyph showing the pose for a slot (features shift toward the turn). */
+  function poseSvg(side) {
+    var dx = side === 'left' ? -7 : (side === 'right' ? 7 : 0);
+    return '<svg class="kjp-pose" viewBox="0 0 60 72" aria-hidden="true" focusable="false">' +
+      '<ellipse cx="30" cy="36" rx="19" ry="24" fill="none" stroke="currentColor" stroke-width="2.5"/>' +
+      '<circle cx="' + (23 + dx) + '" cy="32" r="2.6" fill="currentColor"/><circle cx="' + (37 + dx) + '" cy="32" r="2.6" fill="currentColor"/>' +
+      '<path d="M' + (30 + dx) + ' 35 L' + (30 + dx * 1.6) + ' 45 L' + (30 + dx * 0.6) + ' 46" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M' + (24 + dx) + ' 52 Q' + (30 + dx) + ' 56 ' + (36 + dx) + ' 52" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  }
+  function faceSlot(p, s, editable, busy) {
+    var side = s[0], url = p[s[2]] || '', chk = url ? faceCheck(p, side, url) : null;
+    var st = chk ? FACE_STATE[chk.state] : null;
+    var status = !url ? '<span class="kj-chip kjp-face-st">Not added</span>'
+      : (st ? '<span class="kj-chip kjp-face-st is-' + st[1] + '">' + ico(st[2]) + esc(st[0]) + '</span>'
+            : '<span class="kj-chip kjp-face-st">' + ico('hourglass') + 'Not synced yet</span>');
+    var why = chk && (chk.state === 'rejected' || chk.state === 'error') && chk.msg ? '<div class="kjp-face-why">' + esc(chk.msg) + '</div>' : '';
+    var pic = url
+      ? '<button type="button" class="kjp-face-pic" data-kj-modal="' + esc(spec('image', url)) + '" data-kj-seed=\'' + esc(JSON.stringify({ label: p.name + ' · ' + s[1] })) + '\' aria-label="' + esc('View ' + s[1] + ' photo') + '">' +
+          '<img src="' + esc(url) + '" alt="' + esc(p.name + ' — ' + s[1]) + '" loading="lazy"></button>'
+      : '<span class="kjp-face-pic is-empty" title="' + esc(s[3]) + '">' + poseSvg(side) + '</span>';
+    var acts = !editable ? '' : '<div class="kjp-face-acts">' +
+      '<label class="kj-btn kj-btn-secondary kj-btn-sm kjp-face-btn' + (busy ? ' is-disabled' : '') + '" title="' + esc((url ? 'Replace' : 'Upload') + ' the ' + s[1] + ' photo') + '">' + ico('upload') + '<span>' + (url ? 'Replace' : 'Upload') + '</span>' +
+        '<input type="file" accept="image/jpeg,image/png,image/webp" class="kj-sr-only" data-kjp-face="' + side + '"' + (busy ? ' disabled' : '') + '></label>' +
+      '<label class="kj-btn kj-btn-ghost kj-btn-sm kj-btn-icon kjp-face-btn' + (busy ? ' is-disabled' : '') + '" title="' + esc('Take the ' + s[1] + ' photo with the camera') + '" aria-label="' + esc('Camera: ' + s[1]) + '">' + ico('camera') +
+        '<input type="file" accept="image/*" capture="environment" class="kj-sr-only" data-kjp-face="' + side + '"' + (busy ? ' disabled' : '') + '></label>' +
+      (url ? '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm kj-btn-icon kjp-danger" data-kjp-dact="face-rm" data-kjp-val="' + side + '" title="' + esc('Remove the ' + s[1] + ' photo') + '" aria-label="' + esc('Remove ' + s[1] + ' photo') + '"' + (busy ? ' disabled' : '') + '>' + ico('trash-2') + '</button>' : '') +
+      '</div>';
+    return '<div class="kjp-face' + (busy ? ' is-busy' : '') + (url ? '' : ' is-missing') + '" data-kjp-side="' + side + '">' +
+      '<div class="kjp-face-head"><span class="kjp-face-lbl">' + esc(s[1]) + '</span>' + (busy ? '<span class="kj-muted kjp-face-busy">Uploading…</span>' : '') + '</div>' +
+      pic + status + why + '<div class="kjp-face-guide kj-muted">' + esc(s[3]) + '</div>' + acts + '</div>';
+  }
+  function facesSection(d, p) {
+    var editable = can('settings');
+    var busy = (d.faceBusy || {});
+    return '<div class="kjp-subhead"><div class="kjp-section-title">Face photos</div>' + facesChip(p) + '</div>' +
+      '<div class="kjp-faces">' + FACE_SIDES.map(function (s) { return faceSlot(p, s, editable, !!busy[s[0]]); }).join('') + '</div>' +
+      '<div class="kj-muted kjp-note kjp-faces-note">' + ico('info') + '<span>SenseStudio keeps one face per person, so the <b>front</b> photo is the one enrolled for matching. ' +
+        'Side photos are kept here and run through SenseStudio’s face check on every sync, which tells you whether each one is accepted' +
+        (editable ? '' : ' — ask a supervisor to add or change photos') + '.</span></div>';
+  }
+  /** Put a fresh profile (from /faces/*) into app state + repaint. */
+  function applyProfile(pid, prof) {
+    if (!prof) return;
+    S.profiles[pid] = prof;
+    var app = S.app;
+    if (app && app.setState) app.setState(function (st) { var ppl = st.people || {}; var pr = {}; pr[pid] = prof; return { people: Object.assign({}, ppl, { profiles: Object.assign({}, ppl.profiles || {}, pr) }) }; });
+    if (S.el) paintResults();
+    if (S.drawer && S.drawer.pid === pid) paintDrawer();
+  }
+  function faceRequest(pid, side, file) {
+    var d = S.drawer; if (!d) return;
+    var label = (FACE_SIDES.filter(function (s) { return s[0] === side; })[0] || [side, side])[1];
+    if (file) {
+      if (!/^image\//.test(file.type || '')) { toast('Pick an image file (JPG / PNG / WEBP).', 'warn'); return; }
+      if (file.size > 6 * 1024 * 1024) { toast('Image is larger than 6 MB.', 'warn'); return; }
+    }
+    d.faceBusy = d.faceBusy || {}; d.faceBusy[side] = true; paintDrawer();
+    var o = { method: 'POST', credentials: 'same-origin', cache: 'no-store' };
+    if (file) { var fd = new FormData(); fd.append('file', file); o.body = fd; }
+    fetch(apiUrl('/faces/' + encodeURIComponent(pid) + '/' + side + (file ? '' : '/remove')), o)
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Request failed (' + r.status + ')' }; }); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error((res && res.error) || 'Request failed');
+        if (S.drawer && S.drawer.faceBusy) delete S.drawer.faceBusy[side];
+        applyProfile(pid, res.profile);
+        var prof = res.profile || {};
+        // Re-push so SenseStudio's verdict for the new picture shows straight away
+        // (same rule as saving the profile form: needs a staff ID + front photo).
+        if (file && can('settings') && S.app && S.app.syncEmployee && prof.staffId && prof.photo) {
+          toast(label + ' photo saved — checking it with SenseStudio…');
+          S.app.syncEmployee(pid);
+        } else {
+          toast(file ? label + ' photo saved' : label + ' photo removed', 'success');
+        }
+      })
+      .catch(function (e) {
+        if (S.drawer && S.drawer.faceBusy) delete S.drawer.faceBusy[side];
+        if (S.drawer && S.drawer.pid === pid) paintDrawer();
+        toast((e && e.message) || 'Upload failed', 'danger');
+      });
+  }
+  function onDrawerChange(ev) {
+    var t = ev.target;
+    if (!(t instanceof Element) || !t.matches('[data-kjp-face]') || !S.drawer) return;
+    var f = t.files && t.files[0];
+    var side = t.getAttribute('data-kjp-face');
+    t.value = '';
+    if (f) faceRequest(S.drawer.pid, side, f);
+  }
+
   function card(p) {
     var sel = S.drawer && S.drawer.pid === p.personId;
     return '<article class="kjp-card' + (sel ? ' is-selected' : '') + (p.active === false ? ' is-inactive' : '') + '" data-kjp-open="' + esc(p.personId) + '" tabindex="0" role="button" aria-label="' + esc('Open ' + p.name) + '">' +
@@ -263,8 +381,10 @@
         '<div class="kjp-card-id">' +
           '<div class="kjp-name kj-truncate">' + esc(p.name) + '</div>' +
           '<div class="kjp-desig kj-truncate">' + esc(designation(p)) + '</div>' +
+          '<div class="kjp-card-tags">' +
           (p.department ? '<button type="button" class="kj-chip is-primary kjp-dept" data-kjp-act="dept" data-kjp-val="' + esc(p.department) + '" title="Show only ' + esc(p.department) + '">' + esc(p.department) + '</button>'
             : '<span class="kj-chip kjp-dept">No department</span>') +
+          facesChip(p) + '</div>' +
         '</div></div>' +
       '<div class="kjp-card-foot">' + todayChip(p) + '<span class="kjp-sep"></span>' + enrolChip(p) + '</div>' +
       '</article>';
@@ -459,6 +579,7 @@
       d.el = el; d.bd = bd;
       bd.addEventListener('click', closeDrawer);
       el.addEventListener('click', onDrawerClick);
+      el.addEventListener('change', onDrawerChange);
       requestAnimationFrame(function () { bd.classList.add('is-open'); el.classList.add('is-open'); });
       setTimeout(function () { try { el.focus(); } catch (e) { /* ignore */ } }, 40);
     }
@@ -528,6 +649,14 @@
     if (a === 'tab') { d.tab = act.getAttribute('data-kjp-val'); paintDrawer(); return; }
     if (a === 'dept') { S.dept = act.getAttribute('data-kjp-val') || ''; S.page = 1; closeDrawer(); paint(); return; }
     if (a === 'movement') { focusMovement(p); return; }
+    if (a === 'face-rm') {
+      var side = act.getAttribute('data-kjp-val');
+      var lbl = (FACE_SIDES.filter(function (s) { return s[0] === side; })[0] || [side, side])[1];
+      if (!window.confirm('Remove the ' + lbl + ' photo of ' + p.name + '?' +
+        (side === 'front' && p.ssUid ? '\n\nSenseStudio keeps the photo it last enrolled until you sync a new front photo.' : ''))) return;
+      faceRequest(d.pid, side, null);
+      return;
+    }
     if (!app) { toast('Dashboard is still loading — try again in a moment.', 'warn'); return; }
     if (a === 'edit') { closeDrawer(); app.openProfile({ personId: d.pid, image: p.photo }); return; }
     if (a === 'journey') { closeDrawer(); app.openJourney({ personId: d.pid, name: p.name, staffId: p.staffId, photo: p.photo }); return; }
@@ -617,7 +746,8 @@
       (can('settings') ? '<button type="button" class="kj-btn kj-btn-secondary kj-btn-sm" data-kjp-dact="sync"' + (p.staffId && p.photo || p.ssUid ? '' : ' disabled title="Needs a staff ID and a photo"') + '>' + ico('cloud-upload') + '<span>Sync face</span></button>' +
         '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm kjp-danger" data-kjp-dact="delete">' + ico('trash-2') + '<span>Delete</span></button>' : '') +
       '</div>';
-    return '<div class="kjp-section-title">Profile</div>' + details + about + '<div class="kjp-section-title">Enrolment & access</div>' + face + login + acts;
+    return '<div class="kjp-section-title">Profile</div>' + details + about + facesSection(d, p) +
+      '<div class="kjp-section-title">Enrolment & access</div>' + face + login + acts;
   }
 
   /* Attendance: month calendar from GET /attendance/month (CSV export fallback; shift rules server-side). */
@@ -1148,9 +1278,13 @@
       body:JSON.stringify(pid?{person_id:pid}:{all:true})})
       .then(x=>x.json())
       .then(d=>{
-        const msg=!(d&&d.ok) ? ('✗ '+((d&&(d.error||d.msg))||'Sync failed'))
-          : (pid ? (d.error?('✗ '+d.error):(d.warning?('⚠ '+d.warning):'Synced to SenseStudio ✓'))
+        // faces_note: SenseStudio's verdict on the left/right side photos (never blocks the front enrolment).
+        const fn=(d&&d.faces_note)?String(d.faces_note):'';
+        const sideBad=/rejected|not checked/.test(fn);
+        let msg=!(d&&d.ok) ? ('✗ '+((d&&(d.error||d.msg))||'Sync failed'))
+          : (pid ? (d.error?('✗ '+d.error):(d.warning?('⚠ '+d.warning):(sideBad?'⚠ Front photo synced to SenseStudio ✓':'Synced to SenseStudio ✓')))
                  : ('Synced '+(d.synced||0)+' · failed '+(d.failed||0)+((d.errors&&d.errors.length)?(' — '+d.errors.slice(0,3).join(' | ')):'')));
+        if(pid && fn) msg+=' — '+fn;
         peopleNotice(msg, /^✗/.test(msg)?'danger':(/^⚠/.test(msg)?'warn':'success'));
         this.setState(st=>({empBusy:false, empMsg:msg,
           people:{...st.people, profiles:(d&&d.profiles)||st.people.profiles}}));

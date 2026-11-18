@@ -158,6 +158,37 @@ button.kjp-cal-cell.is-today:hover { background: var(--kj-primary-hover); }
 .kjp-wp:first-child::before { background: var(--kj-success); box-shadow: 0 0 0 3px var(--kj-success-soft); }
 .kjp-evlist .kj-thumb { width: 64px; height: 46px; }
 
+/* Face photos: front / left / right slots (drawer Profile tab) + "Faces n/3" chip on cards */
+.kjp-card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; min-width: 0; }
+.kjp-card-tags .kjp-dept { margin-top: 0; }
+.kjp-card-tags { margin-top: 4px; }
+.kjp-faces-chip { flex-shrink: 0; }
+.kjp-faces-chip .kj-ico { width: 13px; height: 13px; }
+.kjp-faces { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--kj-s-3); }
+.kjp-face { display: flex; flex-direction: column; gap: var(--kj-s-2); min-width: 0; padding: var(--kj-s-3); border: 1px solid var(--kj-border); border-radius: var(--kj-r-md);
+  background: var(--kj-surface); }
+.kjp-face.is-missing { border-style: dashed; }
+.kjp-face.is-busy { opacity: .7; }
+.kjp-face-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--kj-s-2); min-width: 0; }
+.kjp-face-lbl { font-size: var(--kj-fs-sm); font-weight: var(--kj-fw-bold); color: var(--kj-text); }
+.kjp-face-busy { font-size: var(--kj-fs-xs); }
+.kjp-face-pic { display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; padding: 0; border: 0; border-radius: var(--kj-r-sm); overflow: hidden;
+  background: var(--kj-bg-subtle); color: var(--kj-text-3); cursor: zoom-in; }
+.kjp-face-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kjp-face-pic.is-empty { cursor: default; }
+.kjp-face-pic:focus-visible { outline: none; box-shadow: var(--kj-shadow-focus); }
+.kjp-pose { width: 46%; height: auto; opacity: .75; }
+.kjp-face-st { align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.kjp-face-st .kj-ico { width: 13px; height: 13px; flex-shrink: 0; }
+.kjp-face-why { font-size: var(--kj-fs-xs); color: var(--kj-danger); line-height: 1.35; overflow-wrap: anywhere; }
+.kjp-face-guide { font-size: var(--kj-fs-xs); line-height: 1.35; }
+.kjp-face-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+.kjp-face-btn { position: relative; cursor: pointer; }
+.kjp-face-btn.is-disabled { pointer-events: none; opacity: .55; }
+.kjp-face-btn:focus-within { box-shadow: var(--kj-shadow-focus); }
+.kjp-faces-note { display: flex; gap: var(--kj-s-2); align-items: flex-start; line-height: 1.45; }
+.kjp-faces-note .kj-ico { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; }
+
 /* Legacy face & body search results now open the person modal (people.js capture hook). */
 .c289 > .c290 { transition: box-shadow var(--kj-dur) var(--kj-ease); }
 .c289 > .c290:hover { box-shadow: var(--kj-shadow-md); }
@@ -173,6 +204,12 @@ button.kjp-cal-cell.is-today:hover { background: var(--kj-primary-hover); }
   .kjp-dhero { gap: var(--kj-s-3); }
   .kjp-dphoto { width: 84px; height: 84px; }
   .kjp-kv { grid-template-columns: minmax(0, 1fr); }
+  .kjp-faces { gap: var(--kj-s-2); }
+  .kjp-face { padding: var(--kj-s-2); }
+  .kjp-face:not(.is-missing) .kjp-face-guide { display: none; }
+}
+@media (max-width: 380px) {
+  .kjp-faces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .kjp-card { transition: none; }

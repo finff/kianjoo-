@@ -947,6 +947,12 @@ final class EventStore
                 'ssSync'     => (string) ($r['ss_sync'] ?? ''),
                 'ssError'    => (string) ($r['ss_error'] ?? ''),
                 'ssSynced'   => (string) ($r['ss_synced'] ?? ''),
+                // Side faces (lib/Faces.php). `photo` above stays the FRONT face.
+                'photoLeft'  => (string) $this->fullUrl($r['photo_left'] ?? null),
+                'photoRight' => (string) $this->fullUrl($r['photo_right'] ?? null),
+                'faces'      => (int) (($r['photo_url'] ?? '') !== '') + (int) (($r['photo_left'] ?? '') !== '')
+                              + (int) (($r['photo_right'] ?? '') !== ''),
+                'ssFaces'    => (object) (json_decode((string) ($r['ss_faces'] ?? ''), true) ?: []),
             ];
         }
         return $out;
@@ -1022,6 +1028,18 @@ final class EventStore
         );
         $st->execute(['uid' => $uid, 'st' => $state, 'er' => $error !== null ? substr($error, 0, 255) : null,
                       't' => date('Y-m-d H:i:s'), 'p' => $personId]);
+    }
+
+    /** Per-side SenseStudio face-check verdicts ({front|left|right: {state,msg,src,uri?,at}}). */
+    public function setFaceChecks(string $personId, array $faces): void
+    {
+        try {
+            $st = $this->pdo->prepare('UPDATE person_profiles SET ss_faces = :f WHERE person_id = :p');
+            $st->execute(['f' => $faces ? json_encode($faces, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null,
+                          'p' => $personId]);
+        } catch (Throwable $e) {
+            error_log('[faces] ' . $e->getMessage());   // column not migrated yet — never break a sync
+        }
     }
 
     public function deletePersonProfile(string $personId): bool
