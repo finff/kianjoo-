@@ -21,6 +21,14 @@
  *   4. Event span: event_first_at = first detection of the episode (walking
  *      back over that person's detections on the same camera while gaps
  *      ≤ GAP), event_last_at = latest detection.
+ *   5. Low confidence: a "violation" verdict with confidence in
+ *      [review.floor, min_confidence) goes to the human "Needs review" queue
+ *      (lib/ReviewQueue.php, one item per person + location episode); a
+ *      reviewer's Confirm runs confirmFromReview() → the same ticket path.
+ *      Below the floor it is still logged in ai_reviews only.
+ * This ticket merge is per person + location and independent of the incident
+ * episodes on `events` (lib/IncidentGroups.php): pipeline tickets are ITSM
+ * tickets, never INC rows, so nothing is merged twice.
  *
  * Runs under an exclusive flock, so overlapping cron / web invocations are
  * harmless. Invoke: `php bin/ai_worker.php` (cron) or
@@ -72,7 +80,7 @@ final class PpeForkliftPipeline
     {
         $stats = ['scanned' => 0, 'reviewed' => 0, 'violations' => 0, 'tickets_opened' => 0, 'tickets_extended' => 0,
                   'skipped_confirmed' => 0, 'rate_limited' => 0, 'skipped_zone' => 0, 'skipped_stale' => 0,
-                  'no_image' => 0, 'errors' => 0, 'cursor' => null, 'locked' => false, 'breaches_updated' => 0];
+                  'no_image' => 0, 'errors' => 0, 'queued_review' => 0, 'cursor' => null, 'locked' => false, 'breaches_updated' => 0];
         if (!$this->opt['enabled']) {
             // The SLA breach sweep (+ breach e-mails) still runs from this cron path.
             if (empty($o['dry_run'])) {
@@ -198,8 +206,8 @@ final class PpeForkliftPipeline
             $stats['reviewed']++;
             $v = $res['ok'] ? $res['data'] : [];
             $conf = isset($v['confidence']) ? (float) $v['confidence'] : null;
-            $violation = $res['ok'] && !empty($v['violation']) && !empty($v['person_operating_forklift'])
-                && ($conf === null || $conf >= $this->opt['min_confidence']);
+            $claimed   = $res['ok'] && !empty($v['violation']) && !empty($v['person_operating_forklift']);
+            $violation = $claimed && ($conf === null || $conf >= $this->opt['min_confidence']);
             $reviewId = $this->logReview($r, $pid, $loc, $label, $res, $violation, $conf);
             if (!$res['ok']) {
                 $stats['errors']++;
@@ -208,6 +216,22 @@ final class PpeForkliftPipeline
                 }
                 $lastDone = (int) $r['id'];
                 continue;
+            }
+
+            // 4b) Claude says violation but below the auto-ticket confidence: a human
+            //     decides (Tickets → Needs review) instead of the verdict being dropped.
+            if ($claimed && !$violation) {
+                try {
+                    require_once __DIR__ . '/ReviewQueue.php';
+                    $rq = new ReviewQueue($this->pdo, $this->config);
+                    if ($rq->wantsAi($conf)) {
+                        $rq->fromAiReview($r, $reviewId, $v, $conf, $pid, $loc, $label,
+                            $this->personName($pid, (string) ($r['person_name'] ?? '')), $img, $imgIsScene, $this->opt['gap_sec']);
+                        $stats['queued_review'] = ($stats['queued_review'] ?? 0) + 1;
+                    }
+                } catch (Throwable $e) {
+                    error_log('[ppefk] review queue: ' . $e->getMessage());
+                }
             }
 
             // 5) Confirmed → upsert ticket for this episode + WebP proof.
@@ -222,6 +246,12 @@ final class PpeForkliftPipeline
                         'AI vision review: ' . ($v['reason'] ?? 'violation confirmed')
                         . ($proof ? '' : ' — proof image could not be encoded to WebP.'), false, null, null, true);
                     $tickets->notifyCreated($t['ticket']);     // deferred "new ticket" e-mail, now with its proof link
+                    try {
+                        require_once __DIR__ . '/ReviewQueue.php';
+                        (new ReviewQueue($this->pdo, $this->config))->supersede($pid, $loc, (string) $t['ticket']['ticket_no']);
+                    } catch (Throwable $e) {
+                        error_log('[ppefk] review supersede: ' . $e->getMessage());
+                    }
                 } else {
                     $stats['tickets_extended']++;
                 }
@@ -482,6 +512,64 @@ final class PpeForkliftPipeline
             $this->extend($t, (string) $r['received_at']);
             return ['created' => false, 'ticket' => $t];
         }
+    }
+
+    /**
+     * Human review (lib/ReviewQueue.php): a reviewer confirmed a low-confidence
+     * Claude verdict. Opens / joins the episode ticket exactly like an
+     * auto-confirmed violation (same dedup key, same proof image handling).
+     *
+     * @param array       $item       review_queue row (source 'ai')
+     * @param string|null $proofPath  the WebP stored when the item was queued
+     * @return array the ticket row
+     */
+    public function confirmFromReview(array $item, ?string $proofPath, array $p, string $note = ''): array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM ai_reviews WHERE id = :id');
+        $st->execute(['id' => (int) $item['review_id']]);
+        $rv = $st->fetch() ?: [];
+        $st = $this->pdo->prepare('SELECT id, uuid, stream, device_serial, device_name, person_id, person_name, feed_kind,
+                                          trigger_time, received_at, bk_image_url, trigger_img_url, detect_json
+                                   FROM events WHERE id = :id');
+        $st->execute(['id' => (int) $item['event_id']]);
+        $r = $st->fetch();
+        if (!$r) {
+            throw new RuntimeException('The detection behind this review no longer exists (purged by data retention).');
+        }
+        $v = json_decode((string) ($rv['verdict_json'] ?? ''), true) ?: ((json_decode((string) ($item['meta_json'] ?? ''), true) ?: [])['verdict'] ?? []);
+        $pid   = (string) ($item['person_id'] ?: ($rv['person_id'] ?? $r['person_id']));
+        $label = (string) ($item['camera'] ?: ($rv['camera'] ?? EventStore::streamLabel((string) ($r['stream'] ?: ($r['device_serial'] ?? '')))));
+        $loc   = (string) ($item['location'] ?: ($rv['location'] ?? $this->locationOf($label, $r)));
+
+        $bytes = $proofPath !== null && is_file($proofPath) ? (string) file_get_contents($proofPath) : null;
+        $scene = (bool) ((json_decode((string) ($item['meta_json'] ?? ''), true) ?: [])['scene'] ?? false);
+        if ($bytes === null) {
+            $img = ImageTool::fetch($this->imageUrl((string) ($r['bk_image_url'] ?: $r['trigger_img_url'])), $this->appRoot);
+            $bytes = $img['bytes'] ?? null;
+            $scene = $bytes !== null && (string) $r['bk_image_url'] !== '';
+        }
+        $bbox = ($scene && $bytes !== null) ? self::bboxOf($r['detect_json'] ?? null, $bytes) : null;
+
+        $tickets = new Tickets($this->pdo, $this->dir);
+        $t = $this->openOrJoin($tickets, $r, $pid, $loc, $label, $v, ['model' => $rv['model'] ?? null], (int) ($rv['id'] ?? 0), $bbox);
+        $who = (string) ($p['name'] ?? 'a reviewer');
+        $conf = isset($v['confidence']) ? number_format((float) $v['confidence'], 2) : '?';
+        if ($t['created']) {
+            $proof = $bytes !== null ? $tickets->attachProof($t['ticket'], $bytes, (int) $r['id']) : null;
+            $tickets->message((int) $t['ticket']['id'], [], 'ai',
+                'AI vision review (confidence ' . $conf . ', below the auto-ticket threshold): ' . ($v['reason'] ?? 'possible violation')
+                . ' — confirmed as a violation by ' . $who . ' after human review' . ($note !== '' ? ': ' . $note : '.')
+                . ($proof ? '' : ' (no proof image available)'), false, null, null, true);
+            $tickets->notifyCreated($t['ticket']);
+        } else {
+            $tickets->message((int) $t['ticket']['id'], [], 'system',
+                'Human review by ' . $who . ' confirmed another detection in this episode (AI confidence ' . $conf . ')'
+                . ($note !== '' ? ': ' . $note : '.'), false, null, null, true);
+        }
+        if (!empty($rv['id'])) {
+            $this->pdo->prepare('UPDATE ai_reviews SET ticket_id = :t WHERE id = :id')->execute(['t' => $t['ticket']['id'], 'id' => (int) $rv['id']]);
+        }
+        return $tickets->find((int) $t['ticket']['id']) ?? $t['ticket'];
     }
 
     private function personName(string $pid, string $fallback): string

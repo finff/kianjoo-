@@ -214,6 +214,24 @@ final class EventStore
             $this->appendRawLog($row['raw_json']);
         }
 
+        // Incident episode (lib/IncidentGroups.php): a repeat of the same violation
+        // (type + camera + person) within the merge gap joins the open episode —
+        // one incident row, one alert. Never blocks the ingest.
+        $grp = null;
+        $grpPlan = null;
+        require_once __DIR__ . '/IncidentGroups.php';
+        if (IncidentGroups::ready()) {
+            try {
+                $grp = new IncidentGroups($this->pdo, $this->cfg);
+                $grpPlan = $grp->plan(IncidentGroups::keyOf($row + ['decoded' => $decoded['map']]), $now);
+                $row += IncidentGroups::insertCols($grpPlan, $now);
+            } catch (Throwable $e) {
+                error_log('[incident-groups] plan: ' . $e->getMessage());
+                $grp = $grpPlan = null;
+            }
+        }
+        $joined = $grpPlan !== null && $grpPlan['leader'] !== null;
+
         $cols = array_keys($row);
         $ph   = array_map(static fn ($c) => ':' . $c, $cols);
         $stmt = $this->pdo->prepare(
@@ -221,6 +239,14 @@ final class EventStore
         );
         $stmt->execute($row);
         $eventId = (int) $this->pdo->lastInsertId();
+        if ($grp !== null && $grpPlan !== null) {
+            try {
+                $grp->commit($eventId, $grpPlan, $now);
+                $row['group_id'] = $grpPlan['leader'] ?? $eventId;
+            } catch (Throwable $e) {
+                error_log('[incident-groups] commit: ' . $e->getMessage());
+            }
+        }
 
         // Normalized attribute rows for cross-use-case querying.
         if ($decoded['list']) {
@@ -274,7 +300,19 @@ final class EventStore
         if (!$this->silent) {
             $this->forwardFirebase($stream, $payload);
             $this->forwardWestarAI($payload);
-            $this->notifyIfSevere($row, $decoded['map']);
+            // One alert per episode: a detection that joined an open episode is
+            // already covered by the alert its first detection raised.
+            if (!$joined) {
+                $this->notifyIfSevere($row, $decoded['map']);
+                // Human review (lib/ReviewQueue.php): a new episode whose own
+                // detection score is below the configured threshold (off by default).
+                try {
+                    require_once __DIR__ . '/ReviewQueue.php';
+                    (new ReviewQueue($this->pdo, $this->cfg))->fromEvent($row + ['id' => $eventId], $decoded['map'], $attributesRaw);
+                } catch (Throwable $e) {
+                    error_log('[review-queue] ' . $e->getMessage());
+                }
+            }
             // Workstream D: outbound integration webhooks (≤ 2 s budget, never throws).
             require_once __DIR__ . '/Integration.php';
             Integration::dispatch($this->pdo, $this->cfg, $this, $row + ['id' => $eventId], $decoded['map']);
@@ -374,7 +412,7 @@ final class EventStore
      * resolved_at. Returns true when the event exists and the status is valid
      * (also for a no-op repeat), false otherwise.
      */
-    public function setStatus(string $uuid, string $status, ?string $assignee = null): bool
+    public function setStatus(string $uuid, string $status, ?string $assignee = null, bool $wholeEpisode = true): bool
     {
         // ITSM-style names from the unified Tickets table map onto the event enum.
         $status = self::STATUS_ALIAS[strtolower(trim($status))] ?? $status;
@@ -386,13 +424,17 @@ final class EventStore
         // e.g. re-acknowledging) decides found / not found.
         $old = 'open';
         $where = 'uuid = :uuid';
+        $logUuid = $uuid;
+        $params = ['uuid' => $uuid];
         try {
-            $q = $this->pdo->prepare('SELECT status FROM events WHERE uuid = :u LIMIT 1');
+            $grouped = $this->groupsReady();
+            $sel = 'SELECT id, uuid, status' . ($grouped ? ', group_id' : '') . ' FROM events';
+            $q = $this->pdo->prepare($sel . ' WHERE uuid = :u ORDER BY id DESC LIMIT 1');
             $q->execute(['u' => $uuid]);
             $cur = $q->fetch();
             if (!$cur && ctype_digit($uuid)) {
                 // Events pushed without a uuid are addressed by numeric id (DashboardMapper id fallback).
-                $q = $this->pdo->prepare('SELECT status FROM events WHERE id = :u LIMIT 1');
+                $q = $this->pdo->prepare($sel . ' WHERE id = :u LIMIT 1');
                 $q->execute(['u' => (int) $uuid]);
                 $cur = $q->fetch();
                 $where = 'id = :uuid';
@@ -401,11 +443,26 @@ final class EventStore
                 return false;
             }
             $old = (string) ($cur['status'] ?: 'open');
+            // Incident episode: the action applies to every detection of the episode,
+            // and the change history lives on the episode's first event.
+            // ($wholeEpisode = false: an automatic per-detection correction, e.g. Forklift reclassification.)
+            $gid = $grouped && $wholeEpisode ? (int) ($cur['group_id'] ?? 0) : 0;
+            if ($gid > 0) {
+                $lq = $this->pdo->prepare('SELECT id, uuid, status FROM events WHERE id = :g');
+                $lq->execute(['g' => $gid]);
+                $lead = $lq->fetch();
+                $where  = '(id = :gid OR group_id = :gid2)';
+                $params = ['gid' => $gid, 'gid2' => $gid];
+                if ($lead) {
+                    $old = (string) ($lead['status'] ?: 'open');
+                    $logUuid = (string) ($lead['uuid'] ?: $lead['id']);
+                }
+            }
         } catch (Throwable $e) {
         }
         $now = date('Y-m-d H:i:s');
         $sets = ['status = :status'];
-        $params = ['status' => $status, 'uuid' => $uuid];
+        $params['status'] = $status;
         if ($status === 'ack' || $status === 'resolved') {
             $sets[] = 'acked_at = COALESCE(acked_at, :now)';
             $params['now'] = $now;
@@ -423,9 +480,46 @@ final class EventStore
         );
         $stmt->execute($params);
         if ($old !== $status) {
-            $this->addLog($uuid, 'status', $assignee ?: 'Operator', $old, $status, null);
+            $this->addLog($logUuid, 'status', $assignee ?: 'Operator', $old, $status,
+                $logUuid !== $uuid ? 'Applied to the whole incident episode (from detection ' . $uuid . ')' : null);
         }
         return true;
+    }
+
+    private function groupsReady(): bool
+    {
+        require_once __DIR__ . '/IncidentGroups.php';
+        return IncidentGroups::ready();
+    }
+
+    /** The episode's first event (hydrated) for an event row — the row itself when ungrouped. */
+    public function leaderOf(array $row): array
+    {
+        $gid = $this->groupsReady() ? (int) ($row['group_id'] ?? 0) : 0;
+        if ($gid <= 0 || $gid === (int) ($row['id'] ?? 0)) {
+            return $row;
+        }
+        return $this->findById($gid) ?? $row;
+    }
+
+    public function findById(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM events WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+        return $row ? $this->hydrate($row) : null;
+    }
+
+    /** @return list<array> hydrated rows, in id order */
+    public function findByIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn ($i) => $i > 0)));
+        if (!$ids) {
+            return [];
+        }
+        $stmt = $this->pdo->prepare('SELECT * FROM events WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY id');
+        $stmt->execute($ids);
+        return array_map([$this, 'hydrate'], $stmt->fetchAll());
     }
 
     // ── Incident tickets & change log ────────────────────────
@@ -462,17 +556,24 @@ final class EventStore
     /** Escalate a detection into an incident ticket (idempotent). */
     public function ticket(string $uuid, ?string $actor): ?string
     {
-        $row = $this->find($uuid);
+        $row = $this->find($uuid) ?? (ctype_digit($uuid) ? $this->findById((int) $uuid) : null);
         if (!$row) {
             return null;
         }
         if (!empty($row['ticket_no'])) {
             return (string) $row['ticket_no'];
         }
-        $no = 'INC-' . date('ymd') . '-' . str_pad((string) ((int) $row['id'] % 10000), 4, '0', STR_PAD_LEFT);
-        $stmt = $this->pdo->prepare('UPDATE events SET ticketed_at = :now, ticket_no = :no WHERE uuid = :u');
-        $stmt->execute(['now' => date('Y-m-d H:i:s'), 'no' => $no, 'u' => $uuid]);
-        $this->addLog($uuid, 'ticketed', $actor, null, $no, 'Detection escalated to incident ticket');
+        // One ticket per incident episode: it lives on the episode's first event.
+        $lead = $this->leaderOf($row);
+        if (!empty($lead['ticket_no'])) {
+            return (string) $lead['ticket_no'];
+        }
+        $no = 'INC-' . date('ymd') . '-' . str_pad((string) ((int) $lead['id'] % 10000), 4, '0', STR_PAD_LEFT);
+        $stmt = $this->pdo->prepare('UPDATE events SET ticketed_at = :now, ticket_no = :no WHERE id = :id');
+        $stmt->execute(['now' => date('Y-m-d H:i:s'), 'no' => $no, 'id' => (int) $lead['id']]);
+        $count = (int) ($lead['group_count'] ?? 0);
+        $this->addLog((string) ($lead['uuid'] ?: $lead['id']), 'ticketed', $actor, null, $no,
+            'Detection escalated to incident ticket' . ($count > 1 ? ' (episode of ' . $count . ' detections)' : ''));
         return $no;
     }
 
@@ -486,18 +587,28 @@ final class EventStore
         if (!$row) {
             return false;
         }
-        $stmt = $this->pdo->prepare('UPDATE events SET severity_override = :s WHERE uuid = :u');
-        $stmt->execute(['s' => $sev, 'u' => $uuid]);
-        $this->addLog($uuid, 'severity', $actor, (string) ($row['severity_override'] ?? ''), $sev, $note);
+        $lead = $this->leaderOf($row);
+        if ((int) $lead['id'] !== (int) $row['id'] || (int) ($row['group_id'] ?? 0) === (int) $row['id']) {
+            // Escalating an incident episode escalates every detection in it.
+            $gid = (int) $lead['id'];
+            $stmt = $this->pdo->prepare('UPDATE events SET severity_override = :s WHERE id = :g OR group_id = :g2');
+            $stmt->execute(['s' => $sev, 'g' => $gid, 'g2' => $gid]);
+        } else {
+            $stmt = $this->pdo->prepare('UPDATE events SET severity_override = :s WHERE uuid = :u');
+            $stmt->execute(['s' => $sev, 'u' => $uuid]);
+        }
+        $this->addLog((string) ($lead['uuid'] ?: $uuid), 'severity', $actor, (string) ($lead['severity_override'] ?? ''), $sev, $note);
         return true;
     }
 
     /** Average seconds from received_at → acked_at over acknowledged events. */
     public function avgAckSeconds(): ?int
     {
-        $sql = Database::driver() === 'sqlite'
+        // One sample per incident episode (its first detection), not per repeat detection.
+        $lw  = $this->groupsReady() ? ' AND ' . IncidentGroups::leaderWhere() : '';
+        $sql = (Database::driver() === 'sqlite'
             ? "SELECT AVG(strftime('%s', acked_at) - strftime('%s', received_at)) FROM events WHERE acked_at IS NOT NULL"
-            : 'SELECT AVG(TIMESTAMPDIFF(SECOND, received_at, acked_at)) FROM events WHERE acked_at IS NOT NULL';
+            : 'SELECT AVG(TIMESTAMPDIFF(SECOND, received_at, acked_at)) FROM events WHERE acked_at IS NOT NULL') . $lw;
         $v = $this->pdo->query($sql)->fetchColumn();
         return $v !== null && $v !== false ? max(0, (int) round((float) $v)) : null;
     }
@@ -511,13 +622,17 @@ final class EventStore
         $sqlite = Database::driver() === 'sqlite';
         $ack = $sqlite ? "strftime('%s',acked_at)-strftime('%s',received_at)" : 'TIMESTAMPDIFF(SECOND,received_at,acked_at)';
         $res = $sqlite ? "strftime('%s',resolved_at)-strftime('%s',received_at)" : 'TIMESTAMPDIFF(SECOND,received_at,resolved_at)';
+        // Counts and timings are per incident episode (lib/IncidentGroups.php).
+        $lw = $this->groupsReady() ? IncidentGroups::leaderWhere() : '';
+        $w  = $lw !== '' ? ' WHERE ' . $lw : '';
+        $a  = $lw !== '' ? ' AND ' . $lw : '';
 
         $overall = $this->pdo->query(
             "SELECT AVG(CASE WHEN acked_at IS NOT NULL THEN {$ack} END) mtta,
-                    AVG(CASE WHEN resolved_at IS NOT NULL THEN {$res} END) mttr FROM events"
+                    AVG(CASE WHEN resolved_at IS NOT NULL THEN {$res} END) mttr FROM events{$w}"
         )->fetch() ?: [];
 
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM events WHERE resolved_at IS NOT NULL AND resolved_at >= :f');
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM events WHERE resolved_at IS NOT NULL AND resolved_at >= :f' . $a);
         $stmt->execute(['f' => date('Y-m-d H:i:s', time() - 86400)]);
         $resolved24h = (int) $stmt->fetchColumn();
 
@@ -529,7 +644,7 @@ final class EventStore
                     SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) resolved_cnt,
                     AVG(CASE WHEN acked_at IS NOT NULL THEN {$ack} END) mtta,
                     AVG(CASE WHEN resolved_at IS NOT NULL THEN {$res} END) mttr
-             FROM events GROUP BY alert_level ORDER BY alert_level DESC"
+             FROM events{$w} GROUP BY alert_level ORDER BY alert_level DESC"
         )->fetchAll();
 
         $sevName = ['0' => 'Low', '1' => 'Medium', '2' => 'High', '3' => 'Severe'];

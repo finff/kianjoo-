@@ -280,6 +280,13 @@ try {
     } catch (Throwable $e) {
         error_log('[feed] retention: ' . $e->getMessage());
     }
+    // Incident episodes: group pre-existing / missed rows (≤ 2000 per 30 s, flock).
+    try {
+        require_once APP_ROOT . '/lib/IncidentGroups.php';
+        IncidentGroups::maybeCatchUp($pdo, $config, 30, 2000);
+    } catch (Throwable $e) {
+        error_log('[feed] incident groups: ' . $e->getMessage());
+    }
     // Camera monitors: fallback when /api/monitors/cron is not scheduled. Both
     // share throttle files + flocks, so with the cron running these are no-ops.
     try {
@@ -406,6 +413,15 @@ try {
     $report    = $reportMod ? $store->modReport($reportMod) : null;
 
     $armedWindow = (string) ($config['alerts']['intr_armed'] ?? 'always');
+
+    // Incident episodes: tag every incident with its episode (groupId / groupLead /
+    // groupMember / groupCount / groupFirst / groupLast) and append leaders that fell
+    // outside the poll window, so incident views show one row per episode.
+    try {
+        $incidents = (new IncidentGroups($pdo, $config))->decorateFeed($store, $incidents);
+    } catch (Throwable $e) {
+        error_log('[feed] incident episodes: ' . $e->getMessage());
+    }
 
     // Assets part of the build stamp — keep identical to index.php (four flat
     // globs, no recursive scan) so an assets-only deploy raises the banner.

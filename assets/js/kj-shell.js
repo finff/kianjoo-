@@ -523,7 +523,8 @@
   function onFeed(data, app) {
     var ev = (app && app.state && app.state.events) || (data && data.events) || [];
     var n = 0;
-    for (var i = 0; i < ev.length; i++) if (ev[i] && ev[i].status === 'open') n++;
+    // One per incident episode — repeats of the same violation (feed groupMember) don't add to the badge.
+    for (var i = 0; i < ev.length; i++) if (ev[i] && ev[i].status === 'open' && !ev[i].groupMember) n++;
     if (n !== badges.openEvents) { badges.openEvents = n; renderNav(current); renderMobile(current); }
   }
 

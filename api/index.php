@@ -479,6 +479,9 @@ try {
     // route table. Returns here when the route is not one of its own.
     require APP_ROOT . '/lib/AiRoutes.php';
 
+    // ── Incident episodes + "Needs review" queue: /incidents/{uuid}/group, /review/* ──
+    require APP_ROOT . '/lib/IncidentRoutes.php';
+
     // ── Leave workflow (M6), profile self-service, in-app notifications ──
     // Same session-RBAC conventions; route table in lib/HrRoutes.php.
     require APP_ROOT . '/lib/HrRoutes.php';
@@ -1717,6 +1720,18 @@ try {
             if (isset($in['report_hour'])) {
                 $out['report_hour'] = max(0, min(23, (int) $in['report_hour']));
             }
+            // Incident episodes + human review (lib/IncidentGroups.php, lib/ReviewQueue.php).
+            if (isset($in['incident_merge_gap_min'])) {
+                $out['incident_merge_gap_min'] = max(1, min(120, (int) $in['incident_merge_gap_min']));
+            }
+            if (array_key_exists('review_enabled', $in)) {
+                $out['review_enabled'] = filter_var($in['review_enabled'], FILTER_VALIDATE_BOOLEAN);
+            }
+            foreach (['review_floor', 'review_score_below'] as $k) {
+                if (isset($in[$k]) && is_numeric($in[$k])) {
+                    $out[$k] = round(max(0.0, min(1.0, (float) $in[$k])), 2);
+                }
+            }
             if (isset($in['report_recipients'])) {
                 require_once APP_ROOT . '/lib/Mailer.php';
                 $out['report_recipients'] = Mailer::parseList($in['report_recipients'], 30);
@@ -1789,6 +1804,12 @@ try {
             'report_frequency'  => $config['reports']['frequency'] ?? 'off',
             'report_hour'       => $config['reports']['hour'] ?? 8,
             'report_recipients' => $config['reports']['recipients'] ?? [],
+            // Incident episodes + human review
+            'incident_merge_gap_min' => $config['incidents']['merge_gap_min'] ?? 10,
+            'review_enabled'         => ($config['review']['enabled'] ?? true) !== false,
+            'review_floor'           => $config['review']['floor'] ?? 0.35,
+            'review_score_below'     => $config['review']['score_below'] ?? 0,
+            'ai_pipeline_min_confidence' => $config['ai']['pipeline']['min_confidence'] ?? 0.6,   // read-only here
             // POC camera points (Use Case 1: attendance + movement tracking)
             'cam_locations'      => (object) ($config['poc']['cam_locations'] ?? []),
             'poc_inactivity_min' => $config['poc']['inactivity_min'] ?? 45,

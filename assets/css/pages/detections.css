@@ -241,3 +241,12 @@ html.kjd-active .c73 > .c169 > .c170 { flex: none; overflow: visible; }
 .kjd-m-strip .kjd-m-noimg { width: 72px; height: 46px; display: grid; place-items: center; color: var(--kj-text-3); }
 .kjd-m-ai { display: flex; gap: var(--kj-s-3); align-items: flex-start; background: var(--kj-purple-soft); border-radius: var(--kj-r-md); padding: var(--kj-s-3) var(--kj-s-4); font-size: var(--kj-fs-sm); }
 .kjd-m-ai > .kj-ico { width: 20px; height: 20px; color: var(--kj-purple); flex-shrink: 0; margin-top: 2px; }
+
+/* ── Incident episodes (repeats merged into one incident) ── */
+.kjd-ev-n { position: absolute; left: 8px; bottom: 30px; display: inline-flex; align-items: center; gap: 3px; font-family: var(--kj-font-mono); font-size: 10.5px; font-weight: var(--kj-fw-bold); color: #fff; background: rgba(0, 0, 0, .62); border-radius: 4px; padding: 1px 6px; }
+.kjd-ev-n .kj-ico { width: 11px; height: 11px; }
+.kjd-tbl-n { display: inline-block; margin-left: 4px; font-size: var(--kj-fs-2xs); font-weight: var(--kj-fw-semi); color: var(--kj-primary); background: var(--kj-primary-soft); border-radius: var(--kj-r-full); padding: 0 6px; white-space: nowrap; }
+.kjd-m-more { margin-top: var(--kj-s-2); font-size: var(--kj-fs-xs); color: var(--kj-text-3); }
+.kjd-m-note { display: flex; gap: var(--kj-s-2); align-items: flex-start; margin-top: var(--kj-s-3); padding: var(--kj-s-2) var(--kj-s-3); border-radius: var(--kj-r-md); background: var(--kj-primary-soft); color: var(--kj-text); font-size: var(--kj-fs-xs); }
+.kjd-m-note > .kj-ico { width: 16px; height: 16px; color: var(--kj-primary); flex-shrink: 0; margin-top: 1px; }
+.kjd-m-play { margin-top: var(--kj-s-2); }

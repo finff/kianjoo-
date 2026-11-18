@@ -453,10 +453,34 @@
       status: e.status || '', image: e.image || img.trigger || null, imageBk: e.imageBk || img.background || null,
       imageMatch: e.imageMatch || img.match || null,
       person: e.person || e.name || e.person_name || e.who || '', personId: String(e.personId || e.person_id || ''),
-      ticket: e.ticket || e.ticket_no || null, conf: e.conf || '', finding: '', raw: e
+      ticket: e.ticket || e.ticket_no || e.groupTicket || null, conf: e.conf || '', finding: '', raw: e,
+      // Incident episode (feed.php / lib/IncidentGroups.php): repeats of the same violation share groupId.
+      // (/api/events rows of other days carry the raw columns group_id / group_count / group_last_at.)
+      groupId: String(e.groupId || e.group_id || ''),
+      groupLead: !!e.groupLead || (!!e.group_id && String(e.group_id) === String(e.id)),
+      groupMember: !!e.groupMember || (!!e.group_id && String(e.group_id) !== String(e.id)),
+      n: Math.max(1, N(e.groupCount || e.group_count)),
+      first: toMs(e.groupFirst) || (e.group_id ? toMs(e.received_at) : 0), last: toMs(e.groupLast || e.group_last_at) || 0
     };
+    if (e.groupMember && e.groupStatus) o.status = e.groupStatus;
     if (extra) Object.keys(extra).forEach(function (k) { if (extra[k] != null && extra[k] !== '') o[k] = extra[k]; });
     return o;
+  }
+  /* One entry per incident episode (list is newest first): the episode keeps the slot of its
+   * newest detection and is represented by its first detection (leader) when that is in the list. */
+  function episodes(list) {
+    var out = [], at = {};
+    list.forEach(function (e) {
+      if (!e.groupId) { out.push(e); return; }
+      var i = at[e.groupId];
+      if (i == null) { at[e.groupId] = out.length; out.push(e); return; }
+      if (e.groupLead && !out[i].groupLead) out[i] = e;
+    });
+    return out;
+  }
+  function spanTxt(ev) {
+    if (!(ev.n > 1)) return '';
+    return '×' + fmtN(ev.n) + ' · ' + hm(ev.first || ev.ts) + '–' + hm(ev.last || ev.ts);
   }
   /* /api/events rows (other days) carry no mod/sev — approximate DashboardMapper::modOf. */
   function classify(r) {
@@ -612,7 +636,8 @@
         '<span class="kjd-ev-type">' + ico(m[1]) + esc(m[0]) + '</span>' +
         (ev.sev ? '<span class="kjd-ev-sev">' + sevChip(ev.sev) + '</span>' : '') +
         (isWebp(ev.image) ? '<span class="kjd-ev-webp">.webp</span>' : '') +
-        '<span class="kjd-ev-time">' + esc(hm(ev.ts)) + '</span></div>' +
+        (ev.n > 1 ? '<span class="kjd-ev-n" title="' + esc(fmtN(ev.n) + ' detections merged into one incident · ' + dur((ev.last || ev.ts) - (ev.first || ev.ts))) + '">' + ico('layers') + '×' + esc(fmtN(ev.n)) + '</span>' : '') +
+        '<span class="kjd-ev-time">' + esc(ev.n > 1 ? hm(ev.first || ev.ts) + '–' + hm(ev.last || ev.ts) : hm(ev.ts)) + '</span></div>' +
       '<div class="kjd-ev-body"><div class="kjd-ev-title" title="' + esc(ev.title) + '">' + esc(ev.title) + '</div>' +
         '<div class="kjd-ev-meta">' + ico('user-round') + who + '</div>' +
         '<div class="kjd-ev-meta">' + cam + (ev.zone ? '<span>· ' + esc(ev.zone) + '</span>' : '') + '</div>' +
@@ -627,7 +652,7 @@
           '<td><span class="kjd-tbl-type"><span class="kjd-ico-' + m[2] + '">' + ico(m[1]) + '</span>' + esc(m[0]) + '</span></td>' +
           '<td>' + (ev.personId ? '<button type="button" class="kj-link" data-kj-modal="' + esc(spec('person', ev.personId)) + '"' + seedAttr({ name: ev.person }) + '>' + esc(ev.person || ('#' + ev.personId)) + '</button>' : esc(ev.person || 'Unidentified')) + '</td>' +
           '<td>' + (ev.camera ? '<button type="button" class="kjd-cam" data-kj-modal="' + esc(spec('camera', ev.camera)) + '">' + ico('cctv') + esc(ev.camera) + '</button>' : '—') + '</td>' +
-          '<td>' + esc(ev.zone || '—') + '</td><td class="kj-mono">' + esc(hms(ev.ts)) + '</td>' +
+          '<td>' + esc(ev.zone || '—') + '</td><td class="kj-mono">' + esc(hms(ev.ts)) + (ev.n > 1 ? ' <span class="kjd-tbl-n" title="Detections merged into this incident">' + esc(spanTxt(ev)) + '</span>' : '') + '</td>' +
           '<td>' + sevChip(ev.sev) + '</td><td>' + statusChip(ev.status) + '</td><td>' + (ticketBadge(ev) || '—') + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -880,16 +905,19 @@
     if (!isToday && Lead.ext.busy) return skelTiles(5) + '<span class="kj-skel kjd-skel-tl"></span>' + skelGal(8);
     var day = dayEvents(s);
     var base = baseFilter(day);
-    var list = base.filter(function (e) {
+    // Gallery / table / counts: one entry per incident episode (repeats collapse, "×N").
+    var list = episodes(base.filter(function (e) {
       if (f.mod && e.mod !== f.mod) return false;
       if (f.hour >= 0 && new Date(e.ts).getHours() !== f.hour) return false;
       return true;
-    }).sort(function (a, b) { return b.ts - a.ts; });
+    }).sort(function (a, b) { return b.ts - a.ts; }));
+    var baseEp = episodes(base.slice().sort(function (a, b) { return b.ts - a.ts; }));
+    var dayEp = episodes(day.slice().sort(function (a, b) { return b.ts - a.ts; }));
 
-    // type chips
-    var byMod = {}; base.forEach(function (e) { byMod[e.mod] = (byMod[e.mod] || 0) + 1; });
+    // type chips (incident episodes per type)
+    var byMod = {}; baseEp.forEach(function (e) { byMod[e.mod] = (byMod[e.mod] || 0) + 1; });
     var types = '<div class="kjd-types" role="toolbar" aria-label="Detection type">' +
-      '<button type="button" class="kjd-type' + (!f.mod ? ' is-on' : '') + '" data-kjd-act="type" data-arg="">' + ico('layers') + 'All types<span class="kjd-type-n">' + fmtN(base.length) + '</span></button>' +
+      '<button type="button" class="kjd-type' + (!f.mod ? ' is-on' : '') + '" data-kjd-act="type" data-arg="">' + ico('layers') + 'All types<span class="kjd-type-n">' + fmtN(baseEp.length) + '</span></button>' +
       MOD_ORDER.filter(function (k) { return byMod[k] || f.mod === k || k !== 'face'; }).map(function (k) {
         var m = MOD[k];
         return '<button type="button" class="kjd-type' + (f.mod === k ? ' is-on' : '') + '" data-kjd-act="type" data-arg="' + k + '">' + ico(m[1]) + esc(m[0]) + '<span class="kjd-type-n">' + fmtN(byMod[k] || 0) + '</span></button>';
@@ -900,12 +928,14 @@
       '</div>';
 
     // KPI tiles (each one filters the wall)
-    var open = day.filter(function (e) { return e.status === 'open'; }).length;
-    var hi = day.filter(function (e) { return e.sev === 'critical' || e.sev === 'high'; }).length;
-    var tk = day.filter(function (e) { return e.ticket || ticketFor(e); }).length;
+    // Action counts are per incident episode; the first tile still counts raw detections.
+    var open = dayEp.filter(function (e) { return e.status === 'open'; }).length;
+    var hi = dayEp.filter(function (e) { return e.sev === 'critical' || e.sev === 'high'; }).length;
+    var tk = dayEp.filter(function (e) { return e.ticket || ticketFor(e); }).length;
     var proof = day.filter(function (e) { return e.image; }).length;
     var kpis = '<div class="kjd-kpis">' +
-      tile({ icon: 'radar', val: fmtN(day.length), lbl: (isToday ? 'Detections today' : 'Detections on ' + dayLbl(f.date)), act: 'reset', tip: 'Show everything' }) +
+      tile({ icon: 'radar', val: fmtN(day.length), lbl: (isToday ? 'Detections today' : 'Detections on ' + dayLbl(f.date)), act: 'reset',
+        tip: 'Show everything — ' + fmtN(day.length) + ' detections in ' + fmtN(dayEp.length) + ' incident' + (dayEp.length === 1 ? '' : 's') }) +
       tile({ icon: 'siren', val: fmtN(open), lbl: 'Open — need action', tone: open ? 'danger' : 'success', act: 'status', arg: 'open', on: f.status === 'open' }) +
       tile({ icon: 'triangle-alert', val: fmtN(hi), lbl: 'High / critical', tone: hi ? 'orange' : 'success', act: 'sev', arg: 'high', on: f.sev === 'high' }) +
       tile({ icon: 'ticket', val: fmtN(tk), lbl: 'With a ticket', tone: 'purple', act: 'status', arg: 'ticket', on: f.status === 'ticket' }) +
@@ -949,11 +979,11 @@
       (list.length > shown.length ? '<div class="kjd-more"><button type="button" class="kj-btn kj-btn-secondary" data-kjd-act="more">' + ico('chevron-down') + '<span>Show ' + Math.min(PAGE, list.length - shown.length) + ' more of ' + fmtN(list.length - shown.length) + '</span></button></div>' : '');
     var galTitle = (f.mod ? MOD[f.mod][0] + ' · ' : '') + (Lead.view === 'table' ? 'Event list' : 'Proof gallery');
     var note = !isToday && Lead.ext.err ? '<div class="kjd-note">Could not load that day from the event log.</div>' : (!isToday ? '<div class="kjd-note">Historical day from the event log — type is inferred from the detection policy.</div>' : '');
-    return types + kpis + timeline + card(galTitle, fmtN(list.length) + ' shown newest first', wall + note, seg);
+    return types + kpis + timeline + card(galTitle, fmtN(list.length) + ' incident' + (list.length === 1 ? '' : 's') + ' · repeats merged · newest first', wall + note, seg);
   }
 
   /* ── per-type leads ──────────────────────────────────────────────────── */
-  function feedOf(s, mod) { return (s.events || []).map(function (e) { return norm(e); }).filter(function (e) { return e.mod === mod; }).sort(function (a, b) { return b.ts - a.ts; }); }
+  function feedOf(s, mod) { return episodes((s.events || []).map(function (e) { return norm(e); }).filter(function (e) { return e.mod === mod; }).sort(function (a, b) { return b.ts - a.ts; })); }
   function tabActions(mod) {
     return liveChip() + '<button type="button" class="kj-btn kj-btn-secondary kj-btn-sm" data-kjd-act="reload">' + ico('refresh-cw') + '<span>Refresh</span></button>' +
       '<button type="button" class="kj-btn kj-btn-secondary kj-btn-sm" data-kjd-act="jump" data-arg="' + mod + '">' + ico('layout-grid') + '<span>Open in gallery</span></button>';
@@ -1156,9 +1186,24 @@
           if (!ev && seed && Object.keys(seed).length) ev = norm(Object.assign({ id: id }, seed), { id: id, finding: seed.finding, verdict: seed.verdict });
           if (!ev) throw new Error('Event ' + id + ' was not found (it may have been purged)');
           ev.uuid = uuid || ev.uuid; ev.inApp = !!hit;
-          return (ev.uuid ? api('/events/' + encodeURIComponent(ev.uuid) + '/log') : Promise.resolve(null)).then(function (lg) {
+          // Incident episode from the server (lib/IncidentGroups.php); the client-side
+          // episodeOf() reconstruction is only the fallback for older servers / no access.
+          var grp = ev.uuid ? api('/incidents/' + encodeURIComponent(ev.uuid) + '/group', { limit: 24 }) : Promise.resolve(null);
+          return grp.then(function (g) {
+            if (g && g.group) {
+              ev.group = g.group;
+              if (!ev.ticket && g.group.ticket) ev.ticket = g.group.ticket;
+              if (g.group.status) ev.status = g.group.status;
+              ev.ep = { first: toMs(g.group.event_first_at), last: toMs(g.group.event_last_at), count: N(g.group.detection_count) || 1, server: true,
+                items: (g.members || []).slice().reverse().map(function (m) {
+                  return { id: String(m.id), ts: toMs(m.time || m.received), image: m.image || m.imageBk || null, title: ev.title, mod: ev.mod };
+                }) };
+            } else ev.ep = episodeOf(ev);
+            // The change history of an episode lives on its first detection.
+            var logId = (ev.group && ev.group.leader_uuid) || ev.uuid;
+            return logId ? api('/events/' + encodeURIComponent(logId) + '/log') : null;
+          }).then(function (lg) {
             ev.log = (lg && lg.log) || [];
-            ev.ep = episodeOf(ev);
             return ticketForRemote(ev).then(function (tk) { ev.tk = tk; return ev; });
           });
         });
@@ -1167,9 +1212,13 @@
         var m = modOf(e.mod), s = SEV[e.sev], es = EST[e.status];
         var camId = e.camera || '';
         var tk = e.tk, tkNo = tk ? tk.ticket_no : e.ticket;
-        var first = tk && tk.event_first_at ? toMs(tk.event_first_at) : e.ep.first;
-        var last = tk && tk.event_last_at ? toMs(tk.event_last_at) : e.ep.last;
-        var count = tk && tk.detection_count ? N(tk.detection_count) : e.ep.count;
+        // The server episode wins once it holds repeats; else the pipeline ticket's span (if any).
+        var useTk = tk && tk.event_first_at && !(e.ep.server && e.ep.count > 1);
+        var first = useTk ? toMs(tk.event_first_at) : e.ep.first;
+        var last = useTk && tk.event_last_at ? toMs(tk.event_last_at) : e.ep.last;
+        var count = useTk && tk.detection_count ? N(tk.detection_count) : e.ep.count;
+        var gapMin = (e.group && e.group.gap_min) || 10;
+        var firstUuid = (e.group && e.group.leader_uuid) || e.uuid || '';
         var tagTxt = e.finding || e.title;
         var conf = e.conf ? ' · ' + String(e.conf).replace(/^0?\.(\d\d).*/, '$1%') : '';
 
@@ -1210,7 +1259,11 @@
           '<span class="kjd-m-span-line' + (count > 1 ? '' : ' is-single') + '"></span>' +
           '<span class="kjd-m-span-pt is-end"><span>Last</span><b>' + esc(hms(last)) + '</b></span></div>' +
           '<div class="kjd-m-span-meta"><span>' + ico('timer') + ' ' + esc(dur(last - first)) + '</span><span>· ' + fmtN(count) + ' detection' + (count === 1 ? '' : 's') + '</span>' +
-          '<span>· ' + esc(e.personId ? 'same person, ≤10 min gaps' : 'same camera + type, ≤10 min gaps') + '</span>' + (tk ? '<span>· span from ' + esc(tk.ticket_no) + '</span>' : '') + '</div>' + strip + '</div>';
+          '<span>· ' + esc((e.personId ? 'same person, ≤' : 'same camera + type, ≤') + gapMin + ' min gaps') + '</span>' + (useTk ? '<span>· span from ' + esc(tk.ticket_no) + '</span>' : '') + '</div>' + strip +
+          (count > e.ep.items.length && e.ep.items.length > 1 ? '<div class="kjd-m-more">' + esc('Showing the latest ' + e.ep.items.length + ' of ' + fmtN(count) + ' detections') + '</div>' : '') +
+          (count > 1 ? '<div class="kjd-m-note">' + ico('layers') + '<span>' + esc(fmtN(count) + ' detections are merged into this one incident — one alert was sent; acknowledge, resolve or escalate applies to all of them.') + '</span></div>' : '') +
+          (firstUuid ? '<div class="kj-row-wrap kjd-m-play"><button type="button" class="kj-btn kj-btn-ghost kj-btn-sm" data-kj-playback="' + esc(firstUuid) + '" title="Recording around the first detection of this incident">' + ico('play') + '<span>Playback · first detection</span></button></div>' : '') +
+          '</div>';
 
         var ai = tk ? '<div class="kjd-m-ai">' + ico('bot') + '<div><b>Auto-ticket ' + esc(tk.ticket_no) + '</b> raised by the PPE-forklift review pipeline — ' + esc(tk.priority || '') + ' priority, ' + esc(String(tk.status || '').replace('_', ' ')) +
           (tk.sla && tk.sla.resolution && tk.sla.resolution.state ? ', resolution SLA ' + esc(tk.sla.resolution.state) : '') + '. ' + h.link('ticket', tk.ticket_no, 'Open ticket') + '</div></div>' : '';
