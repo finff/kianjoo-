@@ -514,6 +514,9 @@ try {
     // ── Violation playback from the NVR (RTSP playback via the relay): /playback/{info,clip,test} ──
     require APP_ROOT . '/lib/PlaybackRoutes.php';
 
+    // ── Overtime capture + approvals: /overtime/* (session RBAC; table in lib/OvertimeRoutes.php) ──
+    require APP_ROOT . '/lib/OvertimeRoutes.php';
+
     // ── Assistant / agent read API (/api/ai/*) ───────────────
     // Read-only, pre-summarised (lib/AiContext.php). Authorised in
     // lib/AiRoutes.php: admin session (view) or the provision token — the
@@ -707,7 +710,7 @@ try {
         require_once APP_ROOT . '/lib/Attendance.php';
         $pdo   = Database::connect($config['storage']);
         $store = new EventStore($pdo, $config);
-        $att   = new Attendance($store, $config);
+        $att   = (new Attendance($store, $config))->withOvertime(new Overtime($pdo, $config));   // OT capture
         $f = [];
         foreach (['plant', 'department', 'q', 'status'] as $k) {
             $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
@@ -1599,6 +1602,7 @@ try {
                     'grace'        => (int) ($s['grace'] ?? 10),
                     'absent_after' => (int) ($s['absent_after'] ?? 120),
                     'days'         => array_map('intval', (array) ($s['days'] ?? [])),
+                    'ot'           => Overtime::shiftOt($s['ot'] ?? null),
                 ], array_slice(array_filter($in['att_shifts'], 'is_array'), 0, 12)));
             }
             if (isset($in['att_cam_roles']) && is_array($in['att_cam_roles'])) {
@@ -1740,6 +1744,9 @@ try {
             // Stranger movement alerts (stranger_* keys) — lib/Strangers.php.
             require_once APP_ROOT . '/lib/Strangers.php';
             $out = array_merge($out, Strangers::sanitize($in));
+            // Overtime capture defaults (ot_* keys, lib/Overtime.php).
+            require_once APP_ROOT . '/lib/Overtime.php';
+            $out = array_merge($out, Overtime::sanitize($in));
 
             $merged = array_merge($cur, $out);
             if (!is_dir(dirname($file))) {
@@ -1793,6 +1800,7 @@ try {
             'att_cam_roles'      => (object) $config['attendance']['cam_roles'],
             'att_loc_plants'     => (object) $config['attendance']['loc_plants'],
             'att_kiosk_clock'    => $config['attendance']['kiosk_clock'],
+            'att_ot'             => $config['attendance']['ot'],   // OT defaults (ot_* keys)
             'ppe_rules'          => (object) ($config['ppe']['rules'] ?? []),
             'ra_zones'           => (object) ($config['restricted']['zones'] ?? []),
             'fk_zones'           => (object) ($config['forklift']['zones'] ?? []),

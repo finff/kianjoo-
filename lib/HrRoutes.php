@@ -92,7 +92,7 @@ try {
         foreach (['plant', 'department', 'q'] as $k) {
             $f[$k] = substr(trim((string) ($_GET[$k] ?? '')), 0, 80);
         }
-        $att = new Attendance(new EventStore($hrPdo, $config), $config);
+        $att = (new Attendance(new EventStore($hrPdo, $config), $config))->withOvertime(new Overtime($hrPdo, $config));
         $res = $att->month($ym, $all ? null : $want, $f);
         if ($res === null) {
             Response::error('Not found.', 404);

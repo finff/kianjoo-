@@ -308,6 +308,24 @@ button.kj-sa-cal-day:active { transform: scale(.92); }
 .kj-sa-log-t b { font-size: var(--kj-fs-sm); font-variant-numeric: tabular-nums; }
 .kj-sa-log-total { border-left: 1px solid var(--kj-border); padding-left: 8px; }
 
+/* My overtime (GET /overtime/mine) */
+.kj-sa-ot { display: flex; flex-direction: column; gap: var(--kj-s-3); }
+.kj-sa-ot-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.kj-sa-ot-tot { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--kj-r-md); background: var(--kj-bg-subtle); min-width: 0; }
+.kj-sa-ot-tot small { font-size: var(--kj-fs-2xs); color: var(--kj-text-3); }
+.kj-sa-ot-tot b { font-size: var(--kj-fs-md); font-variant-numeric: tabular-nums; color: var(--kj-text); }
+.kj-sa-ot-tot.is-success b { color: var(--kj-success); }
+.kj-sa-ot-tot.is-warn b { color: var(--kj-warn); }
+.kj-sa-ot-list { display: flex; flex-direction: column; }
+.kj-sa-ot-row { padding: 10px 2px; border-bottom: 1px solid var(--kj-border); }
+.kj-sa-ot-row:last-child { border-bottom: 0; }
+.kj-sa-ot-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kj-sa-ot-top .kj-chip { margin-left: auto; height: 22px; font-size: var(--kj-fs-2xs); }
+.kj-sa-ot-min { font-variant-numeric: tabular-nums; color: var(--kj-text); }
+.kj-sa-ot-why { display: flex; gap: 4px; align-items: flex-start; margin-top: 4px; font-size: var(--kj-fs-2xs); color: var(--kj-text-2); line-height: 1.4; }
+.kj-sa-ot-why .kj-ico, .kj-sa-ot-rule .kj-ico, .kj-sa-ot-none .kj-ico { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+.kj-sa-ot-none, .kj-sa-ot-rule { display: flex; gap: 6px; align-items: flex-start; margin: 0; font-size: var(--kj-fs-xs); color: var(--kj-text-3); line-height: 1.4; }
+
 /* Day modal */
 .kj-sa-day-hero { display: flex; align-items: center; gap: var(--kj-s-3); padding: var(--kj-s-3); border-radius: var(--kj-r-md); background: var(--kj-bg-subtle); }
 .kj-sa-day-ico { width: 28px; height: 28px; }

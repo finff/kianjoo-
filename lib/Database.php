@@ -119,6 +119,9 @@ final class Database
         // Stranger labels / status / merges (Movement › Strangers) — see lib/StrangerSchema.php.
         require_once __DIR__ . '/StrangerSchema.php';
         StrangerSchema::migrate($pdo, self::$driver, self::$storageDir);
+        // Overtime (OT) capture records + approval state — see lib/OvertimeSchema.php.
+        require_once __DIR__ . '/OvertimeSchema.php';
+        OvertimeSchema::migrate($pdo, self::$driver, self::$storageDir);
     }
 
     /**

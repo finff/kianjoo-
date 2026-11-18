@@ -16,8 +16,12 @@
  *                        pending leave approvals, team-leave overlay, export.
  *   #attendance/classic  the legacy register / live sightings / reports page (hidden
  *                        tab, linked from the new page) — nothing the old page did is lost.
+ *   #attendance/overtime captured overtime (OT) records: rule banner, KPIs, evidence (first/last
+ *                        sighting + camera), approve / reject / reopen, recompute, CSV export.
  * Data: GET /attendance/daily (today), GET /attendance/month?all=1 (month JSON; range-CSV export fallback),
- *       GET /leaves/team, GET /leaves/calendar, POST /leaves/{id}/approve|reject.
+ *       GET /leaves/team, GET /leaves/calendar, POST /leaves/{id}/approve|reject,
+ *       GET /overtime, POST /overtime/{id}/approve|reject|reopen, POST /overtime/recompute, GET /overtime/export.
+ *       Rows carry `ot` (lib/Overtime.php): OT column + "With overtime" filter, OT KPI, month OT per employee.
  * Styles: assets/css/pages/attendance.css (injected by this file, cache-busted with
  *         the same ?v= stamp index.php puts on this script).
  */
@@ -58,6 +62,27 @@
     return Math.floor(m / 60) + 'h ' + pad(m % 60) + 'm';
   }
   function norm(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+  /* ── overtime helpers (OT = an estimate from camera sightings, pending approval) ── */
+  var OTST = { pending: ['Pending', 'warn'], approved: ['Approved', 'success'], rejected: ['Rejected', 'danger'] };
+  var OTKIND = { after: 'After shift', early: 'Early start', 'early+after': 'Early start + after shift', rest: 'Rest day' };
+  function fmtMin(m) { m = Math.max(0, Math.round(+m || 0)); var h = Math.floor(m / 60), r = m % 60; return h ? (r ? h + 'h ' + pad(r) + 'm' : h + 'h') : r + 'm'; }
+  /** /attendance/daily row.ot → {min (counts: decided figure, 0 if rejected), st, calc, explain, rule, reason, id, changed, provisional} */
+  function otOf(o) {
+    if (!o) return null;
+    var rec = o.record || null;
+    return { min: rec ? (rec.status === 'rejected' ? 0 : +rec.minutes || 0) : +o.minutes || 0, st: rec ? rec.status : (+o.minutes > 0 ? 'pending' : ''),
+      calc: +o.minutes || 0, explain: o.explain || '', rule: o.rule || '', reason: o.reason || '', id: rec ? rec.id : null,
+      changed: !!(rec && rec.changed), provisional: !!o.provisional };
+  }
+  function otCell(ot) {
+    if (!ot || (!ot.min && ot.st !== 'rejected')) {
+      return ot && ot.reason === 'missing_out' ? '<span class="att-ot-none" title="' + esc(ot.explain) + '">' + ico('circle-help') + 'No check-out</span>' : '<span class="kj-muted">—</span>';
+    }
+    var s = OTST[ot.st] || OTST.pending;
+    var tip = [ot.explain, ot.rule, ot.st === 'pending' ? 'Captured from camera sightings — pending approval.' : ''].filter(Boolean).join('\n');
+    return '<span class="att-ot" title="' + esc(tip) + '"><b class="kj-mono">' + esc(ot.st === 'rejected' ? fmtMin(ot.calc) : fmtMin(ot.min)) + '</b>' +
+      '<span class="kj-chip kj-chip-dot att-ot-chip is-' + s[1] + '">' + esc(s[0]) + '</span></span>';
+  }
   function initials(n) { return String(n || '?').trim().split(/\s+/).slice(0, 2).map(function (p) { return p[0] || ''; }).join('').toUpperCase() || '?'; }
   function spec(type, id) { return type + ':' + encodeURIComponent(String(id == null ? '' : id)); }
   function seed(o) { return " data-kj-seed='" + esc(JSON.stringify(o)) + "'"; }
@@ -249,7 +274,7 @@
   function rowFromDaily(r, date) {
     return { date: date, pid: String(r.personId || ''), name: r.name || '', staffId: r.staffId || '', dept: r.department || '', plant: r.plant || '',
       shift: r.shift || '', inT: hm(r.clockIn), outT: hm(r.clockOut), inLoc: r.clockInLoc || '', hours: r.hours, status: r.status,
-      lateMin: r.lateMin || 0, photo: r.photo || '' };
+      lateMin: r.lateMin || 0, photo: r.photo || '', ot: otOf(r.ot) };
   }
   function rowsFromCSV(text) {
     var t = parseCSV(text); if (!t.length) return [];
@@ -277,7 +302,8 @@
         var x = days[date] || {};
         out.push({ date: date, pid: String(p.personId || ''), name: p.name || '', staffId: p.staffId || '', dept: p.department || '', plant: p.plant || '',
           shift: p.shift || '', inT: x['in'] || '', outT: x.out || '', inLoc: x.inLoc || '', hours: x.hours == null ? null : +x.hours,
-          status: x.status, lateMin: +x.lateMin || 0, photo: p.photo || '' });
+          status: x.status, lateMin: +x.lateMin || 0, photo: p.photo || '',
+          ot: x.otSt ? { min: +x.ot || 0, st: x.otSt, calc: x.otCalc != null ? +x.otCalc : +x.ot || 0, explain: '', rule: '', reason: '' } : null });
       });
     });
     return out;
@@ -299,6 +325,7 @@
       if (f.sel && r.pid !== f.sel) return false;
       if (f.dept && r.dept !== f.dept) return false;
       if (!matchQ(r.name, r.staffId)) return false;
+      if (f.status === 'ot') return !!(r.ot && r.ot.min > 0);
       var s = effStatus(r);
       if (!f.status) return s !== 'off';
       if (f.status === 'present') return s === 'present' || s === 'late';
@@ -325,7 +352,7 @@
       var sig = JSON.stringify((d.rows || []).map(function (r) { return [r.personId, r.status, r.clockIn, r.clockOut]; })) + '|' + JSON.stringify(d.kpi || {});
       if (silent && sig === S.sig) return;
       S.sig = sig;
-      fillDepts(); paintStrip(); paintStats(); paintBody();
+      fillDepts(); paintStrip(); paintStats(); paintBody(); paintSide();
     }).catch(function (e) {
       if (S !== my) return;
       S.todayBusy = false;
@@ -353,7 +380,7 @@
     }).catch(viaCsv).then(function (m2) {
       if (S !== my) return;
       S.months[ym] = m2;
-      if (S.ym === ym) { paintBody(); }
+      if (S.ym === ym) { paintBody(); paintSide(); }
     }).catch(function (e) {
       if (S !== my) return;
       S.months[ym] = { err: e.message || 'Could not load the month', rows: null, at: 0 };
@@ -426,7 +453,7 @@
             '<label class="att-search">' + ico('search') + '<input class="kj-input" type="search" placeholder="Search employee or staff ID…" aria-label="Search employee" data-att-f="q" value="' + esc(S.f.q) + '"></label>' +
             '<select class="kj-select" aria-label="Department" data-att-f="dept"><option value="">All departments</option></select>' +
             '<select class="kj-select" aria-label="Status" data-att-f="status">' +
-              [['', 'All statuses'], ['present', 'Present (incl. late)'], ['late', 'Late'], ['absent', 'Absent'], ['leave', 'On leave'], ['pending', 'Not yet in'], ['off', 'Off days']]
+              [['', 'All statuses'], ['present', 'Present (incl. late)'], ['late', 'Late'], ['absent', 'Absent'], ['leave', 'On leave'], ['pending', 'Not yet in'], ['off', 'Off days'], ['ot', 'With overtime']]
                 .map(function (o) { return '<option value="' + o[0] + '"' + (S.f.status === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
             '<select class="kj-select" aria-label="Month" data-att-f="month">' + MONTHS.map(function (m, i) { return '<option value="' + pad(i + 1) + '"' + (+p[1] === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
             '<select class="kj-select" aria-label="Year" data-att-f="year">' + years.map(function (yy) { return '<option value="' + yy + '"' + (+p[0] === yy ? ' selected' : '') + '>' + yy + '</option>'; }).join('') + '</select>' +
@@ -484,7 +511,7 @@
   /* ── stat chips (today) ────────────────────────────────────────────────── */
   function paintStats() {
     var el = $('att-stats'); if (!el) return;
-    if (!S.today) { el.innerHTML = [1, 2, 3, 4, 5].map(function () { return '<span class="kj-skel kj-skel-tile"></span>'; }).join(''); return; }
+    if (!S.today) { el.innerHTML = [1, 2, 3, 4, 5, 6].map(function () { return '<span class="kj-skel kj-skel-tile"></span>'; }).join(''); return; }
     var k = S.today.kpi || {}, t = todayStr();
     var onLeave = leavesOn(t).filter(function (l) { return !S.f.dept || l.dept === S.f.dept; });
     var tile = function (icon, val, lbl, tone, modal, sub) {
@@ -498,7 +525,9 @@
       tile('circle-check', k.present || 0, 'Present', 'success', day('present'), 'incl. late arrivals') +
       tile('clock-alert', k.late || 0, 'Late', 'warn', day('late'), 'after start + grace') +
       tile('user-x', k.absent || 0, 'Absent', 'danger', day('absent'), (k.pending || 0) + ' not yet in') +
-      tile('calendar-days', onLeave.length, 'On leave', 'purple', kjm('att-leave-day', t), leaveCal(ymOf(t)) ? 'approved leave today' : 'leave data unavailable');
+      tile('calendar-days', onLeave.length, 'On leave', 'purple', kjm('att-leave-day', t), leaveCal(ymOf(t)) ? 'approved leave today' : 'leave data unavailable') +
+      tile('timer', k.otPeople || 0, 'On overtime today', 'orange', ' data-kj-nav="attendance/overtime"',
+        k.otMin ? fmtMin(k.otMin) + ' total' + (k.otPending ? ' · ' + k.otPending + ' pending' : '') : 'none captured yet');
   }
 
   /* ── records body: table | calendar ────────────────────────────────────── */
@@ -507,7 +536,7 @@
     var e = S.f.sel && empIndex().pid[S.f.sel];
     var bits = [];
     if (e) bits.push('<span class="kj-chip is-primary att-filter-chip">' + ico('user-round') + esc(e.name) + '<button type="button" class="att-x" data-att-act="clear-sel" aria-label="Show all employees">' + ico('x') + '</button></span>');
-    if (S.f.status) bits.push('<span class="kj-chip att-filter-chip">' + esc((ST[S.f.status] || [S.f.status])[0]) + '<button type="button" class="att-x" data-att-act="clear-status" aria-label="Clear status filter">' + ico('x') + '</button></span>');
+    if (S.f.status) bits.push('<span class="kj-chip att-filter-chip">' + esc(S.f.status === 'ot' ? 'With overtime' : (ST[S.f.status] || [S.f.status])[0]) + '<button type="button" class="att-x" data-att-act="clear-status" aria-label="Clear status filter">' + ico('x') + '</button></span>');
     if (S.f.dept) bits.push('<span class="kj-chip att-filter-chip">' + esc(S.f.dept) + '<button type="button" class="att-x" data-att-act="clear-dept" aria-label="Clear department filter">' + ico('x') + '</button></span>');
     el.innerHTML = bits.join('');
     el.hidden = !bits.length;
@@ -561,10 +590,11 @@
         '<td class="kj-mono">' + esc(r.inT || '—') + '</td>' +
         '<td class="kj-mono">' + esc(r.outT || '—') + '</td>' +
         '<td class="kj-num kj-mono">' + esc(fmtHours(r.hours)) + '</td>' +
+        '<td class="att-nowrap">' + otCell(r.ot) + '</td>' +
         '<td class="att-nowrap">' + stChip + '</td>' +
         '<td class="kj-num"><button type="button" class="kj-btn kj-btn-sm kj-btn-secondary att-view"' + kjm('attendance-day', dayId) + '>View</button></td></tr>';
     }).join('');
-    return '<div class="kj-table-wrap"><table class="kj-table att-table"><thead><tr><th>Employee</th><th>Department</th><th>Date</th><th>Check-in</th><th>Check-out</th><th class="kj-num">Hours</th><th>Status</th><th class="kj-num"><span class="kj-sr-only">Details</span></th></tr></thead>' +
+    return '<div class="kj-table-wrap"><table class="kj-table att-table"><thead><tr><th>Employee</th><th>Department</th><th>Date</th><th>Check-in</th><th>Check-out</th><th class="kj-num">Hours</th><th><abbr title="Overtime captured from the last camera sighting after shift end — an estimate until approved">OT</abbr></th><th>Status</th><th class="kj-num"><span class="kj-sr-only">Details</span></th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></div>' + pager(rows.length, pages);
   }
   function pager(total, pages) {
@@ -623,8 +653,9 @@
     var head = '';
     if (sel) {
       var mine2 = rows.filter(function (r) { return r.pid === sel.pid; });
-      var cnt = { present: 0, late: 0, absent: 0, leave: 0 }, hrs = 0;
-      mine2.forEach(function (r) { var s3 = effStatus(r); if (s3 === 'present' || s3 === 'late') cnt.present++; if (s3 === 'late') cnt.late++; if (s3 === 'absent') cnt.absent++; if (s3 === 'leave') cnt.leave++; if (r.hours) hrs += +r.hours; });
+      var cnt = { present: 0, late: 0, absent: 0, leave: 0 }, hrs = 0, otm = 0, otp = 0;
+      mine2.forEach(function (r) { var s3 = effStatus(r); if (s3 === 'present' || s3 === 'late') cnt.present++; if (s3 === 'late') cnt.late++; if (s3 === 'absent') cnt.absent++; if (s3 === 'leave') cnt.leave++; if (r.hours) hrs += +r.hours;
+        if (r.ot && r.ot.min > 0) { otm += r.ot.min; if (r.ot.st === 'pending') otp += r.ot.min; } });
       var st = function (icon, v, l, tone, status) {
         return '<button type="button" class="kj-stat att-mini' + (tone ? ' is-' + tone : '') + '" data-att-act="status" data-s="' + status + '"><span class="kj-stat-ico">' + ico(icon) + '</span><span class="att-stat-txt"><span class="kj-stat-val">' + esc(v) + '</span><span class="kj-stat-lbl">' + esc(l) + '</span></span></button>';
       };
@@ -633,7 +664,8 @@
         '<span class="kj-muted">' + esc([sel.staffId, sel.dept].filter(Boolean).join(' · ')) + '</span></div>' +
         '<div class="att-cal-person-stats">' + st('circle-check', cnt.present, 'Days present', 'success', 'present') + st('clock-alert', cnt.late, 'Late', 'warn', 'late') +
         st('user-x', cnt.absent, 'Absent', 'danger', 'absent') + st('calendar-days', cnt.leave, 'On leave', 'purple', 'leave') +
-        '<div class="kj-stat att-mini"><span class="kj-stat-ico">' + ico('timer') + '</span><span class="att-stat-txt"><span class="kj-stat-val">' + esc(fmtHours(hrs)) + '</span><span class="kj-stat-lbl">Hours worked</span></span></div></div></div>';
+        '<div class="kj-stat att-mini"><span class="kj-stat-ico">' + ico('timer') + '</span><span class="att-stat-txt"><span class="kj-stat-val">' + esc(fmtHours(hrs)) + '</span><span class="kj-stat-lbl">Hours worked</span></span></div>' +
+        '<button type="button" class="kj-stat att-mini is-orange" data-att-act="status" data-s="ot" title="Overtime this month — ' + esc(otp ? fmtMin(otp) + ' still pending approval' : 'all decided') + '"><span class="kj-stat-ico">' + ico('timer') + '</span><span class="att-stat-txt"><span class="kj-stat-val">' + esc(fmtMin(otm)) + '</span><span class="kj-stat-lbl">Overtime' + (otp ? ' (' + esc(fmtMin(otp)) + ' pending)' : '') + '</span></span></button></div></div>';
     }
     var legend = sel
       ? [['present', 'Present'], ['late', 'Late'], ['absent', 'Absent'], ['leave', 'On leave'], ['off', 'Off day'], ['pending', 'Not yet in']]
@@ -645,6 +677,29 @@
       '<div class="att-cal" role="grid"><div class="att-cal-wd">' + WEEKDAYS.map(function (w) { return '<span>' + w + '</span>'; }).join('') + '</div>' +
       '<div class="att-cal-grid">' + cells.join('') + '</div></div>' +
       (!rows.length ? '<p class="kj-help att-cal-note">' + ico('info') + 'No attendance records match the current filters for this month.</p>' : '');
+  }
+
+  /* ── side: month overtime per employee (from the month rows) ───────────── */
+  function otMonthCard() {
+    var m = S.months[S.ym], p = S.ym.split('-');
+    if (!m || !m.rows) return '';
+    var by = {}, total = 0, pend = 0;
+    monthRows().forEach(function (r) {
+      if (!r.ot || !(r.ot.min > 0) || (S.f.dept && r.dept !== S.f.dept)) return;
+      var k = r.pid || r.name, e = by[k] || (by[k] = { pid: r.pid, name: r.name, photo: r.photo, dept: r.dept, min: 0, pend: 0, days: 0 });
+      e.min += r.ot.min; e.days++; total += r.ot.min;
+      if (r.ot.st === 'pending') { e.pend += r.ot.min; pend += r.ot.min; }
+    });
+    var list = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.min - a.min; });
+    var body = !list.length ? '<p class="kj-help att-ot-empty">' + ico('timer-off') + 'No overtime captured in ' + esc(MONTHS[+p[1] - 1]) + (S.f.dept ? ' for ' + esc(S.f.dept) : '') + '.</p>'
+      : '<div class="kj-list att-ot-list">' + list.slice(0, 8).map(function (e) {
+        return '<button type="button" class="kj-list-item" data-att-sel="' + esc(e.pid) + '"' + (e.pid ? '' : ' disabled') + '>' + avatar(e.photo, e.name, '') +
+          '<span class="kj-list-main"><span class="kj-list-title kj-truncate">' + esc(e.name) + '</span><span class="kj-list-sub kj-truncate">' +
+          esc(plural(e.days, 'day') + (e.pend ? ' · ' + fmtMin(e.pend) + ' pending' : ' · all approved')) + '</span></span><b class="kj-mono att-ot-sum">' + esc(fmtMin(e.min)) + '</b></button>';
+      }).join('') + '</div>' + (list.length > 8 ? '<p class="kj-help">+' + (list.length - 8) + ' more in the Overtime tab.</p>' : '');
+    return '<section class="kj-card att-side-card"><div class="kj-card-head"><div><div class="kj-card-title">' + ico('timer') + 'Overtime · ' + esc(MONTHS[+p[1] - 1]) + '</div>' +
+      '<div class="kj-card-sub">' + (total ? esc(fmtMin(total)) + ' total' + (pend ? ' · ' + esc(fmtMin(pend)) + ' pending approval' : '') : 'Captured from camera sightings after shift end') + '</div></div>' +
+      '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm" data-kj-nav="attendance/overtime">' + ico('list-checks') + '<span>Review</span></button></div>' + body + '</section>';
   }
 
   /* ── side: approvals + team leave + classic tools ──────────────────────── */
@@ -676,6 +731,7 @@
         '<div class="kj-card-sub">Leave requests from your team</div></div>' +
         '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-att-act="retry-appr" aria-label="Refresh approvals">' + ico('refresh-cw') + '</button></div>' + body + '</section>';
     }
+    html += otMonthCard();
     // Team leave this month
     var c = S.leaves[S.ym], p = S.ym.split('-'), lbody;
     if (!c || (c.busy && !c.data)) lbody = '<span class="kj-skel kj-skel-line"></span><span class="kj-skel kj-skel-line is-mid"></span>';
@@ -794,10 +850,11 @@
   }
   function downloadView() {
     var rows = filteredRows();
-    var head = ['Date', 'Staff ID', 'Employee', 'Department', 'Plant', 'Shift', 'Check-in', 'Check-out', 'Hours', 'Status', 'Late (min)'];
+    var head = ['Date', 'Staff ID', 'Employee', 'Department', 'Plant', 'Shift', 'Check-in', 'Check-out', 'Hours', 'Status', 'Late (min)', 'OT (min)', 'OT status'];
     var cell = function (v) { var s = String(v == null ? '' : v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     var lines = [head.join(',')].concat(rows.map(function (r) {
-      return [r.date, r.staffId, r.name, r.dept, r.plant, r.shift, r.inT, r.outT, r.hours == null ? '' : r.hours, (ST[effStatus(r)] || [r.status])[0], r.lateMin || ''].map(cell).join(',');
+      return [r.date, r.staffId, r.name, r.dept, r.plant, r.shift, r.inT, r.outT, r.hours == null ? '' : r.hours, (ST[effStatus(r)] || [r.status])[0], r.lateMin || '',
+        r.ot && r.ot.st ? r.ot.min : '', r.ot && r.ot.st ? (OTST[r.ot.st] || [r.ot.st])[0] : ''].map(cell).join(',');
     }));
     var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
@@ -805,6 +862,192 @@
     document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     return rows.length;
+  }
+
+  /* ══ Overtime tab (#attendance/overtime) ═══════════════════════════════════
+   * GET /overtime (records in scope + totals + rule), POST /overtime/{id}/approve|reject|reopen,
+   * POST /overtime/recompute, GET /overtime/export (CSV). RBAC is server-side (leave-approval rules).
+   */
+  var O = null;
+  function otFresh() {
+    var t = todayStr();
+    return { el: null, busy: false, err: '', data: null, seq: 0, timers: {},
+      f: { from: t.slice(0, 8) + '01', to: t, status: 'pending', dept: '', plant: '', q: '' } };
+  }
+  function otParams() { var f = O.f; return { from: f.from, to: f.to, status: f.status || 'all', department: f.dept, plant: f.plant, q: f.q, limit: 500 }; }
+  function otLoad() {
+    if (!O) return;
+    var my = O, seq = ++O.seq;
+    O.busy = true; otPaintBody();
+    getJSON('/overtime', otParams()).then(function (d) {
+      if (O !== my || seq !== O.seq) return;
+      O.data = d; O.err = ''; O.busy = false;
+      otFillSelects(); otPaintRule(); otPaintKpis(); otPaintBody();
+    }).catch(function (e) {
+      if (O !== my || seq !== O.seq) return;
+      O.busy = false; O.err = e.message || 'Could not load overtime';
+      otPaintKpis(); otPaintBody();
+    });
+  }
+  function otQ(id) { return O && O.el ? O.el.querySelector('#' + id) : null; }
+  function otFrame() {
+    var f = O.f, sel = function (key, list, cur) {
+      return '<select class="kj-select" data-ot-f="' + key + '" aria-label="' + esc(list[0][1]) + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (cur === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
+    };
+    return '<div class="kj-page att-page att-ot-page">' +
+      '<div class="kj-page-head att-head"><div><h2 class="kj-page-title">Overtime</h2>' +
+        '<p class="kj-page-sub">Captured automatically from face sightings after shift end. Figures are estimates until a supervisor approves them.</p></div>' +
+        '<div class="kj-row-wrap att-head-actions" id="att-ot-acts">' +
+          '<button type="button" class="kj-btn kj-btn-secondary" data-ot-act="recompute" hidden>' + ico('refresh-cw') + '<span>Recompute</span></button>' +
+          '<button type="button" class="kj-btn kj-btn-primary" data-ot-act="export">' + ico('download') + '<span>Export CSV</span></button>' +
+        '</div></div>' +
+      '<section class="kj-card att-ot-rule" id="att-ot-rule" aria-label="How overtime is captured"></section>' +
+      '<div class="att-stats att-ot-kpis" id="att-ot-kpis"></div>' +
+      '<section class="kj-card att-records">' +
+        '<div class="att-toolbar att-ot-toolbar">' +
+          '<label class="att-search">' + ico('search') + '<input class="kj-input" type="search" placeholder="Search employee or staff ID…" aria-label="Search employee" data-ot-f="q" value="' + esc(f.q) + '"></label>' +
+          '<label class="att-ot-date"><span>From</span><input class="kj-input" type="date" data-ot-f="from" value="' + esc(f.from) + '" max="' + esc(todayStr()) + '" aria-label="From date"></label>' +
+          '<label class="att-ot-date"><span>To</span><input class="kj-input" type="date" data-ot-f="to" value="' + esc(f.to) + '" max="' + esc(todayStr()) + '" aria-label="To date"></label>' +
+          sel('status', [['all', 'All statuses'], ['pending', 'Pending approval'], ['approved', 'Approved'], ['rejected', 'Rejected']], f.status) +
+          '<select class="kj-select" data-ot-f="dept" aria-label="Department"><option value="">All departments</option></select>' +
+          '<select class="kj-select" data-ot-f="plant" aria-label="Plant"><option value="">All plants</option></select>' +
+        '</div>' +
+        '<div class="att-body" id="att-ot-body"></div>' +
+      '</section></div>';
+  }
+  function otFillSelects() {
+    if (!O || !O.el || !O.data) return;
+    var fill = function (key, list, all, cur) {
+      var s = O.el.querySelector('[data-ot-f="' + key + '"]'); if (!s) return;
+      s.innerHTML = '<option value="">' + esc(all) + '</option>' + (list || []).map(function (v) { return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('');
+    };
+    var scoped = O.data.scope && O.data.scope !== 'all' && O.data.scope !== 'own';
+    fill('dept', scoped ? [O.data.scope] : O.data.departments, scoped ? O.data.scope : 'All departments', scoped ? O.data.scope : O.f.dept);
+    fill('plant', O.data.plants, 'All plants', O.f.plant);
+    var rc = O.el.querySelector('[data-ot-act="recompute"]'); if (rc) rc.hidden = !O.data.is_approver;
+  }
+  function otPaintRule() {
+    var el = otQ('att-ot-rule'); if (!el || !O.data) return;
+    var d = O.data, shifts = d.shifts || [];
+    var per = shifts.length > 1 ? '<ul class="att-ot-shifts">' + shifts.map(function (s) {
+      return '<li><b>' + esc(s.name) + '</b> <span class="kj-mono">' + esc(s.start + '–' + s.end) + '</span> — ' + esc(s.rule) + '</li>'; }).join('') + '</ul>'
+      : '<p class="att-ot-rule-txt">' + esc((shifts[0] && shifts[0].rule) || d.rule || '') + '</p>';
+    el.innerHTML = '<div class="att-ot-rule-head">' + ico('scale') + '<div><div class="kj-card-title">How overtime is captured</div>' + per +
+      '<p class="kj-help">' + ico('info') + 'Check-in and check-out are the first and last time a clock camera recognised the person — not a punch clock. ' +
+      'Review the evidence (time and camera) before approving. Rules are set per shift in Settings › Attendance &amp; overtime.</p></div>' +
+      (P.can('settings') ? '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm" data-kj-nav="settings/attendance">' + ico('settings') + '<span>Rules</span></button>' : '') + '</div>';
+  }
+  function otPaintKpis() {
+    var el = otQ('att-ot-kpis'); if (!el) return;
+    if (!O.data) { el.innerHTML = O.err ? '' : [1, 2, 3, 4].map(function () { return '<span class="kj-skel kj-skel-tile"></span>'; }).join(''); return; }
+    var t = O.data.totals || {}, pe = t.pending || {}, ap = t.approved || {}, rj = t.rejected || {};
+    var tile = function (icon, val, lbl, tone, status, sub) {
+      return '<button type="button" class="kj-stat att-stat' + (tone ? ' is-' + tone : '') + (O.f.status === status ? ' is-on' : '') + '" data-ot-act="status" data-s="' + status + '"><span class="kj-stat-ico">' + ico(icon) + '</span>' +
+        '<span class="att-stat-txt"><span class="kj-stat-val">' + esc(val) + '</span><span class="kj-stat-lbl">' + esc(lbl) + '</span>' + (sub ? '<span class="att-stat-sub">' + esc(sub) + '</span>' : '') + '</span></button>';
+    };
+    el.innerHTML = tile('hourglass', pe.n || 0, 'Pending approval', 'warn', 'pending', fmtMin(pe.min) + ' captured') +
+      tile('circle-check', fmtMin(ap.min), 'Approved OT', 'success', 'approved', plural(ap.n || 0, 'record')) +
+      tile('circle-x', rj.n || 0, 'Rejected', 'danger', 'rejected', fmtMin(rj.min) + ' not paid') +
+      tile('users', t.people || 0, 'People with OT', 'orange', 'all', fmtDate(O.data.from) + ' – ' + fmtDate(O.data.to));
+  }
+  function otPaintBody() {
+    var el = otQ('att-ot-body'); if (!el) return;
+    if (!O.data && O.busy) { el.innerHTML = '<div class="att-table-skel">' + [1, 2, 3, 4, 5].map(function () { return '<div class="kj-row"><span class="kj-skel kj-skel-circle"></span><span class="kj-skel kj-skel-line"></span><span class="kj-skel kj-skel-line is-mid"></span></div>'; }).join('') + '</div>'; return; }
+    if (O.err) { el.innerHTML = emptyBox({ err: true, title: 'Could not load overtime', text: O.err, actions: '<button type="button" class="kj-btn kj-btn-primary" data-ot-act="retry">' + ico('refresh-cw') + '<span>Retry</span></button>' }); hydrateOt(el); return; }
+    var d = O.data || {}, recs = d.records || [];
+    if (!recs.length) {
+      var filtered = O.f.status !== 'all' || O.f.dept || O.f.plant || O.f.q;
+      el.innerHTML = emptyBox({ anim: O.f.status === 'pending' ? 'success' : 'empty', icon: O.f.status === 'pending' ? 'check-check' : 'timer-off',
+        title: O.f.status === 'pending' ? 'No overtime waiting for approval' : 'No overtime in this period',
+        text: 'Overtime appears here when a clock camera sees someone at least the minimum time after their shift ends, or on a rest day.',
+        actions: (filtered ? '<button type="button" class="kj-btn kj-btn-secondary" data-ot-act="clear">' + ico('filter-x') + '<span>Show all statuses</span></button>' : '') +
+          '<button type="button" class="kj-btn kj-btn-secondary" data-kj-nav="attendance">' + ico('calendar-check') + '<span>Attendance</span></button>' });
+      hydrateOt(el); return;
+    }
+    var dec = !!d.is_approver;
+    var body = recs.map(function (r) {
+      var s = OTST[r.status] || OTST.pending;
+      var sight = function (at, loc, cam) {
+        return at ? '<span class="kj-mono">' + esc(hm(at)) + '</span><span class="kj-muted att-ot-cam">' + esc([loc, cam].filter(Boolean).join(' · ')) + '</span>' : '<span class="kj-muted">—</span>';
+      };
+      var fig = r.status === 'rejected' ? fmtMin(r.calcMinutes) : fmtMin(r.minutes);
+      var notes = [];
+      if (r.status !== 'pending' && r.minutes !== r.calcMinutes && r.status === 'approved') notes.push('<span class="kj-chip is-info" title="The approver changed the captured figure">Captured ' + esc(fmtMin(r.calcMinutes)) + '</span>');
+      if (r.changed) notes.push('<span class="kj-chip is-warn" title="New sightings or a rule change since the decision — the decided figure was kept">' + ico('triangle-alert') + 'Now ' + esc(fmtMin(r.calcMinutes)) + '</span>');
+      if (r.provisional) notes.push('<span class="kj-chip is-info" title="The attendance window for this shift is still open — the figure can still grow">' + ico('clock') + 'Still open</span>');
+      var acts = !r.canDecide ? '' : (r.status === 'pending'
+        ? '<button type="button" class="kj-btn kj-btn-sm kj-btn-soft att-approve" data-ot-act="decide" data-d="approve" data-id="' + esc(r.id) + '">' + ico('check') + '<span>Approve</span></button>' +
+          '<button type="button" class="kj-btn kj-btn-sm kj-btn-secondary att-reject" data-ot-act="decide" data-d="reject" data-id="' + esc(r.id) + '">' + ico('x') + '<span>Reject</span></button>'
+        : '<button type="button" class="kj-btn kj-btn-sm kj-btn-ghost" data-ot-act="reopen" data-id="' + esc(r.id) + '">' + ico('undo-2') + '<span>Reopen</span></button>');
+      return '<tr>' +
+        '<td><span class="att-who"><span class="att-who-txt"><button type="button" class="kj-link att-name"' + kjm('person', r.personId, { name: r.name }) + '>' + esc(r.name || '—') + '</button>' +
+          '<span class="kj-muted att-staff">' + esc([r.staffId, r.department].filter(Boolean).join(' · ')) + '</span></span></span></td>' +
+        '<td class="att-nowrap">' + esc(fmtDate(r.date)) + '<span class="kj-muted att-ot-cam">' + esc(r.shift + (r.shiftEnd ? ' · ends ' + r.shiftEnd : '')) + '</span></td>' +
+        '<td>' + sight(r.inAt, r.inLoc, r.inCam) + '</td>' +
+        '<td>' + sight(r.outAt, r.outLoc, r.outCam) + '</td>' +
+        '<td class="att-ot-fig"><b class="kj-mono">' + esc(fig) + '</b> <span class="kj-muted">' + esc(OTKIND[r.kind] || '') + '</span>' +
+          '<span class="att-ot-explain" title="' + esc(r.explain + '\n' + r.rule) + '">' + esc(r.explain) + '</span>' + (notes.length ? '<span class="kj-row-wrap att-ot-notes">' + notes.join('') + '</span>' : '') + '</td>' +
+        '<td class="att-nowrap"><span class="kj-chip kj-chip-dot is-' + s[1] + '">' + esc(r.status === 'pending' ? 'Pending' : s[0]) + '</span>' +
+          (r.decidedBy ? '<span class="kj-muted att-ot-cam">' + esc(r.decidedBy + (r.decidedAt ? ' · ' + fmtShort(String(r.decidedAt).slice(0, 10)) : '')) + '</span>' : '') +
+          (r.note ? '<span class="att-ot-explain" title="' + esc(r.note) + '">“' + esc(r.note) + '”</span>' : '') + '</td>' +
+        (dec ? '<td class="kj-num att-nowrap"><span class="att-ot-acts">' + acts + '</span></td>' : '') + '</tr>';
+    }).join('');
+    el.innerHTML = '<div class="kj-table-wrap"><table class="kj-table att-table att-ot-table"><thead><tr><th>Employee</th><th>Date · shift</th><th>First sighting</th><th>Last sighting</th><th>Overtime · how derived</th><th>Status</th>' +
+      (dec ? '<th class="kj-num"><span class="kj-sr-only">Actions</span></th>' : '') + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      '<div class="att-pager"><span class="kj-muted">' + esc(plural(recs.length, 'record') + (d.total > recs.length ? ' of ' + d.total + ' (narrow the dates to see the rest)' : '')) + '</span></div>';
+  }
+  function hydrateOt(el) { if (S) hydrateLottie(el); /* else: the static icon fallback stays */ }
+  function otRecord(id) { return ((O && O.data && O.data.records) || []).filter(function (x) { return String(x.id) === String(id); })[0] || null; }
+  function otClick(ev) {
+    var t = ev.target; if (!(t instanceof Element) || !O) return;
+    var hit = t.closest('[data-ot-act]'); if (!hit || !O.el.contains(hit) || hit.disabled) return;
+    ev.stopPropagation();
+    var act = hit.getAttribute('data-ot-act');
+    if (act === 'retry') { O.err = ''; otLoad(); }
+    else if (act === 'status') { O.f.status = hit.getAttribute('data-s') || 'all'; var s = O.el.querySelector('[data-ot-f="status"]'); if (s) s.value = O.f.status; otLoad(); }
+    else if (act === 'clear') { O.f.status = 'all'; O.f.dept = ''; O.f.plant = ''; O.f.q = ''; O.el.innerHTML = otFrame(); otFillSelects(); otPaintRule(); otLoad(); }
+    else if (act === 'export') { window.open(apiUrl('/overtime/export', otParams()), '_blank'); }
+    else if (act === 'recompute') {
+      hit.disabled = true;
+      postJSON('/overtime/recompute', { from: O.f.from, to: O.f.to }).then(function (d) {
+        toast('Recomputed ' + plural(d.days || 0, 'day') + ' — decided records were not changed', 'success'); hit.disabled = false; otLoad();
+      }).catch(function (e) { hit.disabled = false; toast(e.message || 'Recompute failed', 'danger'); });
+    } else if (act === 'decide') {
+      var r = otRecord(hit.getAttribute('data-id')), d2 = hit.getAttribute('data-d');
+      if (r && window.KJModal) { registerModals(); window.KJModal.open('att-ot-decide', d2 + ':' + r.id, { name: (d2 === 'approve' ? 'Approve OT · ' : 'Reject OT · ') + r.name, rec: r }); }
+    } else if (act === 'reopen') {
+      var r2 = otRecord(hit.getAttribute('data-id')); if (!r2) return;
+      hit.disabled = true;
+      postJSON('/overtime/' + encodeURIComponent(r2.id) + '/reopen', {}).then(function () { toast('Back to pending · ' + r2.name, 'warn'); otLoad(); })
+        .catch(function (e) { hit.disabled = false; toast(e.message || 'Could not reopen', 'danger'); });
+    }
+  }
+  function otInput(ev) {
+    var t = ev.target; if (!(t instanceof Element) || !O || !t.hasAttribute('data-ot-f')) return;
+    var k = t.getAttribute('data-ot-f'), v = t.value;
+    if (k === 'q') { clearTimeout(O.timers.q); O.timers.q = setTimeout(function () { if (O) { O.f.q = v; otLoad(); } }, 300); return; }
+    if (ev.type !== 'change') return;
+    if (k === 'from' || k === 'to') { if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; O.f[k] = v; }
+    else O.f[k] = v;
+    otLoad();
+  }
+  function otMount(el) {
+    O = otFresh(); O.el = el;
+    el.classList.add('att-host');
+    el.innerHTML = otFrame();
+    el.addEventListener('click', otClick);
+    el.addEventListener('input', otInput);
+    el.addEventListener('change', otInput);
+    otPaintKpis(); otLoad();
+  }
+  function otUnmount(el) {
+    if (!O) return;
+    el.removeEventListener('click', otClick);
+    el.removeEventListener('input', otInput);
+    el.removeEventListener('change', otInput);
+    el.classList.remove('att-host');
+    Object.keys(O.timers).forEach(function (k) { clearTimeout(O.timers[k]); });
+    O = null;
   }
 
   /* ── modal types (KJModal is deferred → register when it appears) ─────── */
@@ -863,6 +1106,63 @@
       }
     });
 
+    // Approve / reject one overtime record (reject needs a reason; a changed figure needs a note).
+    K.register('att-ot-decide', {
+      kicker: 'Overtime approval', icon: 'timer', size: 'sm', deepLink: false,
+      load: function (ctx) {
+        var id = String(ctx.id).split(':')[1];
+        var r = ctx.data && ctx.data.rec;
+        return (r && r.id) ? Promise.resolve(r) : getJSON('/overtime/' + encodeURIComponent(id)).then(function (d) { return d.record; });
+      },
+      render: function (ctx, r) {
+        var act = String(ctx.id).split(':')[0] === 'reject' ? 'reject' : 'approve';
+        var ev = function (at, loc, cam) { return at ? hm(at) + ' · ' + [loc, cam].filter(Boolean).join(' · ') : '—'; };
+        return {
+          title: (act === 'reject' ? 'Reject overtime' : 'Approve overtime') + ' · ' + (r.name || ''), icon: act === 'reject' ? 'circle-x' : 'circle-check', tone: act === 'reject' ? 'danger' : 'success',
+          body: '<div class="kj-card">' + h.kv([['Employee', r.name + (r.staffId ? ' · ' + r.staffId : '')], ['Date', fmtDate(r.date)], ['Shift', r.shift + (r.shiftStart ? ' ' + r.shiftStart + '–' + r.shiftEnd : '')],
+              ['First sighting', ev(r.inAt, r.inLoc, r.inCam)], ['Last sighting', ev(r.outAt, r.outLoc, r.outCam)],
+              ['Captured OT', fmtMin(r.calcMinutes) + (OTKIND[r.kind] ? ' · ' + OTKIND[r.kind] : '')], ['How derived', r.explain || '—']]) +
+              '<p class="kj-help att-ot-modal-rule">' + h.esc(r.rule || '') + ' The last sighting is when a camera last saw the person — confirm it before approving.</p></div>' +
+            (act === 'approve' ? '<div class="kj-field att-remarks-field"><label class="kj-label" for="att-ot-min">Approved overtime (minutes)</label>' +
+              '<input class="kj-input" id="att-ot-min" type="number" min="1" max="1440" step="1" inputmode="numeric" value="' + h.esc(r.calcMinutes) + '">' +
+              '<div class="kj-help">Captured ' + h.esc(fmtMin(r.calcMinutes)) + '. Change it only with a note.</div></div>' : '') +
+            '<div class="kj-field att-remarks-field"><label class="kj-label" for="att-ot-note">' + (act === 'reject' ? 'Reason for rejection (required)' : 'Note (optional)') + '</label>' +
+            '<textarea class="kj-textarea" id="att-ot-note" rows="3" maxlength="500" placeholder="' + (act === 'reject' ? 'Tell the employee why — they will see this.' : 'Add a note for the employee…') + '"></textarea>' +
+            '<div class="kj-help" id="att-ot-help" aria-live="polite"></div></div>',
+          foot: '<button type="button" class="kj-btn kj-btn-secondary" data-kj-close>Cancel</button>' +
+            h.btn('go', act === 'reject' ? 'Reject overtime' : 'Approve overtime', act === 'reject' ? 'x' : 'check', act === 'reject' ? 'kj-btn-danger' : 'kj-btn-primary'),
+          actions: {
+            go: function (c, btn) {
+              var ta = c.body.querySelector('#att-ot-note'), help = c.body.querySelector('#att-ot-help'), field = ta && ta.closest('.att-remarks-field');
+              var mi = c.body.querySelector('#att-ot-min');
+              var note = ta ? ta.value.trim() : '', body = { note: note };
+              var bad = function (msg, focus) { if (field) field.classList.add('is-error'); help.textContent = msg; if (focus) focus.focus(); };
+              if (act === 'reject' && note.length < 3) { bad('Please give a reason (at least 3 characters).', ta); return; }
+              if (mi) {
+                var m = parseInt(mi.value, 10);
+                if (!(m >= 1 && m <= 1440)) { bad('Approved minutes must be between 1 and 1440.', mi); return; }
+                if (m !== +r.calcMinutes && note.length < 3) { bad('Add a note explaining why the figure differs from the captured ' + fmtMin(r.calcMinutes) + '.', ta); return; }
+                body.minutes = m;
+              }
+              if (field) field.classList.remove('is-error'); help.textContent = '';
+              btn.disabled = true;
+              postJSON('/overtime/' + encodeURIComponent(r.id) + '/' + act, body).then(function () {
+                K.toast((act === 'reject' ? 'Rejected' : 'Approved') + ' overtime · ' + (r.name || ''), act === 'reject' ? 'warn' : 'success');
+                c.close();
+                if (O) otLoad();
+                if (S) loadToday(true);
+              }).catch(function (e) {
+                btn.disabled = false;
+                bad((e.message || 'Could not save the decision') + (e.status === 409 ? ' — it may already have been decided.' : ''));
+                if (e.status === 409 && O) otLoad();
+              });
+            }
+          },
+          mount: function (c) { var f = c.body.querySelector(act === 'reject' ? '#att-ot-note' : '#att-ot-min'); if (f) setTimeout(function () { try { f.focus(); } catch (e) { /* ignore */ } }, 40); }
+        };
+      }
+    });
+
     // Who is on approved leave on one date (team-leave calendar drill-down).
     K.register('att-leave-day', {
       kicker: 'Team leave', icon: 'plane', size: 'md',
@@ -908,12 +1208,17 @@
             card('daily', 'calendar-check', 'Daily register', 'One row per employee: shift, clock-in/out with location, hours, status, late minutes, exceptions, plants visited.', (ymOf(todayStr()) === ym ? 'Today' : 'Last day of ' + mn) + (flt ? ' · ' + flt : '')) +
             card('range', 'calendar-range', 'Month attendance (date range)', 'The daily register for every day of the month — late arrivals and absentee summaries.', mn + (flt ? ' · ' + flt : '')) +
             card('movement', 'route', 'Employee movement', 'Every detection grouped into visits: location, camera, arrive/depart, dwell.', (sel ? sel.name : 'All employees') + ' · ' + mn) +
+            card('overtime', 'timer', 'Overtime records', 'Captured OT per employee-day with the evidence (first/last sighting and camera), the rule applied and the approval status.', mn + (S && S.f.dept ? ' · ' + S.f.dept : '')) +
             card('view', 'file-spreadsheet', 'This view (CSV)', 'Exactly the rows shown in the records table with the current filters.', S ? plural(filteredRows().length, 'row') : '—') +
             '</div><p class="kj-help">CSV files open in Excel with names intact (UTF-8).</p>',
           actions: {
             daily: function () { window.open(exportUrl('daily'), '_blank'); },
             range: function () { window.open(exportUrl('range'), '_blank'); },
             movement: function () { window.open(exportUrl('movement'), '_blank'); },
+            overtime: function () {
+              var t = todayStr(), end = monthEnd(ym);
+              window.open(apiUrl('/overtime/export', { from: ym + '-01', to: end < t ? end : t, department: (S && S.f.dept) || '', status: 'all' }), '_blank');
+            },
             view: function (c) { if (!S) return; var n = downloadView(); K.toast('Exported ' + plural(n, 'row'), 'success'); c.close(); }
           }
         };
@@ -932,6 +1237,8 @@
     subs: {
       // New admin page (M5). `aliases` keeps app.setPage('attendance') / goLegacy on it.
       register: { label: 'Attendance', aliases: ['attendance'] },
+      // Captured overtime: review the evidence, approve / reject, export (RBAC server-side).
+      overtime: { label: 'Overtime', icon: 'timer' },
       // Legacy register · live sightings · reports — linked from the new page.
       classic:  { label: 'Classic register', legacy: 'attendance', hidden: true }
     },
@@ -946,6 +1253,7 @@
       if (!registered) {   // KJModal still loading (deferred) — keep trying briefly
         var tries = 0, iv = setInterval(function () { if (registerModals() || ++tries > 40) clearInterval(iv); }, 100);
       }
+      if (route && route.sub === 'overtime') { otMount(el); return; }
       S = freshState(app);
       S.el = el;
       el.classList.add('att-host');
@@ -964,6 +1272,7 @@
     },
 
     unmount: function (el) {
+      otUnmount(el);
       if (!S) return;
       el.removeEventListener('click', onClick);
       el.removeEventListener('keydown', onKey);

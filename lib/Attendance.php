@@ -12,6 +12,8 @@
  *   late       clock-in after shift start + grace
  *   absent     scheduled, active, no clock-in by shift start + absent_after
  *   missing    clocked in, window over, no clock-out
+ *   overtime   check-out after shift end (or rest-day work) under the OT rules —
+ *              lib/Overtime.php; the window extends to shift end + OT cap + 1 h
  *
  * Clock cameras are the ones given a clock_in / clock_out / both role under
  * Settings → Attendance. Until any camera has a role, every sighting counts,
@@ -90,7 +92,11 @@ final class Attendance
         return $shifts[0];
     }
 
-    /** [window start, shift start, shift end, window end] as timestamps for one work date. */
+    /**
+     * [window start, shift start, shift end, window end] as timestamps for one work date.
+     * The window stays open past shift end + 4 h when the shift's OT cap needs
+     * it (cap + 1 h), but never into the next work date's window.
+     */
     private function windowOf(array $shift, string $date): array
     {
         $start = strtotime($date . ' ' . $shift['start'] . ':00');
@@ -98,7 +104,28 @@ final class Attendance
         if ($end <= $start) {
             $end += 86400;   // overnight shift — work date is the start date
         }
-        return [$start - self::WINDOW_BEFORE_S, $start, $end, $end + self::WINDOW_AFTER_S];
+        $rule  = $this->otRule($shift);   // loads lib/Overtime.php
+        $after = max($end + self::WINDOW_AFTER_S,
+            min($end + Overtime::windowAfterS($rule), $start + 86400 - self::WINDOW_BEFORE_S));
+        return [$start - self::WINDOW_BEFORE_S, $start, $end, $after];
+    }
+
+    // ── Overtime (lib/Overtime.php) ──────────────────────────
+
+    /** Persists captured OT and adds approval state to the rows; null = compute only. */
+    private ?Overtime $ot = null;
+
+    public function withOvertime(?Overtime $ot): self
+    {
+        $this->ot = $ot;
+        return $this;
+    }
+
+    /** Effective OT rule of a shift (Settings defaults + the shift's overrides). */
+    private function otRule(array $shift): array
+    {
+        require_once __DIR__ . '/Overtime.php';
+        return Overtime::ruleFor($shift, $this->cfg['ot'] ?? null);
     }
 
     /** Collapse repeats of the same person on the same camera within dedupe_s. */
@@ -156,6 +183,8 @@ final class Attendance
             }
             $rows[] = $this->dayRow($emp, $date, $byPerson[$pid] ?? [], $now);
         }
+        // Persist captured OT (all rows, before any filter) and attach its approval state.
+        $this->ot?->capture($date, $rows);
 
         // Filters (status filter applies to the table only, not the KPIs).
         $q     = strtolower(trim((string) ($f['q'] ?? '')));
@@ -164,8 +193,17 @@ final class Attendance
                 && (empty($f['department']) || $r['department'] === $f['department'])
                 && ($q === '' || str_contains(strtolower($r['name'] . ' ' . $r['staffId']), $q));
         }));
-        $kpi = ['total' => 0, 'present' => 0, 'late' => 0, 'absent' => 0, 'pending' => 0, 'off' => 0, 'missingOut' => 0];
+        $kpi = ['total' => 0, 'present' => 0, 'late' => 0, 'absent' => 0, 'pending' => 0, 'off' => 0, 'missingOut' => 0,
+                'otPeople' => 0, 'otMin' => 0, 'otPending' => 0];
         foreach ($rows as $r) {
+            $otMin = Overtime::effective($r['ot']);
+            if ($otMin > 0) {
+                $kpi['otPeople']++;
+                $kpi['otMin'] += $otMin;
+                if (($r['ot']['record']['status'] ?? 'pending') === 'pending') {
+                    $kpi['otPending']++;
+                }
+            }
             if ($r['status'] === 'off') {
                 $kpi['off']++;
                 continue;
@@ -191,7 +229,8 @@ final class Attendance
             $want = $f['status'];
             $rows = array_values(array_filter($rows, static fn ($r) => $want === 'present'
                 ? in_array($r['status'], ['present', 'late'], true)
-                : ($want === 'missing_out' ? in_array('missing_out', $r['flags'], true) : $r['status'] === $want)));
+                : ($want === 'missing_out' ? in_array('missing_out', $r['flags'], true)
+                    : ($want === 'ot' ? Overtime::effective($r['ot']) > 0 : $r['status'] === $want))));
         }
         $order = ['absent' => 0, 'late' => 1, 'pending' => 2, 'present' => 3, 'off' => 4];
         usort($rows, static fn ($a, $b) => [$order[$a['status']] ?? 9, $a['name']] <=> [$order[$b['status']] ?? 9, $b['name']]);
@@ -280,6 +319,20 @@ final class Attendance
         }
         $hours = ($in && $out) ? round(((strtotime($out['time']) ?: 0) - $inTs) / 3600, 1) : null;
 
+        // Overtime — an estimate from camera sightings, pending approval.
+        $rule = $this->otRule($shift);
+        $ot   = Overtime::compute($rule, $scheduled, $ss, $se, $in ? $inTs : null,
+            $out ? (strtotime($out['time']) ?: 0) : null, $now >= $we);
+        $ot += [
+            'shiftId' => $shift['id'], 'shiftStartAt' => date('Y-m-d H:i:s', $ss), 'shiftEndAt' => date('Y-m-d H:i:s', $se),
+            'ruleCfg' => array_intersect_key($rule, Overtime::DEFAULTS),
+            'evidence' => [
+                'inAt' => $in['time'] ?? null, 'inLoc' => $in['location'] ?? null, 'inCam' => $in['camera'] ?? null,
+                'outAt' => $out['time'] ?? null, 'outLoc' => $out['location'] ?? null, 'outCam' => $out['camera'] ?? null,
+            ],
+            'record' => null,
+        ];
+
         return [
             'personId'   => $emp['personId'], 'name' => $emp['name'], 'staffId' => $emp['staffId'],
             'department' => $emp['department'], 'plant' => $emp['plant'], 'photo' => $emp['photo'],
@@ -291,6 +344,7 @@ final class Attendance
             'hours'      => $hours, 'flags' => $flags, 'plants' => $plants,
             'lastSeen'   => $last['time'] ?? null, 'lastLoc' => $last['location'] ?? null,
             'sightings'  => count($sight),
+            'ot'         => $ot,
         ];
     }
 
@@ -331,7 +385,8 @@ final class Attendance
             return null;
         }
         $blank = static fn (): array => ['present' => 0, 'late' => 0, 'absent' => 0, 'pending' => 0, 'off' => 0,
-                                         'missingOut' => 0, 'lateMin' => 0, 'hours' => 0.0, 'days' => 0];
+                                         'missingOut' => 0, 'lateMin' => 0, 'hours' => 0.0, 'days' => 0,
+                                         'otMin' => 0, 'otDays' => 0, 'otApprovedMin' => 0, 'otPendingMin' => 0];
         $people = [];
         if ($from <= $today) {
             foreach ($this->range($from, $to, $personId !== null ? [] : $f) as $r) {
@@ -352,6 +407,13 @@ final class Attendance
                 if (in_array('missing_out', $r['flags'], true)) {
                     $s['missingOut']++;
                 }
+                $otMin = Overtime::effective($r['ot']);
+                $otSt  = (string) ($r['ot']['record']['status'] ?? ($otMin > 0 ? 'pending' : ''));
+                if ($otMin > 0) {
+                    $s['otMin'] += $otMin;
+                    $s['otDays']++;
+                    $s[$otSt === 'approved' ? 'otApprovedMin' : 'otPendingMin'] += $otMin;
+                }
                 unset($s);
                 if ($personId !== null) {
                     $people[$pid]['days'][] = [
@@ -360,6 +422,7 @@ final class Attendance
                         'clockIn' => $r['clockIn'], 'clockInLoc' => $r['clockInLoc'], 'clockInSrc' => $r['clockInSrc'],
                         'clockOut' => $r['clockOut'], 'clockOutLoc' => $r['clockOutLoc'],
                         'hours' => $r['hours'], 'lateMin' => $r['lateMin'], 'flags' => $r['flags'], 'plants' => $r['plants'],
+                        'ot' => $r['ot'] + ['effective' => $otMin],
                     ];
                 } else {
                     $people[$pid]['shift'] ??= $r['shift'];
@@ -368,6 +431,7 @@ final class Attendance
                         'in' => $r['clockIn'] ? substr((string) $r['clockIn'], 11, 5) : '',
                         'out' => $r['clockOut'] ? substr((string) $r['clockOut'], 11, 5) : '',
                         'inLoc' => (string) ($r['clockInLoc'] ?? ''), 'hours' => $r['hours'], 'lateMin' => $r['lateMin'],
+                        'ot' => $otMin, 'otSt' => $otSt, 'otCalc' => (int) $r['ot']['minutes'],
                     ];
                 }
             }

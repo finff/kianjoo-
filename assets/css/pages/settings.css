@@ -250,3 +250,19 @@
   .kjs-inline { flex-direction: column; align-items: stretch; }
   .kjs-inline > .kj-btn { margin-top: 0; align-self: flex-start; }
 }
+
+/* ── Attendance & overtime (shift editor + OT rules) ─────── */
+.kjs-att-shifts { display: flex; flex-direction: column; gap: var(--kj-s-4); }
+.kjs-att-shift { border: 1px solid var(--kj-border); border-radius: var(--kj-r-md); padding: var(--kj-s-4); display: flex; flex-direction: column; gap: var(--kj-s-3); background: var(--kj-bg-subtle); }
+.kjs-att-shift-head { display: flex; align-items: center; gap: var(--kj-s-3); flex-wrap: wrap; }
+.kjs-att-shift-head > .kj-btn { margin-left: auto; }
+.kjs-att-ot { border-top: 1px dashed var(--kj-border-strong); padding-top: var(--kj-s-3); display: flex; flex-direction: column; gap: var(--kj-s-2); }
+.kjs-att-ot > .kj-label { display: inline-flex; align-items: center; gap: 6px; }
+.kjs-att-ot > .kj-label .kj-ico, [data-kjs-att-preview] .kj-ico { width: 15px; height: 15px; vertical-align: -2px; }
+.kjs-att-ot-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .kjs-att-ot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .kjs-att-ot-grid { grid-template-columns: minmax(0, 1fr); }
+}
