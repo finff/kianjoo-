@@ -220,6 +220,21 @@ $config['ai']['pipeline'] = [
     'min_confidence' => (float) ($app['ai_pipeline_min_confidence'] ?? Env::get('AI_PIPELINE_MIN_CONFIDENCE', '0.6')),
     'zone_only'      => null,   // auto: only forklift-zone cameras when zones are configured
 ];
+// Incident episodes (lib/IncidentGroups.php): repeated detections of the same
+// violation (module/policy + camera + person) with gaps ≤ merge_gap_min collapse
+// into one incident — one row, one alert. Settings → Tickets & SLA.
+$config['incidents'] = [
+    'merge_gap_min' => max(1, min(120, (int) ($app['incident_merge_gap_min'] ?? 10))),
+];
+// "Needs review" queue (lib/ReviewQueue.php): a Claude violation with confidence in
+// [floor, ai.pipeline.min_confidence) waits for a supervisor instead of being dropped;
+// score_below > 0 also queues a new detection episode whose own detection score
+// (person confidence / face similarity) is below it. 0 = off.
+$config['review'] = [
+    'enabled'     => !in_array($app['review_enabled'] ?? true, ['0', 0, false, 'false', 'off'], true),
+    'floor'       => max(0.0, min(1.0, (float) ($app['review_floor'] ?? 0.35))),
+    'score_below' => max(0.0, min(1.0, (float) ($app['review_score_below'] ?? 0))),
+];
 $config['ai']['storage_dir'] = APP_ROOT . '/storage';
 // VisionAI camera monitors (lib/MonitorScanner.php): env MONITOR_* defaults,
 // app_settings monitor_settings (global scan settings) + cam_monitors (per camera) override.

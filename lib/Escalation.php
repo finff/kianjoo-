@@ -82,10 +82,13 @@ final class Escalation
         }
 
         $store = new EventStore($pdo, $config);
+        // One escalation chain per incident episode (its first detection), never per repeat.
+        require_once __DIR__ . '/IncidentGroups.php';
+        $lw = IncidentGroups::leaderWhere();
         $st = $pdo->prepare(
             "SELECT id, uuid, stream, received_at, esc_level FROM events
              WHERE (status IS NULL OR status = 'open') AND received_at >= :f AND received_at <= :t
-               AND uuid IS NOT NULL AND uuid <> ''
+               AND uuid IS NOT NULL AND uuid <> ''" . ($lw !== '' ? ' AND ' . $lw : '') . "
              ORDER BY received_at ASC LIMIT " . self::BATCH
         );
         $st->execute([
@@ -178,7 +181,10 @@ final class Escalation
     {
         $out = [1 => 0, 2 => 0, 3 => 0];
         try {
-            $rows = $pdo->query("SELECT esc_level, COUNT(*) n FROM events WHERE esc_level > 0 AND (status IS NULL OR status = 'open') GROUP BY esc_level")->fetchAll();
+            require_once __DIR__ . '/IncidentGroups.php';
+            $lw = IncidentGroups::leaderWhere();
+            $rows = $pdo->query("SELECT esc_level, COUNT(*) n FROM events WHERE esc_level > 0 AND (status IS NULL OR status = 'open')"
+                . ($lw !== '' ? ' AND ' . $lw : '') . ' GROUP BY esc_level')->fetchAll();
             foreach ($rows as $r) {
                 $out[(int) $r['esc_level']] = (int) $r['n'];
             }

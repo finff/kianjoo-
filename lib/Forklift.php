@@ -421,7 +421,7 @@ final class Forklift
         $u->execute(['id' => $eventId]);
         $uuid = (string) ($u->fetchColumn() ?: '');
         if ($uuid !== '') {
-            $this->store->setStatus($uuid, 'resolved', null);
+            $this->store->setStatus($uuid, 'resolved', null, false);   // this detection only, not its incident episode
             $this->store->addLog($uuid, 'review', 'system', 'violation', 'logged',
                 'Reclassified as forklift operator — a forklift was detected on this camera within ' . $this->operatorWindow() . ' s');
         }

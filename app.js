@@ -1450,10 +1450,13 @@ class Component extends DCLogic {
       return {label:this.fmtDur(rem)+' LEFT', col:'var(--ok)'}; };
     const progOf=(e)=> e.status==='resolved'?{p:100,col:'var(--ok)',label:'Resolved'}
       :(e.status==='ack'?{p:55,col:'var(--gold)',label:'In progress'}:{p:15,col:'var(--crit)',label:'Open'});
-    const allInc=st.events.map(e=>{
+    // One register row per incident episode: repeats of the same violation (feed.php
+    // groupMember) collapse onto the episode's first detection, shown as "× N detections".
+    const allInc=st.events.filter(e=>!e.groupMember).map(e=>{
       const m=this.MODS[e.mod]; const sm=statusMeta[e.status];
       const sla=slaOf(e); const pr=progOf(e);
       const elapsedMs=(e.status==='resolved'&&e.resolvedTs)?(e.resolvedTs-e.ts):(st.now-e.ts);
+      const nDet=Number(e.groupCount)||1;
       // A face that matches an enrolled profile is shown by name.
       const prof=((st.people&&st.people.profiles)||{})[e.personId||''];
       const detTs=String(e.triggerTime||'').trim() || (e.received||'');
@@ -1462,7 +1465,7 @@ class Component extends DCLogic {
         person:(prof&&prof.name)||e.person||'', hasPerson:!!((prof&&prof.name)||e.person),
         isTicket:!!e.ticket, notTicket:!e.ticket, ticket:e.ticket||'',
         tag:m.tag, tagBg:m.tagBg, sev:e.sev, sevColor:this.SEV[e.sev],
-        title:((prof&&prof.name)? ('Face match — '+prof.name) : e.title),
+        title:((prof&&prof.name)? ('Face match — '+prof.name) : e.title)+(nDet>1?(' · ×'+nDet+' detections over '+this.fmtDur(Math.max(0,(e.groupLast||e.ts)-(e.groupFirst||e.ts)))):''),
         camera:e.camera, zone:e.zone, device:e.device, ago:this.ago(e.ts), assignee:e.assignee,
         status:e.status, statusLabel:sm.label, statusCol:sm.col,
         slaLabel:sla.label, slaCol:sla.col, prog:pr.p, progW:pr.p+'%', progCol:pr.col, progLabel:pr.label,
@@ -2319,8 +2322,10 @@ class Component extends DCLogic {
     const searchEmpty = searchHas && searchInc.length===0 && searchCam.length===0 && searchPeople.length===0;
 
     // ===== NOTIFICATIONS (bell — live detections + email channel) =====
-    const notifCount=st.events.filter(e=>e.status==='open' && !st.notifSeen[e.id]).length;
-    const notifItems=st.events.slice(0,10).map(e=>{ const m=this.MODS[e.mod]||{};
+    // One bell entry per incident episode (feed.php groupMember = a repeat of an earlier detection).
+    const notifEv=st.events.filter(e=>!e.groupMember);
+    const notifCount=notifEv.filter(e=>e.status==='open' && !st.notifSeen[e.id]).length;
+    const notifItems=notifEv.slice(0,10).map(e=>{ const m=this.MODS[e.mod]||{};
       const unread=e.status==='open' && !st.notifSeen[e.id];
       return {tag:m.tag||'EVT', tagBg:m.tagBg||'var(--low)', title:e.title, sub:e.camera+' · '+this.ago(e.ts),
         dotCol:this.SEV[e.sev]||'var(--low)', weight:unread?'700':'500',

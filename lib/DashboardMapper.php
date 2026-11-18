@@ -73,6 +73,12 @@ final class DashboardMapper
             'escLevel'   => (int) ($e['esc_level'] ?? 0),
             'escTs'      => $tsOf($e['esc_at'] ?? null),
             'escMin'     => isset($e['esc_min']) ? (int) $e['esc_min'] : null,
+            // Incident episode (lib/IncidentGroups.php): groupId = the episode's first event id;
+            // groupCount / groupLastTs are kept on that leader row only.
+            'eventId'     => isset($e['id']) ? (int) $e['id'] : null,
+            'groupId'     => !empty($e['group_id']) ? (int) $e['group_id'] : null,
+            'groupCount'  => !empty($e['group_count']) ? (int) $e['group_count'] : null,
+            'groupLastTs' => $tsOf($e['group_last_at'] ?? null),
         ];
     }
 

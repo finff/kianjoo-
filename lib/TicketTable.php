@@ -35,6 +35,7 @@ require_once __DIR__ . '/Tickets.php';
 require_once __DIR__ . '/EventStore.php';
 require_once __DIR__ . '/DashboardMapper.php';
 require_once __DIR__ . '/Insights.php';   // Reporter::SLA — the incident SLA policy (also served by feed.php)
+require_once __DIR__ . '/IncidentGroups.php';   // one incident row per episode of repeated detections
 
 final class TicketTable
 {
@@ -259,6 +260,10 @@ final class TicketTable
             'created_at' => $t['created_at'], 'updated_at' => $t['updated_at'] ?: $t['created_at'],
             'image' => null, 'comments' => 0, 'attachments' => 0, 'sla' => $sla,
         ];
+        if ($worker && (int) ($t['detection_count'] ?? 0) > 0) {
+            // Pipeline tickets merge their own episode (PpeForkliftPipeline) — same contract fields.
+            $r += self::episode((string) ($t['event_first_at'] ?? ''), ['group_count' => $t['detection_count'], 'group_last_at' => $t['event_last_at'] ?? null]);
+        }
         return $r + ['_k' => self::sortKey($r, $sort), '_c' => (string) $t['created_at'], '_s' => (int) $t['id'],
                      '_ua' => $t['assignee_user_id'] === null];   // ITSM "unassigned" = no assignee user (as stats())
     }
@@ -296,6 +301,9 @@ final class TicketTable
     private function incidentPart(array $f, int $need): array
     {
         $where = ["ticket_no IS NOT NULL AND ticket_no <> ''"];
+        if (($lw = IncidentGroups::leaderWhere()) !== '') {
+            $where[] = $lw;   // one row per incident episode
+        }
         $args  = [];
         $stCol = "COALESCE(NULLIF(status, ''), 'open')";
         if ($f['status']) {
@@ -343,13 +351,13 @@ final class TicketTable
             $cnt = $this->pdo->prepare('SELECT COUNT(*) FROM events' . $sqlW);
             $cnt->execute($args);
             $total = (int) $cnt->fetchColumn();
-            $st = $this->pdo->prepare('SELECT ' . self::EV_COLS . ', ' . $this->evUpdatedExpr() . ' AS upd_at FROM events' . $sqlW
+            $st = $this->pdo->prepare('SELECT ' . $this->evCols() . ', ' . $this->evUpdatedExpr() . ' AS upd_at FROM events' . $sqlW
                 . " ORDER BY {$keyExpr} {$d}, received_at {$d}, id {$d} LIMIT " . $need);
             $st->execute($args);
             $rows = array_map(fn ($e) => $this->incidentRow($e, $f['sort'], $now), $st->fetchAll());
             return ['rows' => $rows, 'total' => $total, 'capped' => false];
         }
-        $st = $this->pdo->prepare('SELECT ' . self::EV_COLS . ', ' . $this->evUpdatedExpr() . ' AS upd_at FROM events' . $sqlW
+        $st = $this->pdo->prepare('SELECT ' . $this->evCols() . ', ' . $this->evUpdatedExpr() . ' AS upd_at FROM events' . $sqlW
             . ' ORDER BY id DESC LIMIT ' . self::CAP);
         $st->execute($args);
         $raw  = $st->fetchAll();
@@ -371,12 +379,21 @@ final class TicketTable
         return ['rows' => array_slice($rows, 0, $need), 'total' => count($rows), 'capped' => count($raw) >= self::CAP];
     }
 
-    /** Latest activity on an incident: detection, ticketing, ack, resolve, last log entry. */
+    /** Columns an incident row needs (+ the episode columns once they exist). */
+    private function evCols(): string
+    {
+        return self::EV_COLS . (IncidentGroups::ready() ? ', group_id, group_count, group_last_at' : '');
+    }
+
+    /** Latest activity on an incident: detection (latest of the episode), ticketing, ack, resolve, last log entry. */
     private function evUpdatedExpr(): string
     {
         $b = "COALESCE(received_at, '1970-01-01 00:00:00')";
         $parts = [$b, "COALESCE(ticketed_at, {$b})", "COALESCE(acked_at, {$b})", "COALESCE(resolved_at, {$b})",
                   "COALESCE((SELECT MAX(l.created_at) FROM incident_log l WHERE l.uuid = events.uuid), {$b})"];
+        if (IncidentGroups::ready()) {
+            $parts[] = "COALESCE(group_last_at, {$b})";
+        }
         return ($this->sq ? 'MAX(' : 'GREATEST(') . implode(', ', $parts) . ')';
     }
 
@@ -408,10 +425,28 @@ final class TicketTable
             'created_at' => $e['received_at'],
             'updated_at' => ($upd !== '' && $upd !== '1970-01-01 00:00:00') ? $upd : $e['received_at'],
             'image' => $inc['image'] ?: ($inc['imageBk'] ?: null), 'comments' => 0, 'attachments' => 0, 'sla' => $sla,
-        ];
+        ] + self::episode((string) $e['received_at'], $e);
         $q = implode(' ', [$r['no'], $r['title'], $r['camera'], $r['location'], $r['assignee'], $inc['person'], $inc['personId'], $e['device_name'] ?? '']);
         return $r + ['_k' => self::sortKey($r, $sort), '_c' => (string) $e['received_at'], '_s' => (int) $e['id'], '_q' => $q,
                      '_ua' => (string) ($e['assignee'] ?? '') === ''];
+    }
+
+    /**
+     * Shared contract "Incident group": detection_count, event_first_at, event_last_at
+     * (+ duration_s) for an incident row; an ungrouped row is a one-detection episode.
+     */
+    private static function episode(string $first, array $e): array
+    {
+        $last = (string) (($e['group_last_at'] ?? '') ?: $first);
+        if ($last < $first) {
+            $last = $first;
+        }
+        return [
+            'detection_count' => max(1, (int) ($e['group_count'] ?? 1)),
+            'event_first_at'  => $first ?: null,
+            'event_last_at'   => $last ?: null,
+            'duration_s'      => max(0, (strtotime($last) ?: 0) - (strtotime($first) ?: 0)),
+        ];
     }
 
     /**
@@ -543,14 +578,16 @@ final class TicketTable
         $out['closed_7d'] = (int) $st->fetchColumn();
 
         if ($worker) {
-            $open = "ticket_no IS NOT NULL AND ticket_no <> '' AND COALESCE(NULLIF(status, ''), 'open') <> 'resolved'";
+            $lw   = IncidentGroups::leaderWhere();
+            $lw   = $lw !== '' ? ' AND ' . $lw : '';   // one row per incident episode
+            $open = "ticket_no IS NOT NULL AND ticket_no <> '' AND COALESCE(NULLIF(status, ''), 'open') <> 'resolved'" . $lw;
             $out['incidents_open'] = (int) $this->pdo->query('SELECT COUNT(*) FROM events WHERE ' . $open)->fetchColumn();
-            foreach ($this->pdo->query('SELECT ' . self::EV_COLS . ' FROM events WHERE ' . $open . ' ORDER BY id DESC LIMIT ' . self::CAP)->fetchAll() as $e) {
+            foreach ($this->pdo->query('SELECT ' . $this->evCols() . ' FROM events WHERE ' . $open . ' ORDER BY id DESC LIMIT ' . self::CAP)->fetchAll() as $e) {
                 $inc = DashboardMapper::incident($this->hydrate($e));
                 $tally(self::incidentSla($inc, $now), (string) ($e['assignee'] ?? '') === '');
             }
             $st = $this->pdo->prepare("SELECT COUNT(*) FROM events WHERE ticket_no IS NOT NULL AND ticket_no <> ''
-                    AND status = 'resolved' AND resolved_at >= :since");
+                    AND status = 'resolved' AND resolved_at >= :since" . $lw);
             $st->execute(['since' => $since]);
             $out['closed_7d'] += (int) $st->fetchColumn();
         }
