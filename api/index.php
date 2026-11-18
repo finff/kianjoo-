@@ -501,6 +501,10 @@ try {
     // Admin session (or provision token); /monitors/cron is token-only. Table in lib/MonitorRoutes.php.
     require APP_ROOT . '/lib/MonitorRoutes.php';
 
+    // ── Cleaning time by physical button: /cleaning/button*, /cleaning/buttons ──
+    // Device presses use the ingest token; table in lib/CleaningButtonRoutes.php.
+    require APP_ROOT . '/lib/CleaningButtonRoutes.php';
+
     // ── Assistant / agent read API (/api/ai/*) ───────────────
     // Read-only, pre-summarised (lib/AiContext.php). Authorised in
     // lib/AiRoutes.php: admin session (view) or the provision token — the

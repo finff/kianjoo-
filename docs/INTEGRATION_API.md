@@ -196,3 +196,82 @@ if (!hash_equals($sig, $_SERVER['HTTP_X_VISIONAI_SIGNATURE'] ?? '')) { http_resp
   - Run one dashboard per company, or per region.
   - Each plant's cameras are mapped to that plant.
   - Every endpoint filters by `plant=`, so a central system can consume all plants from one API.
+
+---
+
+## 6. Cleaning button (physical start / end button)
+
+On the factory floor a cleaning session is timed by a **physical button at the area**: the employee presses it when cleaning starts and presses it again when cleaning ends. The recorded cleaning time is exactly the time between those two presses.
+
+Any device that can make an HTTP request can be the button (ESP32 / Arduino with Wi-Fi, a PLC gateway, an Android panel). These routes are under `/api/cleaning/…`, **not** `/api/integration/…`, and use the dashboard's own tokens.
+
+### Authentication
+
+| Route | Token |
+|---|---|
+| Send a press, read a button's state | **Ingest token** — the same one SenseStudio uses to push detections (Settings → Endpoints & tokens) |
+| List sessions, list buttons | **Read token** |
+
+Send the token as `?token=…`, `X-Ingest-Token: …` / `X-Read-Token: …`, or `Authorization: Bearer …`.
+
+### 6.1 Send a press — `POST /api/cleaning/button`
+
+`GET` with query parameters also works, for hardware that can only fetch a URL.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `button_id` | yes | Your device's fixed id. Letters, digits and `. _ : -`, max 64 (e.g. `LINE1-WASH`, a MAC address). |
+| `action` | no | `toggle` (default): start if idle, end if cleaning. `start` / `end`: explicit, for two-button or latching devices. |
+| `employee_id` | no | Who pressed (staff ID from a badge reader, if the device has one). |
+| `location` | no | Area name. Remembered the first time; change it later with `POST /api/cleaning/buttons`. |
+| `ts` | no | When the button was actually pressed (unix seconds, unix milliseconds or ISO 8601), for devices that buffer presses while offline. Accepted within 24 h of server time, otherwise server time is used. |
+
+```
+curl -X POST "https://<site>/api/cleaning/button?token=<INGEST_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{"button_id":"LINE1-WASH","location":"Line 1"}'
+```
+
+Response (`200`):
+
+```json
+{ "ok": true, "result": "started", "state": "cleaning",
+  "button":  { "button_id": "LINE1-WASH", "name": "", "location": "Line 1", "enabled": true, "last_press_at": "2026-11-18 09:00:00" },
+  "session": { "id": 12, "started_at": "2026-11-18 09:00:00", "ended_at": null, "duration_s": null, "elapsed_s": 0, "status": "open" },
+  "message": "Cleaning started." }
+```
+
+`result` is one of:
+
+| `result` | HTTP | Meaning |
+|---|---|---|
+| `started` | 200 | A cleaning session began. `state` is `cleaning`. |
+| `ended` | 200 | The session ended; `session.duration_s` is the cleaning time in seconds. `state` is `idle`. |
+| `ignored` | 200 | Repeat press within 3 seconds (switch bounce, double tap, retry). Nothing changed. |
+| `already_started` | 200 | `action=start` while a session is running. Nothing changed. |
+| `not_started` | 409 | `action=end` with no session running. |
+| `disabled` | 403 | The button was switched off on the dashboard. |
+
+Drive the device's indicator from `state`: light on for `cleaning`, off for `idle`.
+
+Rules worth knowing:
+
+- A button is **registered automatically** on its first press; no setup is needed first.
+- Each `button_id` has at most one running session. Different buttons are independent.
+- If nobody presses "end", the session is closed as `auto_closed` after **12 hours** with no duration, so a forgotten press is never counted as cleaning time. The next press starts a new session.
+- It is safe to retry a failed request with the same `ts`.
+
+### 6.2 Button state — `GET /api/cleaning/button/status?button_id=`
+
+Returns the same shape as a press with `result: "status"` (or `"unknown"` for a button that has never been pressed). Use it when the device boots, to restore its indicator.
+
+### 6.3 Sessions — `GET /api/cleaning/button/sessions`
+
+Filters: `from`, `to` (`YYYY-MM-DD`, default last 7 days), `button_id`, `location`, `status` (`open`, `closed`, `auto_closed`), `limit` (max 500), `offset`.
+
+Returns `sessions` (newest first), `total`, and `totals` with `completed`, `in_progress`, `auto_closed`, `cleaning_seconds` and `average_seconds`.
+
+### 6.4 Buttons — `GET|POST /api/cleaning/buttons`
+
+- `GET` lists every registered button with its current state.
+- `POST {button_id, name?, location?, enabled?}` names a button, moves it to another area, or switches it off. Needs an administrator signed in with the settings permission.
