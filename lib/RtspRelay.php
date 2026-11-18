@@ -34,8 +34,21 @@ final class RtspRelay
     private string $host;
     private int $port;
 
-    public function __construct(string $rtspUrl)
+    /** Recorder playback (lib/Playback.php): PLAY / keep-alive / TEARDOWN go to the aggregate URL. */
+    private bool $playback = false;
+    /** @var array<string,string> PLAY headers (Range etc.); live default = from now on. */
+    private array $playHeaders = ['Range' => 'npt=0.000-'];
+
+    /**
+     * @param array{playback?:bool, play_headers?:array<string,string>} $opts
+     *        Optional; live relay passes none and behaves exactly as before.
+     */
+    public function __construct(string $rtspUrl, array $opts = [])
     {
+        $this->playback = !empty($opts['playback']);
+        if (isset($opts['play_headers']) && is_array($opts['play_headers'])) {
+            $this->playHeaders = array_merge($this->playHeaders, $opts['play_headers']);
+        }
         $p = parse_url(trim($rtspUrl));
         if (!is_array($p) || strtolower((string) ($p['scheme'] ?? '')) !== 'rtsp' || empty($p['host'])) {
             throw new InvalidArgumentException('Not an rtsp:// URL');
@@ -67,7 +80,11 @@ final class RtspRelay
             if ($this->session === '') {
                 throw new RuntimeException('Camera returned no RTSP session');
             }
-            $this->request('PLAY', $this->baseOf($control), ['Range' => 'npt=0.000-']);
+            // A recording's track control usually carries the time-range query
+            // (…/trackID=1?starttime=…), which baseOf() cannot trim — address the
+            // presentation itself (Content-Base, else the DESCRIBE URL) instead.
+            $ctl = $this->playback ? $this->aggregateOf($desc['headers']['content-base'] ?? '') : $this->baseOf($control);
+            $this->request('PLAY', $ctl, $this->playHeaders);
 
             $start     = microtime(true);
             $keepAlive = $start;
@@ -86,7 +103,7 @@ final class RtspRelay
             while (microtime(true) - $start < $maxSeconds) {
                 // RTSP sessions expire without traffic on the control channel.
                 if (microtime(true) - $keepAlive > 20) {
-                    $this->send('GET_PARAMETER', $this->baseOf($control), []);
+                    $this->send('GET_PARAMETER', $ctl, []);
                     $keepAlive = microtime(true);
                 }
                 $pkt = $this->readInterleaved($timeout);
@@ -167,7 +184,7 @@ final class RtspRelay
                     $au = '';
                 }
             }
-            $this->send('TEARDOWN', $this->baseOf($control), []);
+            $this->send('TEARDOWN', $ctl, []);
             return ['frames' => $frames, 'bytes' => $bytes, 'error' => ''];
         } catch (Throwable $e) {
             return ['frames' => $frames, 'bytes' => $bytes, 'error' => $e->getMessage()];
@@ -203,6 +220,16 @@ final class RtspRelay
     {
         // PLAY/keep-alive/TEARDOWN go to the presentation URL (track suffix dropped).
         return (string) preg_replace('~/trackID=\d+$|/track\d+$~i', '', $control) ?: $this->url;
+    }
+
+    /** Playback: the presentation URL (Content-Base when absolute, else the request URL), never with credentials. */
+    private function aggregateOf(string $contentBase): string
+    {
+        $cb = trim($contentBase);
+        if ($cb === '' || !preg_match('~^rtsp://~i', $cb)) {
+            return $this->url;
+        }
+        return (string) preg_replace('~^(rtsp://)[^@/]+@~i', '$1', $cb);
     }
 
     private function send(string $method, string $uri, array $headers): void

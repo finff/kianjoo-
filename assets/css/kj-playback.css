@@ -1,0 +1,120 @@
+/* KJPlayback — violation playback player (assets/js/kj-playback.js).
+   Uses the kj tokens only, so it follows the modal layer's light / dark theme.
+   The video stage itself is always dark (it shows camera footage). */
+
+.kjp { display: flex; flex-direction: column; gap: var(--kj-s-3); min-width: 0; }
+
+/* ── stage ─────────────────────────────────────────────── */
+.kjp-stage {
+  position: relative; overflow: hidden; border-radius: var(--kj-r-md);
+  background: #05080f; aspect-ratio: 16 / 9; width: 100%;
+  display: grid; place-items: center;
+}
+.kjp-video, .kjp-still { width: 100%; height: 100%; object-fit: contain; display: block; background: #05080f; }
+.kjp-video { cursor: pointer; }
+.kjp-still.is-empty { display: grid; place-items: center; color: #8691A8; }
+.kjp-still.is-empty .kj-ico { width: 40px; height: 40px; }
+
+.kjp-badge {
+  position: absolute; top: var(--kj-s-2); left: var(--kj-s-2);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: var(--kj-r-full);
+  background: rgba(5, 8, 15, .72); color: #fff;
+  font: var(--kj-fw-semi) var(--kj-fs-2xs)/1.4 var(--kj-font-mono); letter-spacing: .04em; text-transform: uppercase;
+  pointer-events: none;
+}
+.kjp-badge .kj-ico { width: 13px; height: 13px; }
+
+.kjp-overlay {
+  position: absolute; inset: auto 0 0 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px var(--kj-s-3); color: #E2E8F0; font-size: var(--kj-fs-sm);
+  background: linear-gradient(transparent, rgba(5, 8, 15, .85));
+  pointer-events: none;
+}
+.kjp-overlay.is-hidden, .kjp-msg.is-hidden, .kjp-note.is-hidden { display: none; }
+.kjp-spin {
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  border: 2px solid rgba(226, 232, 240, .35); border-top-color: #fff;
+  animation: kjp-spin .8s linear infinite;
+}
+@keyframes kjp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .kjp-spin { animation-duration: 2.4s; } }
+
+/* "Recording not available" — over the snapshot, never a blank stage */
+.kjp-msg {
+  position: absolute; left: var(--kj-s-3); right: var(--kj-s-3); bottom: var(--kj-s-3);
+  display: flex; gap: var(--kj-s-3); align-items: flex-start;
+  padding: var(--kj-s-3); border-radius: var(--kj-r-sm);
+  background: rgba(5, 8, 15, .86); color: #F1F5F9; font-size: var(--kj-fs-sm); line-height: var(--kj-lh-base);
+  border: 1px solid rgba(252, 211, 77, .35);
+}
+.kjp-msg > .kj-ico { width: 20px; height: 20px; color: #FCD34D; flex: none; margin-top: 1px; }
+.kjp-msg > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; align-items: flex-start; }
+.kjp-msg b { font-weight: var(--kj-fw-semi); color: #fff; }
+.kjp-msg span { overflow-wrap: anywhere; }
+.kjp-retry-note { color: #CBD5E1; font-size: var(--kj-fs-xs); }
+.kjp-msg .kj-btn { margin-top: 4px; }
+.kjp-stage.is-unavailable .kjp-video { opacity: .55; cursor: default; }
+.kjp-stage.is-unavailable .kjp-overlay { display: none; }
+
+/* ── control bar ───────────────────────────────────────── */
+.kjp-bar { display: flex; align-items: center; gap: var(--kj-s-2); min-width: 0; }
+.kjp-track { position: relative; flex: 1; min-width: 80px; height: 28px; display: flex; align-items: center; }
+.kjp-track::before {   /* rail */
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px;
+  border-radius: var(--kj-r-full); background: var(--kj-bg-subtle); border: 1px solid var(--kj-border);
+}
+.kjp-buf, .kjp-prog {
+  position: absolute; left: 0; top: 50%; height: 6px; margin-top: -3px; width: 0;
+  border-radius: var(--kj-r-full); pointer-events: none;
+}
+.kjp-buf { background: var(--kj-border-strong); }
+.kjp-prog { background: var(--kj-primary); }
+.kjp-marker {
+  position: absolute; top: 3px; bottom: 3px; width: 3px; margin-left: -1.5px; left: 50%;
+  border-radius: 2px; background: var(--kj-danger); box-shadow: 0 0 0 2px var(--kj-surface); pointer-events: none; z-index: 1;
+}
+.kjp-range {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2;
+}
+.kjp-range:focus-visible { opacity: .01; }
+.kjp-track:has(.kjp-range:focus-visible)::before { box-shadow: var(--kj-shadow-focus); }
+.kjp-time {
+  flex: none; min-width: 64px; text-align: right;
+  font: var(--kj-fw-semi) var(--kj-fs-sm)/1 var(--kj-font-mono); color: var(--kj-text); font-variant-numeric: tabular-nums;
+}
+
+.kjp-scale {
+  display: flex; justify-content: space-between; align-items: center; margin-top: calc(-1 * var(--kj-s-2));
+  padding: 0 72px 0 76px; font-size: var(--kj-fs-2xs); color: var(--kj-text-3); font-family: var(--kj-font-mono);
+}
+.kjp-scale-mid { display: inline-flex; align-items: center; gap: 4px; color: var(--kj-danger); font-weight: var(--kj-fw-semi); }
+.kjp-scale-mid .kj-ico { width: 12px; height: 12px; }
+.kjp-scale-mid.is-now { text-decoration: underline; text-underline-offset: 3px; }
+
+.kjp-note { margin: 0; font-size: var(--kj-fs-sm); color: var(--kj-warn); }
+.kjp-meta { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--kj-fs-sm); color: var(--kj-text-2); min-width: 0; }
+.kjp-meta .kj-ico { width: 15px; height: 15px; flex: none; color: var(--kj-text-3); }
+.kjp-meta span { overflow-wrap: anywhere; }
+
+/* ── snapshots ─────────────────────────────────────────── */
+.kjp-snaps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--kj-s-2); }
+.kjp-snap {
+  position: relative; padding: 0; border: 1px solid var(--kj-border); border-radius: var(--kj-r-sm); overflow: hidden;
+  background: var(--kj-bg-subtle); cursor: zoom-in; aspect-ratio: 16 / 10; color: inherit; font: inherit;
+}
+.kjp-snap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kjp-snap span {
+  position: absolute; left: 6px; bottom: 6px; padding: 1px 6px; border-radius: var(--kj-r-full);
+  background: rgba(5, 8, 15, .7); color: #fff; font-size: var(--kj-fs-2xs);
+}
+.kjp-snap:focus-visible { outline: none; box-shadow: var(--kj-shadow-focus); }
+
+/* ── phone ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .kjp-stage { aspect-ratio: 4 / 3; }
+  .kjp-scale { padding: 0 2px; }
+  .kjp-time { min-width: 56px; font-size: var(--kj-fs-xs); }
+  .kjp-msg { left: var(--kj-s-2); right: var(--kj-s-2); bottom: var(--kj-s-2); padding: var(--kj-s-2); }
+  .kjp-snaps { grid-template-columns: repeat(2, 1fr); }
+}

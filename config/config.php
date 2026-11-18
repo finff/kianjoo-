@@ -194,6 +194,10 @@ $config['live']['rtsp'] = LiveBridge::mergeSources(
     $config['live']['rtsp'],
     is_array($app['live_rtsp'] ?? null) ? $app['live_rtsp'] : []
 );
+// Violation playback from the customer's NVR over RTSP (Settings › Cameras &
+// RTSP › Violation playback → app_settings.json "playback"); off by default.
+require_once APP_ROOT . '/lib/Playback.php';
+$config['playback'] = Playback::configFrom($app);
 // AI layer (M8): every AI feature goes through lib/Claude.php — the old
 // 'weststar' middleware path is retired ("weststar ai replace with claude").
 // source: 'claude' (default) or 'off'. Legacy values 'weststar' / 'anthropic'
