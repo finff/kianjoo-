@@ -62,10 +62,10 @@
   /* data each section needs (loader keys below) and its draft namespaces (save bar) */
   var NEEDS = {
     general: ['settings', 'retention', 'users?'], cameras: ['settings', 'live'], floorplans: ['plans'],
-    ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts'], rules: ['alerts', 'notify'], roles: ['roles'],
+    ai: ['settings', 'mon', 'notify', 'models', 'th'], tickets: ['sla', 'notify', 'alerts', 'settings'], rules: ['alerts', 'notify'], roles: ['roles'],
     users: ['users', 'links', 'roles', 'types'], integrations: ['int', 'notify', 'mail']
   };
-  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live'], ai: ['th'], tickets: ['sla', 'esc'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
+  var SECTION_NS = { general: ['reports'], cameras: ['sense', 'live'], ai: ['th'], tickets: ['sla', 'esc', 'merge'], integrations: ['hooks', 'tg', 'mail'], roles: ['roles'] };
 
   var CRON_LINE = '* * * * * curl -s "https://kianjoo.weststar-dev.com/api/pipeline/run?token=PROVISION_TOKEN" > /dev/null 2>&1';
   var CRON_PHP = '* * * * * php ~/public_html/kianjoo.weststar-dev.com/bin/ai_worker.php > /dev/null 2>&1';
@@ -262,6 +262,25 @@
       if ('report_hour' in d) o.report_hour = +d.report_hour;
       if ('report_recipients' in d) o.report_recipients = d.report_recipients;
       return post('/settings', o);
+    },
+    // Tickets & SLA → Incident merging & human review (app_settings incident_merge_gap_min / review_*).
+    merge: function (d) {
+      var o = {};
+      if ('incident_merge_gap_min' in d) {
+        var g = parseInt(d.incident_merge_gap_min, 10);
+        if (!(g >= 1 && g <= 120)) return Promise.reject(new Error('Merge window must be 1–120 minutes'));
+        o.incident_merge_gap_min = g;
+      }
+      if ('review_enabled' in d) o.review_enabled = d.review_enabled === '1';
+      var bad = ['review_floor', 'review_score_below'].filter(function (k) {
+        if (!(k in d)) return false;
+        var v = parseFloat(d[k]); if (!(v >= 0 && v <= 1)) return true;
+        o[k] = v; return false;
+      });
+      if (bad.length) return Promise.reject(new Error('Confidence thresholds are 0–1 (e.g. 0.35)'));
+      var minc = n0((S.data.settings || {}).ai_pipeline_min_confidence) || 0.6;
+      if ('review_floor' in o && o.review_floor >= minc) return Promise.reject(new Error('The review floor must be below the auto-ticket confidence (' + minc + ')'));
+      return post('/settings', o).then(function (r) { return load('settings').then(function () { return r; }); });
     },
     th: function (d) {
       var t = S.data.th || {};
@@ -775,8 +794,34 @@
             field('Telegram chat IDs', inp('esc', i + '.chats', (l.chats || []).join(', '), { ph: '-100…' }), (!(l.emails || []).length && !(l.chats || []).length) ? 'No recipients — this level is logged only.' : '', 'is-wide') + '</div></div>';
         }).join('') });
     }
-    return sec(m, sla ? chip('Policy active', 'success', true) : '', slaCard + autoCard + levels);
+    return sec(m, sla ? chip('Policy active', 'success', true) : '', slaCard + mergeCard(admin) + autoCard + levels);
   };
+  /* Incident merging (lib/IncidentGroups.php) + human review queue (lib/ReviewQueue.php). */
+  function mergeCard(admin) {
+    var st = S.data.settings;
+    var body;
+    if (!st) body = S.err.settings ? errBox('settings', 'these settings') : skel(3);
+    else {
+      var minc = n0(st.ai_pipeline_min_confidence) || 0.6;
+      var on = st.review_enabled !== false;
+      body = '<div class="kjs-form">' +
+          field('Merge repeats within (minutes)', inp('merge', 'incident_merge_gap_min', st.incident_merge_gap_min != null ? st.incident_merge_gap_min : 10, { type: 'number', min: 1, max: 120, step: 1, disabled: !admin }),
+            'The same violation (type + camera + person, or camera + type when the person is unknown) seen again within this gap joins the open incident: one row, one alert. 1–120, default 10.') +
+        '</div>' +
+        '<div class="kjs-rows">' + row('user-check', 'Human review of low-confidence detections',
+          'When the AI says "violation" but is less sure than the auto-ticket level (' + Math.round(minc * 100) + '%), a supervisor confirms or rejects it under Tickets → Needs review instead of it being dropped.',
+          draftSw('merge', 'review_enabled', on, 'Human review of low-confidence detections', !admin)) + '</div>' +
+        '<div class="kjs-form">' +
+          field('Review floor (0–1)', inp('merge', 'review_floor', st.review_floor != null ? st.review_floor : 0.35, { type: 'number', min: 0, max: 1, step: 0.05, disabled: !admin }),
+            'AI verdicts at or above this confidence (and below ' + minc + ') go to review; lower ones are logged only. Default 0.35.') +
+          field('Also review detection scores below (0–1)', inp('merge', 'review_score_below', st.review_score_below != null ? st.review_score_below : 0, { type: 'number', min: 0, max: 1, step: 0.05, disabled: !admin }),
+            'A new incident whose own SenseStudio score (target confidence or face similarity) is below this waits for review too. 0 = off (default).') +
+        '</div>' +
+        '<div class="kjs-btns">' + navBtn('tickets/review', 'Open the review queue', 'user-check', 'kj-btn-ghost kj-btn-sm') + '</div>' +
+        (admin ? '' : '<div class="kjs-muted">Read-only — changing these needs an admin role with the settings permission.</div>');
+    }
+    return card({ icon: 'layers', title: 'Incident merging & human review', sub: 'Collapse repeated detections into one incident, and let people decide the uncertain ones.', body: body });
+  }
   function escResHtml() {
     var er = S.escRes; if (!er) return '';
     var rows = (er.escalated || []).slice(0, 20).map(function (x) {

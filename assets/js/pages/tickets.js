@@ -314,7 +314,10 @@
     perm: 'tickets',
     defaultSub: 'board',
     subs: {
-      board: { label: 'Board' }
+      board: { label: 'Tickets' },
+      // Human review of low-confidence detections (lib/ReviewQueue.php). Shown once the
+      // count call proves the user is a reviewer; the label carries the pending count.
+      review: { label: 'Needs review', perm: 'tickets', hidden: true }
     },
 
     _el: null, _tickets: null, _worker: null, _err: null, _loading: false, _fetchedAt: 0,
@@ -325,6 +328,9 @@
 
     mount: function (el, route, app) {
       ensureCss();
+      reviewCount(true);
+      if (route && route.sub === 'review') { this._mode = 'review'; this._app = app; RV.mount(el); return; }
+      this._mode = 'tickets';
       this._el = el; this._app = app;
       this._filters = this._filters || freshFilters();
       if (!this._tbl) {
@@ -344,6 +350,7 @@
       this._timer = setInterval(function () { self.tick(); }, 1000);
     },
     unmount: function (el) {
+      if (this._mode === 'review') { this._mode = ''; RV.unmount(); if (el) el.innerHTML = ''; return; }
       if (this._timer) clearInterval(this._timer);
       if (this._qT) clearTimeout(this._qT);
       this._timer = null; this._qT = null;
@@ -353,6 +360,8 @@
       if (el) el.innerHTML = '';
     },
     onFeed: function (data, app) {
+      reviewCount(false);
+      if (this._mode === 'review') { RV.onFeed(); return; }
       if (!this._el) return;
       this._app = app;
       var now = Date.now();
@@ -516,6 +525,7 @@
             '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon" data-tk-act="refresh" aria-label="Refresh tickets" title="Refresh">' + ico('refresh-cw') + '</button>' +
             '<button type="button" class="kj-btn kj-btn-primary" data-tk-act="new">' + ico('plus') + '<span>New Ticket</span></button></div></div>' +
         '<div class="kj-tk-kpis" data-tk="kpis"></div>' +
+        '<div data-tk="rvnote">' + reviewNoteHtml() + '</div>' +
         '<div class="kj-tk-toolbar">' +
           '<label class="kj-tk-search">' + ico('search') + '<input type="search" class="kj-input" data-tk-f="q" placeholder="Search tickets, incidents, locations, people…" aria-label="Search tickets and incidents" value="' + esc(this._filters.q) + '"></label>' +
           '<label class="kj-tk-filter" data-tk-only="table" data-tk="typewrap">' + ico('layers') + '<select class="kj-select" data-tk-f="type" aria-label="Type"><option value="">All types</option>' +
@@ -819,6 +829,12 @@
       var counts = (Number(r.comments) || Number(r.attachments)) ? '<span class="kjt-counts">' +
           (Number(r.comments) ? '<span title="Comments">' + ico('message-square') + Number(r.comments) + '</span>' : '') +
           (Number(r.attachments) ? '<span title="Attachments">' + ico('paperclip') + Number(r.attachments) + '</span>' : '') + '</span>' : '';
+      // Incident episode / pipeline span: "× N detections · first–last · duration".
+      var nDet = Number(r.detection_count) || 0;
+      if (nDet > 1) {
+        counts += '<span class="kjt-episode" title="' + esc(nDet + ' detections merged into this ' + (inc ? 'incident' : 'ticket') + ' · first ' + fmtStamp(r.event_first_at) + ' · last ' + fmtStamp(r.event_last_at)) + '">' +
+          ico('layers') + '×' + nDet + '<span class="kjt-episode-span">' + esc(fmtHM(r.event_first_at) + '–' + fmtHM(r.event_last_at) + ' · ' + fmtDur(r.duration_s)) + '</span></span>';
+      }
       return '<tr class="kjt-row is-' + (inc ? 'inc' : 'tkt') + (sv && sv.breached ? ' is-breached' : '') + '" data-kj-modal="' + sp + '"' + seed +
           ' data-tkt-row tabindex="0" aria-label="' + esc((r.no || '') + ' ' + (r.title || '')) + '">' +
         '<td class="kjt-c-thumb">' + thumb + '</td>' +
@@ -869,7 +885,7 @@
       else { state = this._rows.length ? 'rows' : 'empty'; rows = this._rows; }
       this._viewRows = rows;
       var sig = [state, worker, JSON.stringify(this._tbl), this._total, this._capped ? 'cap' : '', state === 'empty' || state === 'err' ? this.filtersActive() : '',
-        rows.map(function (r) { return r.type + r.id + ':' + r.status + ':' + r.updated_at + ':' + r.priority + ':' + (r.assignee || '') + ':' + (r.sla ? r.sla.breached : '') + ':' + (r.comments || 0) + ':' + (r.attachments || 0); }).join('|')].join('#');
+        rows.map(function (r) { return r.type + r.id + ':' + r.status + ':' + r.updated_at + ':' + r.priority + ':' + (r.assignee || '') + ':' + (r.sla ? r.sla.breached : '') + ':' + (r.comments || 0) + ':' + (r.attachments || 0) + ':' + (r.detection_count || 0); }).join('|')].join('#');
       if (sig === this._tSig) return;
       this._tSig = sig;
 
@@ -1067,12 +1083,14 @@
           var a = window.KJApp, ev = ((a && a.state && a.state.events) || []).filter(function (x) { return String(x.id) === id || String(x.ticket || '') === id; })[0];
           // Datatable INC rows seed the incident, so ones older than the live-feed window still open.
           if (!ev && ctx.data && ctx.data.incident) ev = ctx.data.incident;
-          if (ev) return { legacy: ev };
-          throw e;
+          if (!ev) throw e;
+          // The incident's episode: every merged detection with its image (lib/IncidentGroups.php).
+          return get('/incidents/' + encodeURIComponent(String(ev.id)) + '/group', { limit: 24 })
+            .then(function (g) { return { legacy: ev, group: g }; }, function () { return { legacy: ev, group: null }; });
         });
       },
       render: function (ctx, d) {
-        if (d.legacy) return renderLegacy(ctx, d.legacy);
+        if (d.legacy) return renderLegacy(ctx, d.legacy, d.group);
         return renderDetail(ctx, d.t, d.assignees);
       }
     });
@@ -1532,22 +1550,286 @@
   }
 
   /* ── legacy incident ticket (live-feed event) ──────────── */
-  function renderLegacy(ctx, e) {
+  function renderLegacy(ctx, e, g) {
     var H = window.KJModal.h;
     var n = H.normEvent(e);
+    var grp = g && g.group, members = (g && g.members) || [];
+    var count = grp ? Number(grp.detection_count) || 1 : 1;
+    var status = (grp && grp.status) || n.status || 'open';
+    var leadId = (grp && grp.leader_uuid) || String(n.id);
+    var first = grp ? grp.event_first_at : null, last = grp ? grp.event_last_at : null;
+
+    // Episode: "× N detections", first / last seen, duration, and the member detections with their images.
+    var ep = '';
+    if (grp) {
+      var gal = members.length > 1 ? '<div class="kjt-ep-gal">' + members.map(function (m) {
+        var img = m.image || m.imageBk;
+        return '<button type="button" class="kjt-ep-item" data-kj-modal="' + esc(spec('event', m.id)) + '" title="' + esc('Detection · ' + fullStamp(m.time || m.received)) + '">' +
+          (img ? '<img src="' + esc(img) + '" alt="" loading="lazy">' : '<span class="kjt-ep-noimg">' + ico('image-off') + '</span>') +
+          '<span>' + esc(fmtHM(m.time || m.received)) + '</span></button>';
+      }).join('') + '</div>' : '';
+      ep = H.section('Incident episode', '<div class="kjt-ep">' +
+        '<div class="kjt-ep-head">' + chip('×' + count + ' detection' + (count === 1 ? '' : 's'), count > 1 ? 'primary' : '') +
+          '<span>' + ico('clock') + 'First ' + esc(fmtStamp(first)) + '</span><span>' + ico('history') + 'Last ' + esc(fmtStamp(last)) + '</span>' +
+          '<span>' + ico('timer') + esc(fmtDur(grp.duration_s)) + '</span></div>' +
+        '<div class="kj-help">' + esc((grp.person_known ? 'Same person' : 'Same camera and detection type') + ' with gaps of at most ' + (grp.gap_min || 10) +
+          ' minutes — merged into one incident with one alert. Acknowledge / resolve applies to every detection.') + '</div>' +
+        gal + (Number(g.total) > members.length && members.length > 1 ? '<div class="kj-help">Showing the latest ' + members.length + ' of ' + Number(g.total) + ' detections.</div>' : '') +
+        '<div class="kj-row-wrap"><button type="button" class="kj-btn kj-btn-ghost kj-btn-sm" data-kj-playback="' + esc(leadId) + '" title="Recording around the first detection">' +
+          ico('play') + '<span>Playback · first detection</span></button></div></div>');
+    }
+    var setStatus = function (to, msg) {
+      return function (c, btn) {
+        busy(btn, true);
+        post('/events/' + encodeURIComponent(leadId) + '/status', { status: to }).then(function () {
+          toast(msg + (count > 1 ? ' — all ' + count + ' detections' : ''), 'success');
+          page().changed(null);
+          c.reload();
+        }).catch(function (er) { busy(btn, false); toast(errMsg(er), 'danger'); });
+      };
+    };
+    var foot = '';
+    if (status === 'open') foot += H.btn('ack', 'Acknowledge', 'check');
+    if (status !== 'resolved') foot += H.btn('resolve', 'Resolve', 'check-check');
+    foot += H.btn('full', 'Open ticket workspace', 'external-link', 'kj-btn-primary');
     return {
-      title: n.title, kicker: 'Incident ticket ' + (n.ticket || ''), icon: 'ticket', tone: n.sev === 'critical' || n.sev === 'high' ? 'danger' : 'warn',
+      title: n.title, kicker: 'Incident ticket ' + (n.ticket || '') + (count > 1 ? ' · ×' + count : ''), icon: 'ticket', tone: n.sev === 'critical' || n.sev === 'high' ? 'danger' : 'warn',
       body: '<div class="kj-grid-2">' + H.media(n.image || n.imageBk, n.title) + '<div class="kj-card">' + H.kv([
-          ['Ticket', n.ticket || '—'], ['Status', n.status || '—'],
+          ['Ticket', n.ticket || '—'], ['Status', status],
           ['Camera', n.camera ? H.link('camera', n.camera, n.camera) : '—', true],
-          ['Zone', n.zone || n.location || '—'], ['Detected', H.fmtTime(n.ts)],
+          ['Zone', n.zone || n.location || '—'], ['Detected', first ? fmtStamp(first) : H.fmtTime(n.ts)],
+          count > 1 ? ['Last seen', fmtStamp(last) + ' · ' + fmtDur(grp.duration_s)] : null,
           ['Person', n.personId ? H.link('person', n.personId, n.person || ('#' + n.personId)) : (n.person || '—'), true],
-          ['Assignee', n.assignee || '—'], ['Detection', H.link('event', n.id, 'View event'), true]]) + '</div></div>' +
+          ['Assignee', n.assignee || '—'], ['Detection', H.link('event', leadId, 'View first detection'), true]]) + '</div></div>' +
+        ep +
         '<div class="kj-help">This incident ticket lives in the detection workspace (communication, attachments and escalation).</div>',
-      foot: H.btn('full', 'Open ticket workspace', 'external-link', 'kj-btn-primary'),
-      actions: { full: H.viaApp(function (a) { a.openTicket(e); }) }
+      foot: foot,
+      actions: {
+        ack: setStatus('ack', 'Acknowledged'), resolve: setStatus('resolved', 'Resolved'),
+        full: H.viaApp(function (a) { a.openTicket(e); })
+      }
     };
   }
+
+  /* ======================================================================
+   * Needs review — human decision on low-confidence detections (#tickets/review)
+   * GET /api/review/count · /api/review/queue · POST /api/review/{id}/decide
+   * ==================================================================== */
+  var RC = { n: null, at: 0, busy: false, denied: false };
+  /** Pending count → sub-tab label "Needs review (N)" + the banner on the Tickets view. */
+  function reviewCount(force) {
+    if (RC.denied || RC.busy || (!force && Date.now() - RC.at < 30000)) return;
+    RC.busy = true; RC.at = Date.now();
+    get('/review/count').then(function (d) { setReviewCount(Number(d.pending) || 0, true); })
+      .catch(function (e) { if (e && (e.status === 403 || e.status === 401)) { RC.denied = true; setReviewCount(0, false); } })
+      .then(function () { RC.busy = false; });
+  }
+  function setReviewCount(n, visible) {
+    var sub = M.subs.review, label = n > 0 ? 'Needs review (' + (n > 99 ? '99+' : n) + ')' : 'Needs review';
+    var changed = sub.label !== label || sub.hidden !== !visible;
+    RC.n = n; sub.label = label; sub.hidden = !visible;
+    var reg = window.KJPages && window.KJPages.get && window.KJPages.get('tickets');
+    if (reg && reg.subs && reg.subs.review && reg.subs.review !== sub) { reg.subs.review.label = label; reg.subs.review.hidden = !visible; }
+    if (changed && window.KJShell && window.KJPages && window.KJPages.current) { try { window.KJShell.render(window.KJPages.current()); } catch (e) { /* shell not booted */ } }
+    var box = document.querySelector('[data-tk="rvnote"]');
+    if (box) { var h = reviewNoteHtml(); if (box.innerHTML !== h) box.innerHTML = h; }
+  }
+  function reviewNoteHtml() {
+    if (!(RC.n > 0)) return '';
+    return '<button type="button" class="kjr-banner" data-kj-nav="tickets/review">' + ico('user-check') +
+      '<span><b>' + RC.n + ' detection' + (RC.n === 1 ? '' : 's') + ' need' + (RC.n === 1 ? 's' : '') + ' a human decision</b> — the AI was not confident enough to raise a ticket on its own.</span>' +
+      '<span class="kjr-banner-go">Review' + ico('arrow-right') + '</span></button>';
+  }
+
+  var RV = {
+    el: null, tab: 'pending', items: null, total: 0, counts: {}, thr: null, sel: null, busy: false, err: null, at: 0, notes: {}, seq: 0,
+    mount: function (el) {
+      this.el = el; this.items = null; this.err = null; this.sel = null;
+      el.innerHTML = '<div class="kj-page kjr" aria-busy="false">' +
+        '<div class="kj-page-head"><div><h2 class="kj-page-title">Needs review</h2>' +
+          '<p class="kj-page-sub">Detections the AI was not sure about. Confirm a real violation (it becomes a ticket, like an automatic one) or reject a false alarm.</p></div>' +
+          '<div class="kj-row-wrap"><button type="button" class="kj-btn kj-btn-ghost kj-btn-icon" data-rv-act="refresh" aria-label="Refresh" title="Refresh">' + ico('refresh-cw') + '</button></div></div>' +
+        '<div class="kj-tabs kjr-tabs" role="tablist" aria-label="Review queue">' +
+          '<button type="button" class="kj-tab" role="tab" data-rv-tab="pending"></button>' +
+          '<button type="button" class="kj-tab" role="tab" data-rv-tab="decided"></button></div>' +
+        '<div data-rv="main"></div></div>';
+      var self = this;
+      this._click = function (ev) { self.onClick(ev); };
+      this._key = function (ev) { self.onKey(ev); };
+      el.addEventListener('click', this._click);
+      el.addEventListener('keydown', this._key);
+      this.load();
+    },
+    unmount: function () {
+      if (this.el) { this.el.removeEventListener('click', this._click); this.el.removeEventListener('keydown', this._key); }
+      this.el = null; this.seq++;
+    },
+    onFeed: function () { if (this.el && !this.busy && !document.hidden && Date.now() - this.at > 15000) this.load(true); },
+    load: function (quiet) {
+      var self = this, seq = ++this.seq;
+      this.at = Date.now();
+      if (!quiet) { this.items = null; this.paint(); }
+      return get('/review/queue', { status: this.tab, limit: 100 }).then(function (d) {
+        if (seq !== self.seq) return;
+        self.items = d.items || []; self.total = Number(d.total) || 0; self.counts = d.counts || {}; self.thr = d.thresholds || null; self.err = null;
+        if (d.unavailable) self.thr = { enabled: false, unavailable: true };
+        if (self.tab === 'pending') setReviewCount(self.items.length ? self.total : 0, true);
+        if (!self.items.some(function (x) { return x.id === self.sel; })) self.sel = self.items.length ? self.items[0].id : null;
+      }).catch(function (e) {
+        if (seq !== self.seq) return;
+        if (self.items == null || !quiet) self.err = e;
+      }).then(function () { if (seq === self.seq) self.paint(); });
+    },
+    cur: function () { var s = this.sel; return (this.items || []).filter(function (x) { return x.id === s; })[0] || null; },
+    paint: function () {
+      if (!this.el) return;
+      var self = this, c = this.counts || {};
+      this.el.querySelectorAll('[data-rv-tab]').forEach(function (b) {
+        var k = b.getAttribute('data-rv-tab'), on = k === self.tab;
+        b.classList.toggle('is-active', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+        b.innerHTML = k === 'pending' ? ico('inbox') + '<span>Pending</span><span class="kj-badge">' + (Number(c.pending) || 0) + '</span>'
+          : ico('history') + '<span>Decided</span><span class="kj-badge">' + ((Number(c.confirmed) || 0) + (Number(c.rejected) || 0) + (Number(c.superseded) || 0)) + '</span>';
+      });
+      var main = this.el.querySelector('[data-rv="main"]'); if (!main) return;
+      // keep a typed note across background refreshes
+      var ta = main.querySelector('[data-rv-note]'); if (ta) this.notes[ta.getAttribute('data-rv-note')] = ta.value;
+      var html;
+      if (this.err && this.items == null) {
+        html = emptyBox({ err: true, icon: 'cloud-off', title: 'The review queue is not available right now', text: errMsg(this.err), actions: '<button type="button" class="kj-btn kj-btn-secondary" data-rv-act="refresh">' + ico('refresh-cw') + '<span>Retry</span></button>' });
+      } else if (this.items == null) {
+        html = '<div class="kjr-grid" aria-busy="true"><div class="kj-card kjr-list">' + [0, 1, 2, 3].map(function () { return '<div class="kjr-li is-skel"><span class="kj-skel kjr-li-thumb"></span><span class="kj-skel kj-skel-line"></span></div>'; }).join('') +
+          '</div><div class="kj-card kjr-detail"><span class="kj-skel kj-skel-block kjr-skel-img"></span><span class="kj-skel kj-skel-line"></span><span class="kj-skel kj-skel-line is-mid"></span></div></div>';
+      } else if (!this.items.length) {
+        var off = this.thr && this.thr.enabled === false;
+        html = this.tab === 'pending'
+          ? emptyBox({ icon: 'shield-check', title: off ? 'Human review is switched off' : 'Nothing needs review',
+              text: off ? 'Low-confidence AI verdicts are dropped while review is off. Turn it on under Settings → Tickets & SLA.'
+                : 'Every detection the AI was unsure about has been decided. New ones appear here and in your notifications.',
+              actions: off ? '<button type="button" class="kj-btn kj-btn-secondary" data-kj-nav="settings/tickets">' + ico('settings') + '<span>Review settings</span></button>'
+                : '<button type="button" class="kj-btn kj-btn-secondary" data-kj-nav="tickets">' + ico('ticket') + '<span>Back to tickets</span></button>' })
+          : emptyBox({ icon: 'history', title: 'No decisions yet', text: 'Confirmed and rejected items are listed here with who decided and when.' });
+      } else if (this.tab === 'decided') {
+        html = this.decidedHtml();
+      } else {
+        html = '<div class="kjr-grid"><div class="kj-card kjr-list" role="listbox" aria-label="Detections waiting for review">' + this.items.map(function (x, i) { return self.liHtml(x, i); }).join('') + '</div>' +
+          '<div class="kj-card kjr-detail" data-rv="detail">' + this.detailHtml(this.cur()) + '</div></div>';
+      }
+      main.innerHTML = html;
+      main.querySelectorAll('[data-tk-lottie-play]').forEach(function (l) { playLottie(l, l.getAttribute('data-tk-lottie-play'), false); });
+    },
+    pct: function (v) { return v == null ? '—' : Math.round(Number(v) * 100) + '%'; },
+    liHtml: function (x, i) {
+      var on = x.id === this.sel;
+      return '<button type="button" class="kjr-li' + (on ? ' is-on' : '') + '" role="option" aria-selected="' + on + '" data-rv-sel="' + x.id + '">' +
+        (x.image ? '<img class="kjr-li-thumb" src="' + esc(x.image) + '" alt="" loading="lazy">' : '<span class="kjr-li-thumb is-none">' + ico('image-off') + '</span>') +
+        '<span class="kjr-li-main"><span class="kjr-li-title">' + esc(x.title || 'Detection') + '</span>' +
+          '<span class="kjr-li-sub">' + esc([x.camera, x.location, ago(x.last_seen_at || x.created_at)].filter(Boolean).join(' · ')) + '</span></span>' +
+        '<span class="kj-chip kjr-conf is-' + this.tone(x) + '">' + esc(this.pct(x.confidence)) + '</span></button>';
+    },
+    tone: function (x) { var c = Number(x.confidence) || 0; return c >= 0.5 ? 'warn' : c >= 0.35 ? 'orange' : 'danger'; },
+    detailHtml: function (x) {
+      if (!x) return emptyBox({ icon: 'mouse-pointer-click', title: 'Pick an item', text: 'Select a detection on the left to review it.' });
+      var idx = (this.items || []).indexOf(x), n = (this.items || []).length;
+      var src = x.source === 'ai' ? chip('AI vision review', 'purple') : chip('Detection score', 'info');
+      var thr = x.threshold != null ? Number(x.threshold) : (x.source === 'ai' ? this.thr && this.thr.min_confidence : this.thr && this.thr.score_below);
+      var w = Math.max(0, Math.min(100, Math.round((Number(x.confidence) || 0) * 20) * 5));
+      var meter = '<div class="kjr-meter"><div class="kjr-meter-head"><span>' + esc(x.source === 'ai' ? 'AI confidence' : 'Detection score') + '</span><b>' + esc(this.pct(x.confidence)) + '</b>' +
+        (thr != null ? '<span class="kj-muted">auto-ticket at ' + esc(this.pct(thr)) + '</span>' : '') + '</div>' +
+        '<div class="kj-progress"><div class="kj-progress-fill kj-w-' + w + ' kj-fill-' + (this.tone(x) === 'warn' ? 'warn' : this.tone(x) === 'orange' ? 'orange' : 'danger') + '"></div></div></div>';
+      var miss = (x.missing || []).length ? '<div class="kj-row-wrap">' + x.missing.map(function (m) { return chip('Missing ' + m, 'danger'); }).join('') + '</div>' : '';
+      var who = x.person_id ? '<button type="button" class="kj-link" data-kj-modal="' + esc(spec('person', x.person_id)) + '">' + esc(x.person_name || ('#' + x.person_id)) + '</button>' : esc(x.person_name || 'Unidentified');
+      var fact = function (icon, k, v, raw) { return '<div class="kjr-fact">' + ico(icon) + '<span class="kjr-fact-k">' + esc(k) + '</span><span class="kjr-fact-v">' + (raw ? v : esc(v || '—')) + '</span></div>'; };
+      var note = this.notes[x.id] || '';
+      return '<div class="kjr-d-head"><span class="kj-muted">Item ' + (idx + 1) + ' of ' + n + (this.total > n ? ' (' + this.total + ' waiting)' : '') + '</span><span class="kj-spacer"></span>' +
+          '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-rv-step="-1"' + (idx <= 0 ? ' disabled' : '') + ' aria-label="Previous item">' + ico('chevron-left') + '</button>' +
+          '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-rv-step="1"' + (idx >= n - 1 ? ' disabled' : '') + ' aria-label="Next item">' + ico('chevron-right') + '</button></div>' +
+        (x.image ? '<button type="button" class="kjr-img" data-kj-modal="' + esc(spec('image', x.image)) + '" data-kj-seed=\'' + esc(JSON.stringify({ label: x.title || 'Detection' })) + '\' title="Open full size">' +
+            '<img src="' + esc(x.image) + '" alt="' + esc('Evidence: ' + (x.title || 'detection')) + '"></button>'
+          : '<div class="kjr-img is-none">' + ico('image-off') + '<span>No image stored for this detection</span></div>') +
+        '<div class="kj-row-wrap kjr-chips">' + src + (x.hits > 1 ? chip('Seen ' + x.hits + '×', 'primary') : '') + '</div>' +
+        '<h3 class="kjr-title">' + esc(x.title || 'Detection') + '</h3>' + meter + miss +
+        (x.reason ? '<blockquote class="kjr-reason">' + ico(x.source === 'ai' ? 'bot' : 'info') + '<span>' + esc(x.reason) + '</span></blockquote>' : '') +
+        '<div class="kjr-facts">' +
+          fact('cctv', 'Camera', x.camera ? '<button type="button" class="kj-link" data-kj-modal="' + esc(spec('camera', x.camera)) + '">' + esc(x.camera) + '</button>' : '—', !!x.camera) +
+          fact('map-pin', 'Location', x.location) + fact('user-round', 'Person', who, true) +
+          fact('clock', 'Detected', fullStamp(x.created_at)) +
+          (x.hits > 1 ? fact('history', 'Last seen', fullStamp(x.last_seen_at)) : '') +
+          (x.event_uuid || x.event_id ? fact('radar', 'Detection', '<button type="button" class="kj-link" data-kj-modal="' + esc(spec('event', x.event_uuid || x.event_id)) + '">View detection</button>', true) : '') +
+        '</div>' +
+        '<label class="kj-field kjr-note"><span class="kj-label">Note <span class="kj-muted">(optional — saved with your decision)</span></span>' +
+          '<textarea class="kj-textarea" rows="2" maxlength="1000" data-rv-note="' + x.id + '" placeholder="e.g. operator is wearing a helmet under the hood">' + esc(note) + '</textarea></label>' +
+        '<div class="kjr-actions">' +
+          '<button type="button" class="kj-btn kj-btn-secondary" data-rv-decide="reject"' + (this.busy ? ' disabled' : '') + '>' + ico('x') + '<span>Reject — false alarm</span></button>' +
+          '<button type="button" class="kj-btn kj-btn-danger" data-rv-decide="confirm"' + (this.busy ? ' disabled' : '') + '>' + ico('shield-alert') + '<span>Confirm violation</span></button></div>' +
+        '<div class="kj-help kjr-hint">' + esc(x.source === 'ai' ? 'Confirm opens (or joins) the PPE-forklift ticket for this person and location with this image as proof.' : 'Confirm raises an incident ticket for this detection; reject resolves it as a false alarm.') + '</div>';
+    },
+    decidedHtml: function () {
+      var V = { confirmed: ['Confirmed', 'danger'], rejected: ['Rejected', ''], superseded: ['Auto-confirmed', 'purple'] };
+      return '<div class="kj-card kjt-card"><div class="kjt-wrap"><table class="kj-table kjr-table"><caption class="kj-sr-only">Decided review items</caption>' +
+        '<thead><tr><th scope="col"><span class="kj-sr-only">Image</span></th><th scope="col">Detection</th><th scope="col">Confidence</th><th scope="col">Decision</th><th scope="col">By</th><th scope="col">When</th><th scope="col">Ticket</th></tr></thead><tbody>' +
+        this.items.map(function (x) {
+          var v = V[x.status] || [humanize(x.status), ''];
+          return '<tr><td>' + (x.image ? '<button type="button" class="kjt-thumb" data-kj-modal="' + esc(spec('image', x.image)) + '"><img src="' + esc(x.image) + '" alt="" loading="lazy"></button>' : '<span class="kjt-thumb is-none">' + ico('image-off') + '</span>') + '</td>' +
+            '<td><span class="kjt-title">' + esc(x.title || 'Detection') + '</span><span class="kjt-sub">' + esc([x.camera, x.location].filter(Boolean).join(' · ')) + (x.human_note ? ' · “' + esc(x.human_note) + '”' : '') + '</span></td>' +
+            '<td>' + esc(x.confidence == null ? '—' : Math.round(x.confidence * 100) + '%') + '</td>' +
+            '<td>' + chip(v[0], v[1]) + '</td><td>' + esc(x.human_user || '—') + '</td>' +
+            '<td><time title="' + esc(fullStamp(x.human_at)) + '">' + esc(ago(x.human_at)) + '</time></td>' +
+            '<td>' + (x.ticket ? '<button type="button" class="kjt-no" data-kj-modal="' + esc(spec('ticket', x.ticket)) + '">' + esc(x.ticket) + '</button>' : '<span class="kj-muted">—</span>') + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+    },
+    onClick: function (ev) {
+      var t = ev.target instanceof Element ? ev.target : null; if (!t) return;
+      var b;
+      if ((b = t.closest('[data-rv-tab]'))) { var k = b.getAttribute('data-rv-tab'); if (k !== this.tab) { this.tab = k; this.load(); } return; }
+      if ((b = t.closest('[data-rv-act]'))) { this.load(); reviewCount(true); return; }
+      if ((b = t.closest('[data-rv-sel]'))) { this.select(Number(b.getAttribute('data-rv-sel'))); return; }
+      if ((b = t.closest('[data-rv-step]'))) { this.step(Number(b.getAttribute('data-rv-step'))); return; }
+      if ((b = t.closest('[data-rv-decide]'))) { this.decide(b.getAttribute('data-rv-decide'), b); }
+    },
+    onKey: function (ev) {
+      if (this.tab !== 'pending' || !(ev.target instanceof Element) || ev.target.closest('textarea, input, select')) return;
+      if (ev.key === 'ArrowDown' || ev.key === 'j') { ev.preventDefault(); this.step(1); }
+      else if (ev.key === 'ArrowUp' || ev.key === 'k') { ev.preventDefault(); this.step(-1); }
+    },
+    select: function (id) {
+      var ta = this.el && this.el.querySelector('[data-rv-note]'); if (ta) this.notes[ta.getAttribute('data-rv-note')] = ta.value;
+      this.sel = id;
+      if (!this.el) return;
+      this.el.querySelectorAll('[data-rv-sel]').forEach(function (li) { var on = Number(li.getAttribute('data-rv-sel')) === id; li.classList.toggle('is-on', on); li.setAttribute('aria-selected', on ? 'true' : 'false'); });
+      var d = this.el.querySelector('[data-rv="detail"]'); if (d) d.innerHTML = this.detailHtml(this.cur());
+      if (window.matchMedia && window.matchMedia('(max-width: 860px)').matches && d && d.scrollIntoView) d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    step: function (dir) {
+      var list = this.items || [], i = list.indexOf(this.cur());
+      var j = Math.max(0, Math.min(list.length - 1, i + dir));
+      if (list[j] && j !== i) {
+        this.select(list[j].id);
+        var li = this.el && this.el.querySelector('[data-rv-sel="' + list[j].id + '"]'); if (li) li.focus();
+      }
+    },
+    /** One decision at a time: buttons lock until the server answers, then the next item opens. */
+    decide: function (verdict, btn) {
+      var self = this, x = this.cur(); if (!x || this.busy) return;
+      var ta = this.el.querySelector('[data-rv-note="' + x.id + '"]'), note = ta ? ta.value.trim() : '';
+      this.busy = true;
+      this.el.querySelectorAll('[data-rv-decide]').forEach(function (b) { b.disabled = true; });
+      busy(btn, true);
+      post('/review/' + x.id + '/decide', { verdict: verdict, note: note }).then(function (r) {
+        toast(verdict === 'confirm' ? 'Violation confirmed' + (r.ticket ? ' — ' + r.ticket : '') : 'Rejected as a false alarm', verdict === 'confirm' ? 'success' : 'info');
+        var list = self.items || [], i = list.indexOf(x);
+        list.splice(i, 1);
+        delete self.notes[x.id];
+        self.total = Math.max(0, self.total - 1);
+        self.counts.pending = Math.max(0, (Number(self.counts.pending) || 1) - 1);
+        self.counts[verdict === 'confirm' ? 'confirmed' : 'rejected'] = (Number(self.counts[verdict === 'confirm' ? 'confirmed' : 'rejected']) || 0) + 1;
+        self.sel = list.length ? list[Math.min(i, list.length - 1)].id : null;
+        setReviewCount(r.pending != null ? Number(r.pending) : self.total, true);
+      }).catch(function (e) {
+        toast(errMsg(e), e && e.status === 409 ? 'warn' : 'danger');
+        if (e && e.status === 409) self.load(true);   // decided by someone else meanwhile
+      }).then(function () { self.busy = false; self.paint(); });
+    }
+  };
 
   /* ── registration ──────────────────────────────────────── */
   window.KJPages.register('tickets', Object.assign(M, {
