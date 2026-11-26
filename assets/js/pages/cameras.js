@@ -639,7 +639,7 @@
     var tools = '<button type="button" class="kj-btn kj-btn-secondary" data-kj-nav="cameras/wall">' + ico('cctv') + '<span>Live wall</span></button>' +
       '<button type="button" class="kj-btn kj-btn-secondary" data-kj-nav="movement">' + ico('route') + '<span>Movement playback</span></button>';
     if (f.can) {
-      tools += '<button type="button" class="kj-btn kj-btn-secondary" data-kjc-act="upload"' + (f.busy ? ' disabled' : '') + '>' + ico('upload') + '<span>Upload floor plan</span></button>';
+      tools += '<button type="button" class="kj-btn kj-btn-secondary" data-kjc-act="upload"' + (f.busy ? ' disabled' : '') + '>' + ico('upload') + '<span>Add floor plan</span></button>';
       if (plan) tools += '<button type="button" class="kj-btn ' + (f.edit ? 'kj-btn-primary' : 'kj-btn-soft') + '" data-kjc-act="edit" aria-pressed="' + f.edit + '">' + ico(f.edit ? 'check' : 'move') + '<span>' + (f.edit ? 'Done editing' : 'Edit camera positions') + '</span></button>';
     }
     return '<div class="kj-page-head kjc-head"><div class="kjc-title"><span class="kjc-title-ico">' + ico('map-pinned') + '</span><div>' +
@@ -653,7 +653,10 @@
       var on = p.id === (curPlan() || {}).id;
       return '<button type="button" role="tab" aria-selected="' + on + '" class="kjc-fp-tab' + (on ? ' is-active' : '') + '" data-kjc-act="plan" data-v="' + p.id + '">' +
         ico('layers') + '<span>' + esc(p.name) + '</span><b>' + (p.pins || []).length + '</b>' + (p.active ? '' : '<span class="kj-chip is-warn">Hidden</span>') + '</button>';
-    }).join('') + '</div>';
+    }).join('') +
+      (f.can ? '<button type="button" class="kjc-fp-tab is-add" data-kjc-act="upload"' + (f.busy ? ' disabled' : '') + '>' + ico('plus') + '<span>Add floor plan</span></button>' +
+        (curPlan() ? '<button type="button" class="kjc-fp-tab is-del" data-kjc-act="delplan" title="Delete ' + esc(curPlan().name) + '">' + ico('trash-2') + '<span>Delete plan</span></button>' : '') : '') +
+      '</div>';
   }
 
   function pinHtml(p, tone, edit) {

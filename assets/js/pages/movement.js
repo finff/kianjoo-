@@ -165,7 +165,7 @@
         '<div class="kj-page-head mv-head">' +
           '<div><h2 class="kj-page-title">Movement</h2><p class="kj-page-sub">Track employee movement across your facility — pick a person to replay their path on the floor plan.</p></div>' +
           '<div class="mv-head-actions" data-mv-admin hidden>' +
-            '<button type="button" class="kj-btn kj-btn-secondary mv-upload-btn" data-mv-act="upload">' + ico('upload') + '<span>Upload Floor Plan</span></button>' +
+            '<button type="button" class="kj-btn kj-btn-secondary mv-upload-btn" data-mv-act="upload">' + ico('plus') + '<span>Add Floor Plan</span></button>' +
             '<input type="file" class="kj-sr-only" accept="image/png,image/jpeg,image/webp" data-mv-file="new" aria-label="Floor plan image">' +
             '<span class="mv-divider"></span>' +
             '<label class="mv-switch"><span>Edit Camera Positions</span><input type="checkbox" data-mv-edit><span class="mv-switch-track"><span class="mv-switch-knob"></span></span></label>' +
@@ -323,7 +323,16 @@
         '<span class="kj-truncate">' + esc(p.name) + '</span>' + (counts[p.id] ? '<span class="mv-floor-n">' + counts[p.id] + '</span>' : '') +
         (p.active ? '' : '<span class="mv-floor-off">hidden</span>') + '</button>';
     }).join('') : (S.plans ? '<span class="kj-help">No floor plans</span>' : '<span class="kj-skel kj-skel-line is-short"></span>');
-    [q('[data-mv-floors]'), q('[data-mv-floors2]')].forEach(function (b) { if (b) b.innerHTML = html; });
+    var cur = curPlan();
+    var tools = S.canManage && S.plans
+      ? '<div class="mv-floor-tools">' +
+          '<button type="button" class="kj-btn kj-btn-secondary kj-btn-sm" data-mv-act="upload">' + ico('plus') + 'Add floor plan</button>' +
+          (cur ? '<button type="button" class="kj-btn kj-btn-ghost kj-btn-sm mv-floor-del" data-mv-act="del-plan" data-mv-plan="' + cur.id + '" title="Delete ' + esc(cur.name) + '">' + ico('trash-2') + 'Delete</button>' : '') +
+        '</div>'
+      : '';
+    var b1 = q('[data-mv-floors]'), b2 = q('[data-mv-floors2]');
+    if (b1) b1.innerHTML = html;
+    if (b2) b2.innerHTML = html + tools;
   }
 
   /* ── canvas: plan image + pins + heat + trail ──────────────────────────── */
@@ -783,7 +792,8 @@
           (p.active ? '' : '<span class="kj-chip">hidden</span>') + '<span class="kj-muted">' + pinsOf(p).length + ' pins</span></button>' +
         '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-mv-act="move-plan" data-mv-plan="' + p.id + '" data-mv-dir="-1" aria-label="Move up"' + (i ? '' : ' disabled') + '>' + ico('arrow-up') + '</button>' +
         '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-mv-act="move-plan" data-mv-plan="' + p.id + '" data-mv-dir="1" aria-label="Move down"' + (i < arr.length - 1 ? '' : ' disabled') + '>' + ico('arrow-down') + '</button>' +
-        '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-kj-modal="' + esc(spec('mv-plan', p.id)) + '" aria-label="Plan settings">' + ico('pencil') + '</button></div>';
+        '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm" data-kj-modal="' + esc(spec('mv-plan', p.id)) + '" aria-label="Plan settings">' + ico('pencil') + '</button>' +
+        '<button type="button" class="kj-btn kj-btn-ghost kj-btn-icon kj-btn-sm mv-floor-del" data-mv-act="del-plan" data-mv-plan="' + p.id + '" aria-label="Delete ' + esc(p.name) + '" title="Delete plan">' + ico('trash-2') + '</button></div>';
     }).join('');
     box.innerHTML = '<div class="mv-editor-grid">' +
       '<div class="mv-editor-col"><div class="mv-editor-title">' + ico('cctv') + 'Cameras' + (plan ? ' · ' + esc(plan.name) : '') + '</div>' +
@@ -828,6 +838,15 @@
       toast(planId ? 'Image replaced — pins kept' : 'Floor plan uploaded', 'success');
       return loadPlans(id).then(function () { if (!planId && S && S.canManage && !S.edit) setEdit(true); });
     }).catch(function (e) { toast(e.message || 'Upload failed', 'danger'); });
+  }
+  function deletePlan(id) {
+    var p = (S.plans || []).find(function (x) { return x.id === id; });
+    if (!p || !S.canManage) return;
+    if (!window.confirm('Delete “' + p.name + '” and its ' + pinsOf(p).length + ' camera pins? This cannot be undone.')) return;
+    post('/floorplans/' + p.id + '/delete', {}).then(function () {
+      toast('Floor plan deleted', 'success');
+      if (S) { if (S.planId === p.id) S.planId = null; loadPlans().then(refreshCams); }
+    }).catch(function (e) { toast(e.message || 'Could not delete', 'danger'); });
   }
   function movePlan(id, dir) {
     var ids = (S.plans || []).map(function (p) { return p.id; }), i = ids.indexOf(id), j = i + dir;
@@ -956,6 +975,7 @@
       case 'edit-on': setEdit(true); return;
       case 'place': { var c = a.getAttribute('data-mv-cam'); S.placing = S.placing === c ? '' : c; paintEditor(); renderCanvas(); return; }
       case 'move-plan': movePlan(N(a.getAttribute('data-mv-plan')), N(a.getAttribute('data-mv-dir'))); return;
+      case 'del-plan': deletePlan(N(a.getAttribute('data-mv-plan'))); return;
     }
   }
   function onInput(ev) {

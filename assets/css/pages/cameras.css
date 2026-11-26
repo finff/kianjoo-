@@ -143,6 +143,9 @@ div.kjc-hchip, span.kjc-hchip { cursor: default; height: 28px; padding: 0 10px; 
 .kjc-fp-tab b { font-size: var(--kj-fs-2xs); min-width: 20px; height: 20px; border-radius: var(--kj-r-full); display: inline-grid; place-items: center; padding: 0 6px; background: var(--kj-bg-subtle); }
 .kjc-fp-tab.is-active { border-color: var(--kj-primary); background: var(--kj-primary-soft); color: var(--kj-primary); }
 .kjc-fp-tab.is-active b { background: var(--kj-primary); color: #fff; }
+.kjc-fp-tab.is-add { border-style: dashed; color: var(--kj-primary); }
+.kjc-fp-tab.is-del { margin-left: auto; color: var(--kj-danger, #dc2626); }
+.kjc-fp-tab.is-del:hover { border-color: var(--kj-danger, #dc2626); background: color-mix(in srgb, var(--kj-danger, #dc2626) 8%, transparent); }
 
 .kjc-fp-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--kj-s-4); align-items: start; }
 @media (max-width: 1000px) { .kjc-fp-body { grid-template-columns: minmax(0, 1fr); } }
