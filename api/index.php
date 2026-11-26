@@ -2659,8 +2659,25 @@ try {
                 Response::error('stream is required.', 422);
             }
             if (!$lb->configured()) {
-                Response::ok(['stream' => $name, 'ready' => false, 'ms' => 0, 'bytes' => 0,
-                              'error' => 'Live bridge not configured', 'snapshot' => null]);
+                // No go2rtc bridge: live video goes through the built-in relay, so
+                // probe the camera directly — connect and wait for one keyframe.
+                $src = (string) (LiveBridge::desired($config, [])[$name]['src'] ?? '');
+                if (!preg_match('~^rtsp://~i', $src)) {
+                    Response::ok(['stream' => $name, 'ready' => false, 'ms' => 0, 'bytes' => 0,
+                                  'error' => $src === '' ? 'Unknown stream' : 'Only rtsp:// sources can be probed', 'snapshot' => null]);
+                }
+                require_once APP_ROOT . '/lib/RtspRelay.php';
+                @set_time_limit(30);
+                $t0    = microtime(true);
+                $bytes = 0;
+                $r     = (new RtspRelay($src))->run(function (string $au) use (&$bytes): bool {
+                    $bytes = strlen($au);
+                    return false;
+                }, 12, 8);
+                $ready = $bytes > 0;
+                Response::ok(['stream' => $name, 'ready' => $ready, 'ms' => (int) round((microtime(true) - $t0) * 1000),
+                              'bytes' => $bytes, 'error' => $ready ? null : (string) ($r['error'] ?? 'No video received'),
+                              'snapshot' => null]);
             }
             @set_time_limit(30);
             $p = $lb->probe($name, 10);

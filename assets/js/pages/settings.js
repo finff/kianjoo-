@@ -482,7 +482,7 @@
     if (b.reachable === false) return { cfg: true, text: 'Bridge unreachable: ' + (b.error || 'no response'), tone: 'danger' };
     return { cfg: true, text: 'Bridge not checked yet — press Test bridge', tone: '' };
   }
-  var PILL = { direct: ['Direct HLS', 'primary'], registered: ['Registered', 'success'], missing: ['Missing', 'orange'], mismatch: ['Mismatch', 'warn'], orphan: ['Orphan', ''] };
+  var PILL = { direct: ['Direct HLS', 'primary'], relay: ['Built-in relay', 'success'],registered: ['Registered', 'success'], missing: ['Missing', 'orange'], mismatch: ['Mismatch', 'warn'], orphan: ['Orphan', ''] };
   RENDER.cameras = function (m) {
     var st = S.data.settings, lb = S.data.live, a = A(), fleet = ((a && a.state) || {}).fleet || [];
     if (!st) return sec(m, '', S.err.settings ? errBox('settings', 'camera settings') : '<div class="kjs-card">' + skel(6) + '</div>');

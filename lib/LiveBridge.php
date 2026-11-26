@@ -560,12 +560,15 @@ final class LiveBridge
         }
 
         $streams = [];
-        $counts  = ['desired' => count($desired), 'registered' => 0, 'missing' => 0, 'mismatch' => 0, 'orphan' => 0, 'unknown' => 0, 'direct' => 0];
+        $counts  = ['desired' => count($desired), 'registered' => 0, 'missing' => 0, 'mismatch' => 0, 'orphan' => 0, 'unknown' => 0, 'direct' => 0, 'relay' => 0];
+        $relay   = !$this->configured() && !empty($config['live']['relay'] ?? true);
         foreach ($desired as $name => $d) {
             $name = (string) $name;
             $r    = $remote[$name] ?? null;
             if (!empty($d['direct'])) {
                 $st = 'direct';          // browser plays it directly
+            } elseif ($relay && preg_match('~^rtsp://~i', (string) $d['src'])) {
+                $st = 'relay';           // played through the built-in relay, no bridge
             } elseif ($remote === null) {
                 $st = 'unknown';
             } elseif ($r === null) {

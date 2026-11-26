@@ -1886,7 +1886,7 @@ class Component extends DCLogic {
     else if(lbB.reachable===false){ lbStatusText='Bridge unreachable: '+(lbB.error||'no response'); lbStatusCol='var(--crit)'; }
     else { lbStatusText='Bridge not checked yet — press Test bridge'; lbStatusCol='var(--text3)'; }
     const lbMask=(u)=>String(u||'').replace(/\/\/([^:]+):[^@]+@/, '//$1:••••@');
-    const LB_PILL={direct:['Direct HLS','var(--brand)','var(--tint-blue)'], registered:['Registered','var(--ok)','var(--tint-green)'], missing:['Missing','var(--high)','var(--tint-orange)'],
+    const LB_PILL={direct:['Direct HLS','var(--brand)','var(--tint-blue)'], relay:['Built-in relay','var(--ok)','var(--tint-green)'],registered:['Registered','var(--ok)','var(--tint-green)'], missing:['Missing','var(--high)','var(--tint-orange)'],
       mismatch:['Mismatch','#B45309','var(--tint-amber)'], orphan:['Orphan','var(--text3)','var(--bg4)']};
     const lbSrc = (lb&&lb.ok&&Array.isArray(lb.streams)) ? lb.streams
       : Object.entries((ap&&ap.live_rtsp&&typeof ap.live_rtsp==='object')?ap.live_rtsp:{}).map(([name,source])=>({name, source, origin:'manual', state:''}));
